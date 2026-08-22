@@ -1,0 +1,122 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>   <!-- v9 老板拍板 C 方案: AlarmManager.setExact 兜底 -->
+  <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>         <!-- API 33+ -->
+  <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION"/>
+  <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <category android:name="android.intent.category.BROWSABLE"/>
+      <data android:scheme="https"/>
+    </intent>
+  </queries>
+  <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:requestLegacyExternalStorage="true">
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="myapp"/>
+        <data android:scheme="exp+app7618846283520000040"/>
+      </intent-filter>
+    </activity>
+
+    <!-- 无障碍服务 -->
+    <service
+        android:name=".AccessibilityServiceImpl"
+        android:exported="false"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:foregroundServiceType="mediaProjection">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService"/>
+      </intent-filter>
+      <meta-data
+          android:name="android.accessibilityservice"
+          android:resource="@xml/accessibility_service_config"/>
+    </service>
+
+    <!-- MediaProjection 前台服务 -->
+    <service
+        android:name=".MediaProjectionService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection"/>
+
+    <!-- ScreenshotService - 持有 MediaProjection 的前台服务 -->
+    <service
+        android:name=".ScreenshotService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection"/>
+
+    <!-- 2026-07-05 v1.6.4.1-huawei-hotfix-fix: 后台保活前台服务
+         周期性触发 LogUploadWorker，应对 Doze + EMUI 后台杀进程 -->
+    <service
+        android:name=".ZbbKeepAliveService"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection"/>
+
+    <!-- 通知监听服务（方案 1：双保险机制 - 主路径） -->
+    <service
+        android:name=".NotificationMonitorService"
+        android:exported="true"
+        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+    </service>
+
+    <!-- 调试用 BroadcastReceiver（adb 触发：A 方案调试入口，详见 skill zbb-automation） -->
+    <!-- DEBUG_SET_INTERVAL: am broadcast -a com.zbb.automation.DEBUG_SET_INTERVAL -p com.zbb.automation 后接 extra long minutes N -->
+    <!-- DEBUG_TRIGGER_NOW:   am broadcast -a com.zbb.automation.DEBUG_TRIGGER_NOW   -p com.zbb.automation -->
+    <receiver
+        android:name=".DebugReceiver"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="com.zbb.automation.DEBUG_SET_INTERVAL" />
+        <action android:name="com.zbb.automation.DEBUG_TRIGGER_NOW" />
+      </intent-filter>
+    </receiver>
+
+    <!-- v8 老板设计 2026-07-08: AlarmManager 触发器 Receiver
+         AlarmManager → IdleTriggerReceiver.onReceive → Worker.doWork -->
+    <receiver
+        android:name=".IdleTriggerReceiver"
+        android:exported="false" />
+
+    <!-- 🆕 v19.61 (07-22) 老板拍板: 解锁立即触发 5min 防熄屏
+         系统 ACTION_USER_PRESENT 广播 → UserPresentReceiver.onReceive → WorkOrchestrator.startIdleWork
+         跟 ZbbKeepAliveService.tick 5min 兜底组成双触发
+         注: USER_PRESENT 是 protected broadcast, 必须显式 exported="true" -->
+    <receiver
+        android:name=".UserPresentReceiver"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.USER_PRESENT" />
+      </intent-filter>
+    </receiver>
+
+  </application>
+</manifest>

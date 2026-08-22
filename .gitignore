@@ -1,0 +1,28 @@
+node_modules/
+.expo/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Native
+android/.gradle/
+android/.idea/
+android/app/build/
+android/build/
+android/.cxx/
+android/local.properties
+android/app/release/
+
+# macOS
+.DS_Store
+_trash/
+
+# 实战反证金标准: V2.x 历史备份文件不 commit
+*.deleted
+*.bak

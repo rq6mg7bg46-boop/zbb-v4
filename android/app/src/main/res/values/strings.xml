@@ -1,0 +1,7 @@
+<resources>
+  <string name="app_name">ZBB</string>
+  <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="accessibility_service_description">ZBB 自动化服务，用于自动化操作和 OCR 文字识别</string>
+</resources>

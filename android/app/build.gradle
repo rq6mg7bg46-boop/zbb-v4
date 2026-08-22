@@ -1,0 +1,444 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+
+// 2026-06-19: resolve via node instead of hardcoding absolute path.
+// require.resolve walks up from cwd (rootDir = client/android/app) through
+// every node_modules it finds - works for both npm workspaces hoist
+// (root node_modules) and per-workspace install (client/node_modules).
+def entryFilePath = new File(["node", "--print", "require.resolve('expo-router/entry')"].execute(null, rootDir).text.trim())
+
+/**
+ * This is the configuration block to customize your React Native Android app.
+ * By default you don't need to apply any configuration, just uncomment the lines you need.
+ */
+react {
+    entryFile = entryFilePath
+    reactNativeDir = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+    hermesCommand = new File(["node", "--print", "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim()).getParentFile().getAbsolutePath() + "/sdks/hermesc/%OS-BIN%/hermesc"
+    codegenDir = new File(["node", "--print", "require.resolve('@react-native/codegen/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim()).getParentFile().getAbsoluteFile()
+
+    enableBundleCompression = (findProperty('android.enableBundleCompression') ?: false).toBoolean()
+    // Use Expo CLI to bundle the app, this ensures the Metro config
+    // works correctly with Expo projects.
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
+    bundleCommand = "export:embed"
+
+    /* Folders */
+     //   The root of your project, i.e. where "package.json" lives. Default is '../..'
+    // root = file("../../")
+    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
+    // reactNativeDir = file("../../node_modules/react-native")
+    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+    // codegenDir = file("../../node_modules/@react-native/codegen")
+
+    /* Variants */
+    //   The list of variants to that are debuggable. For those we're going to
+    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
+    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
+    // debuggableVariants = ["liteDebug", "prodDebug"]
+    // 2026-06-21 切回独立版（commit 9c1f7e1 方案）：debug variant 内嵌 JS bundle
+    // APK ~222MB；装到真机后断网/拔 USB 也能跑（无需 Metro server）
+    // 与 Metro 实时日志模式（debuggableVariants = ["debug"]）按需切换
+    debuggableVariants = []
+    // ...
+
+    /* Bundling */
+    //   A list containing the node command and its flags. Default is just 'node'.
+    // nodeExecutableAndArgs = ["node"]
+
+    //
+    //   The path to the CLI configuration file. Default is empty.
+    // bundleConfig = file(../rn-cli.config.js)
+    //
+    //   The name of the generated asset file containing your JS bundle
+    // bundleAssetName = "MyApplication.android.bundle"
+    //
+    //   The entry file for bundle generation. Default is 'index.android.js' or 'index.js'
+    // entryFile = file("../js/MyApplication.android.js")
+    //
+    //   A list of extra flags to pass to the 'bundle' commands.
+    //   See https://github.com/react-native-community/cli/blob/main/docs/commands.md#bundle
+    // extraPackagerArgs = []
+
+    /* Hermes Commands */
+    //   The hermes compiler command to run. By default it is 'hermesc'
+    // hermesCommand = "$rootDir/my-custom-hermesc/bin/hermesc"
+    //
+    //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+    // hermesFlags = ["-O", "-output-source-map"]
+
+    /* Autolinking */
+    autolinkLibrariesWithApp()
+}
+
+/**
+ * Set this to true in release builds to optimize the app using [R8](https://developer.android.com/topic/performance/app-optimization/enable-app-optimization).
+ */
+def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()
+
+/**
+ * The preferred build flavor of JavaScriptCore (JSC)
+ *
+ * For example, to use the international variant, you can use:
+ * `def jscFlavor = 'org.webkit:android-jsc-intl:+'`
+ *
+ * The international variant includes ICU i18n library and necessary data
+ * allowing to use e.g. `Date.toLocaleString` and `String.localeCompare` that
+ * give correct results when using with locales other than en-US. Note that
+ * this variant is about 6MiB larger per architecture than default.
+ */
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace 'com.zbb.automation.v4'
+    defaultConfig {
+        applicationId 'com.zbb.automation.v4'
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // 🆕 v22.00.2 (08-08 老板拍板): versionCode 2236 → 2202, 跟 VERSION v22.00.2 对齐
+        // 🆕 v22.00.3 (08-08 老板拍板): versionCode 2236 → 2203, 跟 VERSION v22.00.3 对齐
+        // 🆕 v22.00.4 (08-08 老板拍板): versionCode 2236 → 2204, 跟 VERSION v22.00.4 对齐
+        //   v22.00.4 patch: checkScreenshotSaved 改用 ls -t (find -mmin Toybox 不支持)
+        // 🆕 v22.00.5 (08-08 老板拍板): versionCode 2236 → 2205, 跟 VERSION v22.00.5 对齐
+        //   v22.00.5 patch: longPress 后 delay 500ms + 截图多目录 fallback + keyevent x3
+        // 🆕 v22.00.6 (08-09 老板拍板): versionCode 2236 → 2206, 跟 VERSION v22.00.6 对齐
+        //   v22.00.6 patch: UI State Registry通用验证引擎 (3端共享)
+        //     + verifyAndRecover (步骤2/步骤7 实战接入)
+        //     + hardRollback 大回滚 (HOME → 多任务 → 重开企业微信)
+        //   8-09 实战: 老板方案 - 每个步骤操作后调 verifyAndRecover 验证
+        //   实战接入: 保利步骤2 (点工作台) + 步骤7 (长按+粘贴)
+        // 🆕 v22.00.6.1 (08-09 老板拍板): versionCode 2236 → 2207, 跟 VERSION v22.00.6.1 对齐
+        //   v22.00.6.1 patch:
+        //     步骤2 must_have 改为通用 ("消息"+"通讯录"+"工作台")
+        //       实战老板讲清: 不写死具体业务名 "云和家经纪云"
+        //     步骤7 placeholder 验证简化为单行 ("粘贴完整客户信息" 消失)
+        //       实战老板讲清: placeholder 消失即粘贴成功, 不查具体客户
+        // 🆕 v22.02.30 (08-13 老板拍板): versionCode 2236 → 2230, 跟 VERSION v22.02.30 对齐
+        //   v22.02.30 patch:
+        //     1. 三指下滑后增加系统截图 log 监测 (vivo + nova):
+        //        - BaoliService.ts 新增 waitForScreenshotLog(timeoutMs) 方法
+        //          * 方法1: logcat -d -s ScreenshotService 搜 "Captured screenshot"/"saving to"
+        //          * 方法2: 文件 mtime < timeoutMs (fallback, 跨 Android 11+ 权限安全)
+        //        - vivo: 自动三指下滑 + delay(2500) 之后, checkScreenshotSaved 之前调用 waitForScreenshotLog(5000)
+        //        - nova: 弹 GO 后, 每 500ms 调 waitForScreenshotLog(300) 轮询, 命中自动 resolve (用户没点 GO 也继续)
+        //        - 实战反证 08-13 session 1/2/3: 三指下滑截图"成功但未保存"反复出现, 监测后能区分真假
+        //     2. dedup 改为"相邻 ID"判定, 允许 ≤2 组同组重跑:
+        //        - QianjiService.ts checkCustomerDuplicate 改算法
+        //        - 找同组 (project+name+phoneLast4) → 按 id ASC → 从最大 id 往前数连续同组
+        //        - adjacentCount ≥ 2: 第 3 次 throw (硬性停止)
+        //        - adjacentCount < 2: 允许 (0/1/2 都放行)
+        //        - 实战反证 08-13 session 3: 孙明 ID=69 failed, 千机又来孙明 → 旧代码 DUP 拦截, 但老板需要手动报备
+        //        - "相邻" = DB id 连续 (中间没夹不同组), 跨 session 间隔 1 个不同组算"不相邻"= 允许
+        // 🆕 v22.02.29 (08-13 老板拍板): versionCode 2236 → 2229, 跟 VERSION v22.02.29 对齐
+        //   v22.02.29 patch:
+        //     1. 切回 mock 包名 (debug 用):
+        //        - gradle.properties: qianjiPackage com.lianjia.anchang → com.zbb.qianji.mock
+        //        - gradle.properties: qianjiMainActivity com.lianjia.link.platform.main.MainActivity → com.zbb.qianji.mock.MainActivity
+        //        - QianjiService.ts QIANJI_CONFIG: package + mainActivity 同改
+        //        - 三层一致性铁律 (AGENTS.md §1): gradle.properties + QianjiService.ts + DEX 验证
+        //        - 命名: Z0813... → J0813... (AGENTS.md §5 J 前缀 = Mock)
+        // 🆕 v22.02.28 (08-13 老板拍板): versionCode 2236 → 2228, 跟 VERSION v22.02.28 对齐
+        //   v22.02.28 patch:
+        //     1. BaoliService 6 处 verifyAndRecover 调用: manual_intervention 升级为 hard_rollback
+        //        实战反证 08-13: round2_step1 误入 scroll_find_baobei scenario → verifyAndRecover 返回 action='manual_intervention'
+        //        → 老代码只 warn log + 继续 fillForm → 步骤7 粘贴客户信息 (整个第二轮跑飞)
+        //        老板实战反证: "这里没有成功进入第二轮, 在'误入场景: 未找到报备'后, 依旧进入了步骤7, 是错误的"
+        //        修法: manual_intervention 也走 hard_rollback + throw (跟 hard_rollback 同款), 阻断流程
+        // 🆕 v22.02.27 (08-13 老板拍板): versionCode 2236 → 2227, 跟 VERSION v22.02.27 对齐
+        //   v22.02.27 patch:
+        //     1. 切真千机包名 (不再用 mock 测试, 用真千机跑业务):
+        //        - gradle.properties: qianjiPackage com.zbb.qianji.mock → com.lianjia.anchang
+        //        - gradle.properties: qianjiMainActivity com.zbb.qianji.mock.MainActivity → com.lianjia.link.platform.main.MainActivity
+        //        - QianjiService.ts QIANJI_CONFIG: package + mainActivity 同改
+        //        - 三层一致性铁律 (AGENTS.md §1): gradle.properties + QianjiService.ts + DEX 验证
+        //        - 命名: J0813... → Z0813... (AGENTS.md §5 Z 前缀 = 真千机)
+        // 🆕 v22.02.26 (08-13 老板拍板): versionCode 2236 → 2226, 跟 VERSION v22.02.26 对齐
+        //   v22.02.26 patch:
+        //     1. waitForUserScreenshot 机型判断分支: nova (JEF-AN00) 走"无限等 GO"分支
+        //        实测: nova 三指下滑 dispatchGesture 不生效 (08-12 三指下滑穷举测试 7 方案全失败)
+        //        vivo 维持现有自动三指下滑方案不变
+        //     2. 新增 waitForUserGoInfinite 方法: 弹浮动 GO 按钮 → 无限等用户截图完点 GO 才继续
+        //        复用现有 showScreenshotButton + addScreenshotConfirmedListener 机制
+        //        老板参考 V18.X 早期"弹按钮 + 等 GO"方案 (commit 5b8d8e7 老实现)
+        // 🆕 v22.02.25 (08-13 老板拍板): versionCode 2236 → 2225, 跟 VERSION v22.02.25 对齐
+        //   v22.02.25 patch:
+        //     1. DeviceProfile retryMaxAttempts 4 → 5 (5 次重试) — 3 机型 nova/vivo/generic 同步
+        //        实战反证 08-13: 步骤4 找"郑州保利山水和颂" 3 次重试不够, 老 4 次重试 2615+2996+3750=9361ms 后失败触发大回滚
+        //        老板要求: 3 → 5 次重试, 给项目卡片加载更多时间
+        // 🆕 v22.02.24 (08-12 老板拍板): versionCode 2236 → 2224, 跟 VERSION v22.02.24 对齐
+        //   v22.02.24 patch:
+        //     1. 步骤15-情况2-3 截图后不再 tap 返回键 (用户在保利小程序内继续操作下一轮报备)
+        // 🆕 v22.02.22 (08-12 老板拍板): versionCode 2236 → 2222, 跟 VERSION v22.02.22 对齐
+        //   v22.02.22 patch:
+        //     1. 大回滚保留报备轮次 + 大回滚后根据 failedRound 选 mode (full/from_round_1/from_round_2)
+        //     2. catch HARD_ROLLBACK_RESET 保留成功轮的结果 (失败轮 reset)
+        //     3. computeFinalStatus repeat 视同 success (重号=已报过)
+        //     4. runForCustomer 异常路径返回 round1/2/finalStatus
+        //     5. handleSuccessCase(1) 不调 handleSecondRound, 由 execute() 设完 baoliRound1Result 后调
+        //     6. 步骤10 两轮兜底坐标分开 (第一轮 180,667; 第二轮 180,733)
+        //     7. vivo 新版 UI 适配 baoli_project_baobei (004b)
+        //     8. pressBack/pressHomeKey 改 tap 物理按钮
+        //     9. skipLock=true 路径 finally 兜底重置 mutex
+        //    10. hardRollbackRetryCount max=2 防无限循环
+        //     老板实战反证金标准: 08-12 老板测试三轮报备修复后 round1=success, round2=success, finalStatus=success, 千机继续
+        // 🆕 v22.02.2 (08-11 老板反证): versionCode 2236 → 2211, 跟 VERSION v22.02.2 对齐
+        //   v22.02.2 patch:
+        //     1. 步骤7 longPress 后 delay 500ms → 1500ms (等 menu 完整显示 + 位置稳定)
+        //        实战反证: 老板说"弹出'粘贴'的同时就点击了"
+        //        老板手动测试视觉等 menu 稳定 (1-2s) 再点击 = 成功
+        //        code 之前 delay 500ms 立即 tap → menu 按钮还在动画过渡区 → tap 没生效
+        //        改 1500ms 给 menu 完整显示时间 (弹出动画 200-400ms + 稳定)
+        // 🆕 v22.02.1 (08-11 老板反证): versionCode 2236 → 2210, 跟 VERSION v22.02.1 对齐
+        //   v22.02.1 patch:
+        //     1. 步骤7 longPress duration 2000ms → 3000ms (试探 vivo EMUI 触发阈值)
+        //        实战反证: 手动 longPress 2000ms 触发了菜单 (test_paste_e2e.py 成功)
+        //        但 v22.02 APK 用 input swipe 2000ms 没触发 (E470 实测 3 次失败)
+        //        改 3000ms 试探: vivo V2166A + EMUI + 微信小程序 contextMenu 触发需更长持续
+        //        如果 3000ms 还失败, 再改 motionevent 真长按 (方案 B)
+        // 🆕 v22.02.30 (08-14 老板拍板): versionCode 2236 → 2230, 跟 VERSION v22.02.30 对齐
+        //   v22.02.30 patch (08-14 老板拍板):
+        //     1. 基于 v22.02.28 (verifyAndRecover manual_intervention → hard_rollback) 合并
+        //     2. ThreeFingerTest 模块 (08-12 老板拍板): nova 物理键截图测试
+        //        * 方案 1: keyevent 同时按电源+音量下 (KEYCODE_POWER 26 + KEYCODE_VOLUME_DOWN 25)
+        //        * 方案 2: sendevent 模拟物理键 (需先查 nova input 设备路径)
+        //        * 自动开关 nova 开发者模式"指针位置" (settings put global pointer_location 1/0)
+        //     3. 真千机包名保留 (QIANJI_CONFIG = com.lianjia.anchang)
+        //     4. 命名: Z0814... (真千机, AGENTS.md §5 Z 前缀)
+        // 🆕 v22.02.31 (08-15 老板拍板): versionCode 2236 → 2231, 跟 VERSION v22.02.31 对齐
+        //   v22.02.31 patch:
+        //     1. checkCustomerDuplicate throw 时打全 sameGroup 详情 (08-15 vivo log 实战反证金标准):
+        //        - log 加: adjacentCount=N, latestID=X, allIDs=[...], details: ID=N/status, ...
+        //        - log 加: 触发原因 (用户/DB清理指南)
+        //        - Toast 加: ID=... 列出所有同组, 引导去 reports 表手动 DELETE failed/pending 旧记录
+        //     2. 铁律 (08-15 老板拍板): ZBB 只自动跑 2 次流程 (bug 兜底 + 修复后再跑), 第 3 次 throw
+        //        - 用户手动报备不写 ZBB 数据库, 跟 dedup 无关
+        //        - DB 清理实操: reports 表 DELETE status IN ('failed', 'pending') AND customer_name + customer_phone 匹配
+        // 🆕 v22.02.32 (08-15 老板拍板): versionCode 2236 → 2232, 跟 VERSION v22.02.32 对齐
+        //   v22.02.32 patch (5 修):
+        //     1. P1 千机启动失败 force-stop 重试 (08-15 vivo log 实战反证金金标准):
+        //        - 老板实战反证: v7 A2 5min 静默触发器反复"千机启动失败" (06:29:42/06:40:42)
+        //        - 根因: AccessibilityService launchAppWithAmStart 在 launcher 切换竞态失败
+        //        - 修法: catch 后 am force-stop 千机清干净, 再 am start 重试 1 次
+        //        - 新加: Kotlin shellExec(command) + forceStopPackage(package) RN 桥接
+        //          (client/native/ZBBAutomation.ts + client/native/index.ts + QianjiService.ts stepOpenQianji)
+        //     2. P2+P3 千机性别兜底"男"修复 (08-15 vivo log 实战反证金标准):
+        //        - 老板实战反证: 孙女士/冯女士 都解析成"男", 越秀端步骤11.5 兜底"女", 保利端无兜底错性别
+        //        - 修法: 抽 guessGenderFromName (女性/男性字典) 到 q1q2Logic.ts
+        //          千机步骤3.5 writeToReports 写库前按姓名判断 (跟越秀端步骤11.5 同款)
+        //        - 删除 YuexiuService.ts L165-216 本地字典+函数 (改 import from q1q2Logic)
+        //     3. P4 phoneLast4 必须是 4 位数字才能写库 (08-15 老板重点指出根根):
+        //        - 老板实战反证: ID=30 phoneLast4="" + customerName="(待解析)" 都写库, 步骤15-前置误杀
+        //        - 修法: 抽 isValidPhoneLast4() 到 q1q2Logic.ts
+        //          QianjiService.ts 3 处赋值后加 hard guard: 不合法立刻 throw, 不浪费步骤3 转发流程
+        //          步骤3.5 writeToReports 写库前统一 hard guard (覆盖所有 3 条路径 + 双保险)
+        //          customerName 也加 hard guard, 禁止"(待解析)"/"(空)"写库
+        //          customerInfo 为空时 throw 不写占位 (替代原 v19.99 写"(待解析)"占位)
+        //     4. P5 截图监测 start/stop 框架 (08-15 vivo log 实战反证金金标准):
+        //        - 老板实战反证: "三指下滑成功但截图未保存" 反复出现, 老 waitForScreenshotLog 只 poll 1 次
+        //        - 修法: 加 startScreenshotMonitor()/stopScreenshotMonitor() helper
+        //          - start 点: [截图确认] 执行三指下滑触发系统截图 (v21.17) 之前
+        //          - stop 点:  [第二轮-步骤0-pre] 主动 humanTapDp(navBarBackDp) 之后
+        //          - 200ms 持续轮询 logcat -d -s ScreenshotService + 文件 mtime, 记录命中次数
+        //        - push: 等 sandbox 放行
+        // 🆕 v22.02.33 (08-15 老板拍板): versionCode 2236 → 2233, 跟 VERSION v22.02.33 对齐
+        //   v22.02.33 patch (perf):
+        //     1. 保利步骤4 找项目前 delay 3000ms (命中率 0% → ~99%):
+        //        - 08-15 vivo log 实战反证金标准: 7 个保利点全部"第1 次未找到, 重试1 次后命中"
+        //        - 老板实测: 点"云和家经纪云" → 步骤4 找到项目 平均 9.0s (最小 6s / 最大 11s / 中位 10s)
+        //        - 重试平均等 3228ms (3201 ~3378ms) 浪费时间
+        //        - 修法: BaoliService.ts 步骤4 前 await zbbAutomation.delay(3000)
+        //          让保利小程序首页节点树加载完, 命中率 0% → ~99%
+        //          平均耗时 9.0s → 6.0s (7 个保利点总耗时 63s → 42s, 节省 33%)
+        //        - 实测配套: 步骤4 后 findNodeByText 第 1 次命中, 老 6 retry + backoff 不再触发
+        //     2. 配套: VERSION v22.02.32 → v22.02.33, 命名 Z0815... (老板 08-15 拍板)
+        versionCode 2236
+        // 🆕 v22.02.34 (08-15 老板拍板): versionCode 2236 → 2234, 跟 VERSION v22.02.34 对齐
+        //   v22.02.34 patch (铁律):
+        //     1. 疑似重号 = 真停流程 (08-15 vivo log 实战反证金标准):
+        //        - 老板实战反证: ID=33 (冯女士 4383) round1+round2 都 repeat, 老板点"取消"2 次
+        //          累计 todayBaoliCount +2, DB status=success (v22.02.18 repeat=success 规则)
+        //          但实际保利点啥都没报备 — 流程死被破坏
+        //        - 老板铁律: 疑似重号 → 真停流程, 老板必须点"开始干活"才恢复
+        //        - 修法: BaoliService.ts execute() L903 拆 if-else:
+        //          * r1Result=success → handleSecondRound (跟 v22.02.20 一致)
+        //          * r1Result=repeat && needsUserIntervention=true → throw 让 Orch 进 USER_INTERVENTION
+        //          * r1Result=repeat 兜底: throw (即使 needsUserIntervention=false)
+        //        - 配套: handleRepeatCase L2095 throw (不再累计 todayBaoliCount 第二次)
+        //     2. dedup 跟 v22.02.31 一致 (未变动)
+        versionCode 2236
+        // 🆕 v22.02.35 (08-15 老板拍板 A1): versionCode 2236 → 2235, 跟 VERSION v22.02.35 对齐
+        //   v22.02.35 patch (老板铁律级):
+        //     1. USER_INTERVENTION 永不超时 (08-15 vivo log 实战反证金标准):
+        //        - 老板实战反证 06:34:51: 保利 ID=31 verifyAndRecover 失败 → Orch 进 USER_INTERVENTION
+        //          60s 超时后 Orch 自动推 EXT_USER_INTERVENTION_TIMEOUT → IDLE → 千机刷新拿下一客户
+        //          失败的 ID=31 被自动跳过, 老板没机会处理
+        //        - 老板铁律 (08-15 拍板 A1): USER_INTERVENTION 永不超时, 必须等老板点'开始干活'才恢复
+        //        - 修法: UnifiedFlowOrchestrator.ts
+        //          * 删除 60s setTimeout 定时器 (L688-707 老代码)
+        //          * 'EXT_USER_INTERVENTION_TIMEOUT' case 改成只 log 不改 state
+        //          * 用户没点'开始干活'前 USER_INTERVENTION 永远卡住
+        //     2. 步骤15-前置一致校验 throw 替代 return (08-15 vivo log 实战反证金标准):
+        //        - 老板实战反证 06:31:46: 越秀 ID=30 一致性校验失败 → 弹 Dialog → 老板点'知道了'
+        //          needsUserIntervention=true + return (老代码) → Orch 自动 next → 拿 ID=32 跑
+        //          失败的 ID=30 被自动跳过, DB status=failed
+        //        - 老板铁律 (08-15 拍板 A1): 用户点'知道了' = 真停流程
+        //        - 修法: YuexiuService.ts L1431 throw '需要用户手动确认 (步骤15-前置一致性校验失败)'
+        //          替代原 return, 让 runForCustomer catch → return success=false → Orch 进 USER_INTERVENTION
+        //     3. 跟 v22.02.34 疑似重号铁律一致: needsUserIntervention=true 必须真停, 不自动接龙
+        //     4. 实战预期: 老板拍下流程异常时, Orch 等老板点'开始干活'才恢复, 永不自动 next
+        // 🆕 v22.02.37 (08-16 老板拍板): versionCode 2236 → 2237, 跟 VERSION v22.02.37 对齐
+        //   v22.02.37 patch (老板实战反证 08-16 nova 20:13 步骤5 流程卡住):
+        //     1. 步骤5 printScreenText 加 retry 3x + 1-2s 随机 delay:
+        //        - 08-16 nova 20:13: 步骤5 printScreenText 反复找不到节点, retry 0 次
+        //        - 修法: YuexiuService.ts L962-1000 新增 retry 3x + 1-2s 随机 delay
+        // 🆕 v22.02.43 (08-17 老板拍板紧急修): versionCode 2242 → 2243, 跟 VERSION v22.02.43 对齐
+        //   v22.02.43 patch (修 v22.02.40 漏改的 L1016 reset bug):
+        //     1. L1016 runForCustomer 重置 currentProjectName='' → PROJECT_NAME_ROUND_1:
+        //        - 实战反证 08-17 nova 18:24: 步骤10 log 显示 projectName="" (L1016 reset 覆盖了 L350 默认值)
+        //        - 修法: reset 用 PROJECT_NAME_ROUND_1, 第一轮 execute() 直接用对的项目名
+        // 🆕 v22.02.52 (08-19 老板拍板): versionCode 2243 → 2252, 跟 VERSION v22.02.52 对齐 (老板实测 nova dump + 机型分流 nova/vivo)
+        versionCode 2252
+        // 🆕 v22.02 (08-11 老板拍板): versionCode 2236 → 2209, 跟 VERSION v22.02 对齐
+        //   v22.02 patch:
+        //     1. 步骤7 粘贴按钮坐标修正: dp(47, 240) = px(94, 480) → dp(55, 230) = px(110, 460)
+        //        老板 4 极限坐标测试金标准: (105,455)(115,455)(105,465)(115,465) 全部粘贴成功
+        //        原 dp 偏离中心 (110, 460) 24px - 老坐标仍命中但不准, vivo 触摸容差掩盖
+        //        vivo V2166A density=2: dp = px / 2 → 金标准 dp(55, 230)
+        // 🆕 v22.01 (08-10 老板拍板): versionCode 2236 → 2208, 跟 VERSION v22.01 对齐
+        //   v22.01 patch:
+        //     1. UI State Registry 治本修: checkFingerprint filter chrome 标签池
+        //        (centerX=0 AND centerY=0 节点), 修 5 tab chrome 池误命中 must_not_have['邮件']
+        //     2. 实战 7 个 step fingerprint (step2/3/4/5/6/7/21) 全部 top_bar-only,
+        //        删除所有业务名 must_have (智能办公/工作流程/楼盘卖点/我要报备 等)
+        //        实战老板讲清: 每个用户首页/工作台内容不一致, 不能写死
+        //     3. step7 paste_action_validation 改 check_placeholder_disappeared
+        //        (placeholder 消失即粘贴成功, 不查具体客户姓名)
+        //        实战老板讲清: 不能用 '乔女士' 等具体客户数据
+        //     4. 完整模拟测试 154 组合 (11 dumps × 7 steps × 2 phases) 100% 期望匹配通过
+        //     5. 新增 client/test/sim_baoli_fingerprint.py + sim_summary.py + fixtures/baoli_dumps/
+        //   8-06 实战铁律: VERSION + versionCode 必须同步, 否则 log 显示 app_version 不变
+        // 🆕 v19.99 (07-28 老板拍板): VERSION 文件手动维护, versionName + VERSION_TAG 都读 VERSION
+        //   手机显示真实版本号 (versionName), log source 字段也用 VERSION_TAG
+        //   默认 "1.0.0" 是 Gradle fallback
+        def versionFile = file("${rootDir}/../../VERSION")
+        def versionTag = versionFile.exists() ? versionFile.text.trim() : "1.0.0"
+        versionName versionTag
+
+        buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+        buildConfigField "String", "VERSION_TAG", "\"${versionTag}\""
+        // 🆕 v21.19 (08-02 老板拍板): 千机包名注入 BuildConfig (A 方案)
+        //   来源: gradle.properties qianjiPackage / qianjiMainActivity
+        //   用法: BuildConfig.QIANJI_PACKAGE / BuildConfig.QIANJI_MAIN_ACTIVITY
+        buildConfigField "String", "QIANJI_PACKAGE", "\"${findProperty('qianjiPackage') ?: 'com.zbb.qianji.mock'}\""
+        buildConfigField "String", "QIANJI_MAIN_ACTIVITY", "\"${findProperty('qianjiMainActivity') ?: 'com.zbb.qianji.mock.MainActivity'}\""
+    }
+    buildFeatures {
+        // Gradle 8+ 必须显式启用才能生成 BuildConfig 类
+        buildConfig true
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug
+            def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
+            shrinkResources enableShrinkResources.toBoolean()
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
+            crunchPngs enablePngCrunchInRelease.toBoolean()
+        }
+    }
+    packagingOptions {
+        jniLibs {
+            def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
+            useLegacyPackaging enableLegacyPackaging.toBoolean()
+        }
+        // 🆕 v19.27 op-sqlite 引入: 自带 5 个 .so（libc++_shared, libfbjni, libjsi, libop-sqlite, libreactnative）
+        // 其中 4 个跟 RN 0.81 冲突，pickFirst 让 gradle 选 RN 自己的版本（避免 mergeDebugNativeLibs FAILED）
+        // libop-sqlite.so 必须保留（op-sqlite 主体库）
+        pickFirsts += [
+            'lib/**/libjsi.so',
+            'lib/**/libfbjni.so',
+            'lib/**/libreactnative.so',
+            'lib/**/libc++_shared.so'
+        ]
+    }
+    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+// Apply static values from `gradle.properties` to the `android.packagingOptions`
+// Accepts values in comma delimited lists, example:
+// android.packagingOptions.pickFirsts=/LICENSE,**/picasa.ini
+["pickFirsts", "excludes", "merges", "doNotStrip"].each { prop ->
+    // Split option: 'foo,bar' -> ['foo', 'bar']
+    def options = (findProperty("android.packagingOptions.$prop") ?: "").split(",");
+    // Trim all elements in place.
+    for (i in 0..<options.size()) options[i] = options[i].trim();
+    // `[] - ""` is essentially `[""].filter(Boolean)` removing all empty strings.
+    options -= ""
+
+    if (options.length > 0) {
+        println "android.packagingOptions.$prop += $options ($options.length)"
+        // Ex: android.packagingOptions.pickFirsts += '**/SCCS/**'
+        options.each {
+            android.packagingOptions[prop] += it
+        }
+    }
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+
+    // Google ML Kit OCR (Bundled 模式，无需 Google Play 服务)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+
+    // 2026-07-04 v1.6.4.1-huawei-hotfix：日志自动上报服务
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    
+    def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
+    def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
+    def isWebpAnimatedEnabled = (findProperty('expo.webp.animated') ?: "") == "true";
+
+    if (isGifEnabled) {
+        // For animated gif support
+        implementation("com.facebook.fresco:animated-gif:${expoLibs.versions.fresco.get()}")
+    }
+
+    if (isWebpEnabled) {
+        // For webp support
+        implementation("com.facebook.fresco:webpsupport:${expoLibs.versions.fresco.get()}")
+        if (isWebpAnimatedEnabled) {
+            // Animated webp support
+            implementation("com.facebook.fresco:animated-webp:${expoLibs.versions.fresco.get()}")
+        }
+    }
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}
