@@ -25,18 +25,21 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
-// 只用 4 个 method: isServiceRunning / isOverlayPermissionGranted / start / stop
+// 实战反证金标准 (08-22): V4.x native 暴露 isAccessibilityServiceRunning, 不是 isServiceRunning
 import { NativeModules } from 'react-native';
 const ZBBAutomation = (NativeModules as any).ZBBAutomation ?? {
-  isServiceRunning: () => Promise.resolve(false),
+  isAccessibilityServiceRunning: () => Promise.resolve(false),
   isOverlayPermissionGranted: () => Promise.resolve(false),
   start: () => Promise.resolve(false),
   stop: () => Promise.resolve(false),
+  openAccessibilitySettings: () => Promise.resolve(false),
+  openOverlaySettings: () => Promise.resolve(false),
 };
 
 // ================== 5 时段情绪话术库 ==================
@@ -100,42 +103,99 @@ export default function HomeScreen() {
   // 状态
   const [a11yEnabled, setA11yEnabled] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
-  const [a11yChecked, setA11yChecked] = useState(false);
-  const [overlayChecked, setOverlayChecked] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
 
-  // 检查无障碍服务
-  const checkA11y = useCallback(async () => {
+  // V4.x 实战反证金标准 (08-22): 每秒检测, 检测到开启就停
+  const checkA11yOnce = useCallback(async (): Promise<boolean> => {
     try {
-      const ok = await ZBBAutomation.isServiceRunning();
-      setA11yEnabled(ok);
-    } catch {
-      setA11yEnabled(false);
-    } finally {
-      setA11yChecked(true);
+      const ok = await ZBBAutomation.isAccessibilityServiceRunning();
+      console.log(`[pollA11y] ${new Date().toISOString().slice(11, 19)} → ${ok}`);
+      return ok;
+    } catch (e) {
+      console.error('[pollA11y] error:', e);
+      return false;
     }
   }, []);
 
-  // 检查悬浮窗权限
-  const checkOverlay = useCallback(async () => {
+  const checkOverlayOnce = useCallback(async (): Promise<boolean> => {
     try {
       const ok = await ZBBAutomation.isOverlayPermissionGranted();
-      setOverlayGranted(ok);
-    } catch {
-      setOverlayGranted(false);
-    } finally {
-      setOverlayChecked(true);
+      console.log(`[pollOverlay] ${new Date().toISOString().slice(11, 19)} → ${ok}`);
+      return ok;
+    } catch (e) {
+      console.error('[pollOverlay] error:', e);
+      return false;
     }
   }, []);
 
   useEffect(() => {
-    checkA11y();
-    checkOverlay();
-  }, [checkA11y, checkOverlay]);
+    let a11yTimer: ReturnType<typeof setInterval> | null = null;
+    let overlayTimer: ReturnType<typeof setInterval> | null = null;
+
+    const startA11yPoll = () => {
+      if (a11yTimer) return;
+      checkA11yOnce().then((ok) => {
+        setA11yEnabled(ok);
+        if (ok) return;
+        a11yTimer = setInterval(async () => {
+          const o = await checkA11yOnce();
+          setA11yEnabled(o);
+          if (o && a11yTimer) {
+            clearInterval(a11yTimer);
+            a11yTimer = null;
+            console.log('[pollA11y] 检测到已开启, 停止轮询');
+          }
+        }, 1000);
+      });
+    };
+
+    const startOverlayPoll = () => {
+      if (overlayTimer) return;
+      checkOverlayOnce().then((ok) => {
+        setOverlayGranted(ok);
+        if (ok) return;
+        overlayTimer = setInterval(async () => {
+          const o = await checkOverlayOnce();
+          setOverlayGranted(o);
+          if (o && overlayTimer) {
+            clearInterval(overlayTimer);
+            overlayTimer = null;
+            console.log('[pollOverlay] 检测到已开启, 停止轮询');
+          }
+        }, 1000);
+      });
+    };
+
+    startA11yPoll();
+    startOverlayPoll();
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        if (!a11yEnabled) startA11yPoll();
+        if (!overlayGranted) startOverlayPoll();
+      }
+    });
+
+    return () => {
+      if (a11yTimer) clearInterval(a11yTimer);
+      if (overlayTimer) clearInterval(overlayTimer);
+      sub?.remove?.();
+    };
+  }, [checkA11yOnce, checkOverlayOnce, a11yEnabled, overlayGranted]);
 
   // 情绪话术 (随机, 但稳定不抖动)
   const idleMessage = useMemo(() => getRandomMessage(todayCount), [todayCount]);
+
+  // 点击无障碍 chip — 跳转系统无障碍设置
+  const handleA11yChipPress = useCallback(() => {
+    ZBBAutomation.openAccessibilitySettings?.();
+  }, []);
+
+  // 点击悬浮窗 chip — 跳转系统悬浮窗设置
+  const handleOverlayChipPress = useCallback(() => {
+    ZBBAutomation.openOverlaySettings?.();
+  }, []);
 
   // 开始干活
   const handleStart = useCallback(async () => {
@@ -177,19 +237,27 @@ export default function HomeScreen() {
       {/* 1. 标题 + 副标题 */}
       <View style={styles.header}>
         <Text style={styles.title}>Action Surrogate</Text>
-        <Text style={styles.subtitle}>Disconnect to reconnect{'\n'}with life.</Text>
+        <Text style={styles.subtitle} numberOfLines={1}>Disconnect to reconnect with life.</Text>
       </View>
 
-      {/* 2. 双权限状态 (右上) */}
+      {/* 2. 双权限状态 (副标题下面, 占满一行) — V4.x 2 态: 已开启 (绿) / 未开启 (红) */}
       <View style={styles.permissionBadges}>
-        <View style={styles.permRow}>
-          <View style={[styles.dot, { backgroundColor: a11yChecked ? (a11yEnabled ? '#10B981' : '#EF4444') : '#9CA3AF' }]} />
-          <Text style={styles.permText}>无障碍 {a11yChecked ? (a11yEnabled ? '已开启' : '未开启') : '检测中'}</Text>
-        </View>
-        <View style={styles.permRow}>
-          <View style={[styles.dot, { backgroundColor: overlayChecked ? (overlayGranted ? '#10B981' : '#EF4444') : '#9CA3AF' }]} />
-          <Text style={styles.permText}>悬浮窗 {overlayChecked ? (overlayGranted ? '已开启' : '未开启') : '检测中'}</Text>
-        </View>
+        <TouchableOpacity
+          style={[styles.permChip, styles.permChipFlex, a11yEnabled ? styles.permChipOk : styles.permChipFail]}
+          onPress={handleA11yChipPress}
+          activeOpacity={0.6}
+        >
+          <View style={styles.dot} />
+          <Text style={styles.permChipText}>无障碍 {a11yEnabled ? '已开启' : '未开启'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.permChip, styles.permChipFlex, overlayGranted ? styles.permChipOk : styles.permChipFail]}
+          onPress={handleOverlayChipPress}
+          activeOpacity={0.6}
+        >
+          <View style={styles.dot} />
+          <Text style={styles.permChipText}>悬浮窗 {overlayGranted ? '已开启' : '未开启'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* 3. 情绪话术卡 */}
@@ -261,10 +329,10 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: '#111827',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 14,
@@ -273,28 +341,40 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // 权限 badges
+  // 权限 badges (副标题下面, 占满一行, 醒目 chip 风格)
   permissionBadges: {
-    position: 'absolute',
-    top: 0,
-    right: 20,
-    paddingTop: 8,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
   },
-  permRow: {
+  permChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  permChipFlex: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  permChipOk: {
+    backgroundColor: '#10B981',
+  },
+  permChipFail: {
+    backgroundColor: '#EF4444',
+  },
+  permChipText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
   },
   dot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 6,
-  },
-  permText: {
-    fontSize: 12,
-    color: '#374151',
-    fontWeight: '500',
+    backgroundColor: '#FFFFFF',
   },
 
   // 情绪话术卡

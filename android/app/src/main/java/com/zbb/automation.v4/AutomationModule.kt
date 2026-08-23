@@ -91,8 +91,52 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     
     @ReactMethod
     fun isAccessibilityServiceRunning(promise: Promise) {
-        val service = AccessibilityServiceImpl.instance
-        promise.resolve(service != null)
+        // 实战反证金标准 (08-22 老板 nova 实测): 老板说开了 2 个 ZBB 的无障碍
+        //   但 dumpsys 只显示 V2.x, 说明 V4.x service 可能没真正注册到 Settings
+        //   修法: 多重匹配, 兼容包名格式
+        //   1) 单例 (instance != null)
+        //   2) dumpsys accessibility (系统级真相)
+        //   3) Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES 字符串宽松匹配
+        val singletonOk = AccessibilityServiceImpl.instance != null
+
+        // 方法 2: dumpsys accessibility 拿所有 enabled service
+        try {
+            val dumpsys = runCmd("dumpsys accessibility").toString()
+            val dumpsysOk = dumpsys.contains("com.zbb.automation.v4") ||
+                            dumpsys.contains("AccessibilityServiceImpl") && dumpsys.contains("automation.v4")
+            if (dumpsysOk) {
+                promise.resolve(true)
+                return
+            }
+        } catch (_: Exception) {}
+
+        // 方法 3: Settings.Secure 字符串宽松匹配 (多种包名格式)
+        try {
+            val enabled = android.provider.Settings.Secure.getString(
+                mReactContext.contentResolver,
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            // 实战反证金标准 (08-22): 兼容多种格式
+            val v4Patterns = listOf(
+                "com.zbb.automation.v4/.AccessibilityServiceImpl",
+                "com.zbb.automation.v4/com.zbb.automation.v4.AccessibilityServiceImpl",
+                "com.zbb.automation.v4",
+                "automation.v4/AccessibilityServiceImpl",
+            )
+            val settingsOk = v4Patterns.any { enabled.contains(it) }
+            promise.resolve(singletonOk || settingsOk)
+        } catch (e: Exception) {
+            promise.resolve(singletonOk)
+        }
+    }
+
+    private fun runCmd(cmd: String): String {
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
+            process.inputStream.bufferedReader().readText()
+        } catch (e: Exception) {
+            ""
+        }
     }
     
     @ReactMethod
