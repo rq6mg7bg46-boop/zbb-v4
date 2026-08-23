@@ -1,10 +1,12 @@
 /**
- * V4.x 千机端 → 保利流程 (老板实战反证金标准 08-22)
+ * V4.x 千机端 → 保利流程 (老板实战反证金标准 08-22, 08-23 重排)
  *
  * 实战经验铁证 (V2.x QianjiService + BaoliService 真实代码):
  * - 千机端步骤 1-6: 打开千机 → 识别界面 → 找报备审核 → 解析客户 (用 A11y, 不用 OCR)
  *                 → 写库 → 复制号码
- * - 保利流程 25 步骤: 打开企业微信 → 工作台 → 云和家经纪云 → 报备 (第一轮 + 第二轮)
+ * - 保利流程 13 步骤 (V4.x 老板 08-23 拍板连续编号):
+ *                 打开企业微信 → 工作台 → 云和家经纪云 → 找项目 → 点报备 → 粘贴 → 分期
+ *                 → 选项目 → 确认 → 智能识别 → 报备 → 等结果 → 检测结果 (两轮报备)
  *
  * 业务流程 = 只调 operations method + orchestrator.send()
  */
@@ -138,7 +140,7 @@ export async function stepParseCustomerInfo(
     agent: extractValue(lines, '经纪人') || '',
     agentPhone: '',
     projectType: lines.some(l => l.includes('越秀')) ? 'yuexiu' : 'baoli',
-    customerGender: extractGender(lines),
+    customerGender: extractGender(lines) ?? '男', // 默认男 (兜底)
     reportTime: extractValue(lines, '报备时间') || '',
     expectedVisitTime: extractValue(lines, '预计到访') || '',
     city: extractValue(lines, '城市') || '',
@@ -147,13 +149,6 @@ export async function stepParseCustomerInfo(
   // 提取 phoneLast4
   const phoneDigits = customerInfo.phone.match(/\d+/g)?.join('') || '';
   customerInfo.phoneLast4 = phoneDigits.slice(-4);
-
-  // 兜底: 性别默认男
-  if (!customerInfo.customerGender) {
-    customerInfo.customerGender = '男';
-  } else if (customerInfo.customerGender !== '男' && customerInfo.customerGender !== '女') {
-    customerInfo.customerGender = '男';
-  }
 
   console.log(`[千机:步骤4] 解析结果: 客户=${customerInfo.customerName} 电话=${customerInfo.phone} phoneLast4=${customerInfo.phoneLast4} 项目=${customerInfo.projectType} 性别=${customerInfo.customerGender}`);
 
@@ -181,7 +176,8 @@ export async function stepWriteToReports(customer: CustomerInfo): Promise<number
 
 // ============================================================
 // 千机端步骤 6: 点联系方式的 * 复制脱敏号码
-// 实战经验铁证: 步骤 4.5 (V15), 保利端不复制, 越秀端要复制
+// 实战经验铁证: V2.x V15 老版本叫步骤 4.5 (中间编号); V4 连续编号改步骤 6
+//              保利端不复制 (用 customerInfo.phone), 越秀端要复制 (点 * 触发)
 // ============================================================
 export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void> {
   console.log('[千机:步骤6] 点 * 复制脱敏号码...');
@@ -292,10 +288,10 @@ function extractValue(lines: string[], key: string): string | null {
   return null;
 }
 
-function extractGender(lines: string[]): '男' | '女' | '' {
+function extractGender(lines: string[]): '男' | '女' | null {
   for (const line of lines) {
     if (line.includes('先生')) return '男';
     if (line.includes('女士') || line.includes('小姐') || line.includes('太太')) return '女';
   }
-  return '';
+  return null;
 }
