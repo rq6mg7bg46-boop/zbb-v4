@@ -223,11 +223,6 @@ export default function HomeScreen() {
     );
   }, []);
 
-  // 悬浮窗徽章点击
-  const handleBadgePress = useCallback(() => {
-    Alert.alert('悬浮窗', '悬浮窗徽章');
-  }, []);
-
   return (
     <ScrollView
       style={[styles.container, { paddingTop: insets.top }]}
@@ -303,12 +298,7 @@ export default function HomeScreen() {
         <Text style={styles.secondaryButtonArrow}>›</Text>
       </TouchableOpacity>
 
-      {/* 8. 悬浮窗徽章 (左下角) */}
-      <View style={[styles.badgeContainer, { bottom: 24 + insets.bottom }]}>
-        <TouchableOpacity style={styles.badge} onPress={handleBadgePress} activeOpacity={0.7}>
-          <Text style={styles.badgeText}>G</Text>
-        </TouchableOpacity>
-      </View>
+      {/* (实战反证金标准 08-22 老板 nova 实测: 左下角 G 徽章删除, 不符合跨应用设计) */}
     </ScrollView>
   );
 }
@@ -519,27 +509,4 @@ const styles = StyleSheet.create({
   },
 
   // 悬浮窗徽章
-  badgeContainer: {
-    position: 'absolute',
-    left: 20,
-    bottom: 24,
-  },
-  badge: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#F97316',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#F97316',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  badgeText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '700',
-  },
 });
