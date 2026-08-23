@@ -14,6 +14,7 @@
  */
 
 import ZBBAutomation, { A11yNode } from '@/native';
+import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 200;
@@ -55,7 +56,8 @@ export async function byText(
       console.warn(`[click.byText] OCR 没找到: "${text}"`);
       return false;
     }
-    return ZBBAutomation.click(result.x, result.y);
+    const { x, y } = applyHumanOffset(result.x, result.y);
+    return ZBBAutomation.click(x, y);
   }
 
   // A11y 模式 (默认): 用 findElementByText
@@ -70,51 +72,58 @@ export async function byText(
     console.warn(`[click.byText] A11y 没找到: "${text}"`);
     return false;
   }
-  return ZBBAutomation.click(node.centerX, node.centerY);
+  const { x, y } = applyHumanOffset(node.centerX, node.centerY);
+  return ZBBAutomation.click(x, y);
 }
 
 /**
  * 按 A11y 节点点击
  */
-export async function byNode(node: A11yNode): Promise<boolean> {
+export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
   if (!node || node.centerX === undefined || node.centerY === undefined) {
     console.warn(`[click.byNode] 节点无效:`, node);
     return false;
   }
-  return ZBBAutomation.click(node.centerX, node.centerY);
+  const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
+  return ZBBAutomation.click(x, y);
 }
 
 /**
  * 按 viewId 点击
  */
-export async function byId(viewId: string): Promise<boolean> {
+export async function byId(viewId: string, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
   const node = await ZBBAutomation.findElementByViewId(viewId);
   if (!node || node.centerX === undefined || node.centerY === undefined) {
     console.warn(`[click.byId] 没找到: "${viewId}"`);
     return false;
   }
-  return ZBBAutomation.click(node.centerX, node.centerY);
+  const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
+  return ZBBAutomation.click(x, y);
 }
 
 /**
  * 按 bounds 点击中心
  */
-export async function byBounds(bounds: {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}): Promise<boolean> {
+export async function byBounds(
+  bounds: { left: number; top: number; right: number; bottom: number },
+  level: HumanLevel = HumanLevel.PRECISE,
+): Promise<boolean> {
   const x = Math.floor((bounds.left + bounds.right) / 2);
   const y = Math.floor((bounds.top + bounds.bottom) / 2);
-  return ZBBAutomation.click(x, y);
+  const { x: hx, y: hy } = applyHumanOffset(x, y, level);
+  return ZBBAutomation.click(hx, hy);
 }
 
 /**
  * 按坐标点击
  */
-export async function byCoords(x: number, y: number): Promise<boolean> {
-  return ZBBAutomation.click(x, y);
+export async function byCoords(
+  x: number,
+  y: number,
+  level: HumanLevel = HumanLevel.PRECISE,
+): Promise<boolean> {
+  const { x: hx, y: hy } = applyHumanOffset(x, y, level);
+  return ZBBAutomation.click(hx, hy);
 }
 
 export const click = { byText, byNode, byId, byBounds, byCoords };

@@ -29,6 +29,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { runQianjiFlow, runBaoliFlow } from '@/flow';
+
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
 // 实战反证金标准 (08-22): V4.x native 暴露 isAccessibilityServiceRunning, 不是 isServiceRunning
@@ -197,7 +199,7 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-  // 开始干活
+  // 开始干活 (V4.x V4-13 铁律修法: 不调 ZBBAutomation.start, 直接调 V4 flow)
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
       Alert.alert(
@@ -206,11 +208,40 @@ export default function HomeScreen() {
       );
       return;
     }
+    setIsRunning(true);
+    console.log('[开始干活] 启动千机端流程...');
     try {
-      await ZBBAutomation.start();
-      setIsRunning(true);
+      // 1. 千机端流程 (老板 nova 实测 08-23: 完整版需要 nova 装 com.lianjia.anchang 千机app)
+      const customer = await runQianjiFlow();
+      if (!customer) {
+        setIsRunning(false);
+        console.warn('[开始干活] 千机端流程失败');
+        Alert.alert('千机端流程失败', '请确认已安装千机app并打开报备审核');
+        return;
+      }
+      console.log(`[开始干活] 千机端返回客户: ${customer.customerName} (${customer.projectType})`);
+
+      // 2. 根据项目类型调对应报备流程
+      if (customer.projectType === 'baoli') {
+        console.log('[开始干活] 启动保利端流程...');
+        const ok = await runBaoliFlow(customer);
+        if (!ok) {
+          console.warn('[开始干活] 保利端流程失败');
+          Alert.alert('保利端流程失败', '请查看日志');
+          return;
+        }
+        console.log('[开始干活] 保利端流程完成');
+        Alert.alert('完成', `客户 ${customer.customerName} 报备完成`);
+      } else {
+        // 越秀端待 S2.4 实现
+        console.log(`[开始干活] 越秀端流程待实现 (${customer.customerName})`);
+        Alert.alert('提示', `越秀端流程待 S2.4 实现\n客户: ${customer.customerName}`);
+      }
     } catch (e: any) {
+      console.error('[开始干活] 流程异常:', e);
       Alert.alert('启动失败', String(e?.message ?? e));
+    } finally {
+      setIsRunning(false);
     }
   }, [a11yEnabled, overlayGranted]);
 

@@ -26,3 +26,6 @@ _trash/
 # 实战反证金标准: V2.x 历史备份文件不 commit
 *.deleted
 *.bak
+
+# 实战反证金标准: V4 软删 APK 备份目录 (老板可手动恢复, 不入仓)
+_bak_deleted_*/

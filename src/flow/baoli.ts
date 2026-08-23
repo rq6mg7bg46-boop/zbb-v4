@@ -27,6 +27,7 @@ import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe } f
 import ZBBAutomation from '@/native';
 import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
+import { px } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板实战反证金标准 08-23)
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',
@@ -183,8 +184,9 @@ async function step3FindMiniApp(): Promise<boolean> {
         return true;
       }
     }
-    // 上滑 (用 dp 适配)
-    await ZBBAutomation.swipe(540, 1500, 540, 800, 500);
+    // 上滑 (跨机型 dp 适配: V2.x 实战经验铁证 nova 480dpi 1dp=3px vs vivo 320dpi 1dp=2px)
+    // V4 老板 08-23 拍板: 坐标用 dp 写, px() 自动按机型转
+    await ZBBAutomation.swipe(px(180), px(500), px(180), px(267), 500);
     await ZBBAutomation.delay(1500);
   }
 
@@ -371,8 +373,8 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   if (await judge.isScreenText('报备成功')) {
     console.log('[保利:步骤13-情况2] 报备成功, 上滑 + 等截图');
 
-    // 情况 2-1: 上滑屏幕
-    await ZBBAutomation.swipe(540, 1500, 540, 800, 1000);
+    // 情况 2-1: 上滑屏幕 (跨机型 dp 适配, 老板 08-23 拍板)
+    await ZBBAutomation.swipe(px(180), px(500), px(180), px(267), 1000);
 
     // 情况 2-2: 找"上传附件"坐标
     const uploadNode = await a11y.findByText('上传附件');
