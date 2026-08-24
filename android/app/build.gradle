@@ -361,6 +361,7 @@ android {
             //   debug build 保留 MainActivity launcher, 老板直接装包即跑
             //   实战反证金标准: expo-dev-client 默认 DevLauncherActivity, nova 装包后 No activities found
             applicationIdSuffix ''
+        }
         release {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
