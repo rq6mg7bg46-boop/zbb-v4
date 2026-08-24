@@ -23,6 +23,14 @@
 import { DeviceEventEmitter } from 'react-native';
 import { runZbbWorkflow } from '@/flow';
 import { orchestrator } from '@/core/stateMachine';
+import { loadAppEnv } from '@/config/env'; // 🆕 08-24
+
+// 🆕 08-24 (老板拍板 a=方案A): 启动时从 native BuildConfig 读 APP_ENV + 千机包名
+loadAppEnv().then((env) => {
+  console.log(`[services/index.ts] APP_ENV=${env.appEnv}, qianji=${env.qianjiPackage}`);
+}).catch((e) => {
+  console.error('[services/index.ts] loadAppEnv 失败:', e);
+});
 
 DeviceEventEmitter.addListener('zbbIdleWorkTrigger', async () => {
   console.log('[5minTrigger] 5min 静默触发器 → runZbbWorkflow');

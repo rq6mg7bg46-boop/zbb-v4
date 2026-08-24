@@ -2300,3 +2300,36 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }.start()
     }
 }
+
+    // ==================== 环境变量读取 (08-24 老板拍板 a=方案A) ====================
+
+    /**
+     * 读取 build-time 注入的 env.json (JS bundle 通过此方法拿 APP_ENV, 跟 BuildConfig 同步)
+     * 实战反证金标准 (08-24): gradle.properties + BuildConfig 改了, JS 也必须跟
+     *
+     * @param promise JS resolve({appEnv, qianjiPackage, qianjiMainActivity})
+     */
+    @ReactMethod
+    fun readBuildEnv(promise: Promise) {
+        try {
+            val envJson = mReactContext.assets.open("env.json")
+                .bufferedReader()
+                .use { it.readText() }
+            val map = com.facebook.react.bridge.Arguments.createMap()
+            // 简单 JSON parse (JS 端还要做 fallback, native 只保证文件存在)
+            val regex = Regex("\"(\\w+)\"\\s*:\\s*\"([^\"]+)\"")
+            regex.findAll(envJson).forEach { match ->
+                map.putString(match.groupValues[1], match.groupValues[2])
+            }
+            Log.d(TAG, "[readBuildEnv] env=${map}")
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.w(TAG, "[readBuildEnv] env.json 不存在, fallback BuildConfig: ${e.message}")
+            // fallback: 直接用 BuildConfig (跟 gradle.properties 同步)
+            val map = com.facebook.react.bridge.Arguments.createMap()
+            map.putString("appEnv", com.zbb.automation.v4.BuildConfig.APP_ENV)
+            map.putString("qianjiPackage", com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE)
+            map.putString("qianjiMainActivity", com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY)
+            promise.resolve(map)
+        }
+    }

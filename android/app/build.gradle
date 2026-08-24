@@ -339,6 +339,17 @@ android {
         //   用法: BuildConfig.QIANJI_PACKAGE / BuildConfig.QIANJI_MAIN_ACTIVITY
         buildConfigField "String", "QIANJI_PACKAGE", "\"${findProperty('qianjiPackage') ?: 'com.zbb.qianji.mock'}\""
         buildConfigField "String", "QIANJI_MAIN_ACTIVITY", "\"${findProperty('qianjiMainActivity') ?: 'com.zbb.qianji.mock.MainActivity'}\""
+        // 🆕 08-24 (老板拍板 a=方案A): APP_ENV 注入 BuildConfig, 让 JS bundle 跟 native 同步
+        //   用法: BuildConfig.APP_ENV = "production" | "mock"
+        buildConfigField "String", "APP_ENV", "\"${findProperty('appEnv') ?: 'production'}\""
+        // 🆕 08-24: 生成 build-time env.json (放 assets, JS 通过 native module 读)
+        //   让 JS 在运行时拿 native BuildConfig 的 appEnv, 保证两边一致
+        def appEnvValue = findProperty('appEnv') ?: 'production'
+        def qianjiPkg = findProperty('qianjiPackage') ?: 'com.zbb.qianji.mock'
+        def qianjiAct = findProperty('qianjiMainActivity') ?: 'com.zbb.qianji.mock.MainActivity'
+        def envJson = file("${buildDir}/generated/assets/env.json")
+        envJson.parentFile.mkdirs()
+        envJson.text = "{\"appEnv\":\"${appEnvValue}\",\"qianjiPackage\":\"${qianjiPkg}\",\"qianjiMainActivity\":\"${qianjiAct}\"}"
     }
     buildFeatures {
         // Gradle 8+ 必须显式启用才能生成 BuildConfig 类

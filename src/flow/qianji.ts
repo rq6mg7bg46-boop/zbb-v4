@@ -16,20 +16,19 @@ import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe } f
 import ZBBAutomation from '@/native';
 import type { A11yNode } from '@/native';
 import { verifyAndRecover, waitForScreenWithRollback } from './verify';
+import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 08-24
 
 // ============================================================
-// 常量 (V2.x APP_PACKAGES 实战反证金标准)
+// 常量 (08-24 实战反证金标准)
 // ============================================================
-const APP_PACKAGES = {
-  QIANJI: 'com.qianji.client',
-  WECHAT_WORK: 'com.tencent.wework',
-  BAOLI_MINIAPP: 'cloudfamily', // 云和家经纪云
-};
-
-const QIANJI_MAIN_ACTIVITY = 'com.qianji.client.MainActivity';
+// 🆕 08-24: 删本地 APP_PACKAGES / QIANJI_MAIN_ACTIVITY (改用 @/config/env)
+// 实战反证金标准 (08-24): qianji.ts:24/29 hardcoded 'com.qianji.client' 是错的
+//   真千机包名 = com.lianjia.anchang (V2.x V22.x 实战反证, MEMORY.md §5)
+//   真千机 MainActivity = com.lianjia.app.icon.activity.APlusIconActivity (08-24 实测)
+// 老板拍板 a=方案A: 编译时切换, 包名从 gradle.properties 注入, JS 跟 native 同步
 
 // ============================================================
-// 类型
+// 类型 (08-24 实战反证金标准)
 // ============================================================
 export interface CustomerInfo {
   customerName: string;
@@ -50,9 +49,12 @@ export interface CustomerInfo {
 export async function stepOpenQianji(): Promise<void> {
   console.log('[千机:步骤1] 正在打开千机...');
 
+  // 🆕 08-24: 包名走 env 模块, 启动时从 native BuildConfig 读
+  const qianjiPkg = qianjiPackage(); // 'com.lianjia.anchang' 或 'com.zbb.qianji.mock'
+
   let launched = false;
   try {
-    launched = await ZBBAutomation.launchApp(APP_PACKAGES.QIANJI);
+    launched = await ZBBAutomation.launchApp(qianjiPkg);
 
     if (launched) {
       console.log('[千机:步骤1] 千机已启动, 等待界面加载...');
@@ -64,7 +66,7 @@ export async function stepOpenQianji(): Promise<void> {
     console.warn(`[千机:步骤1] 启动失败, 准备重试: ${error}`);
     // 重试 1 次 (V2.x v22.02.32 实战反证金标准: force-stop 后重试)
     await ZBBAutomation.delay(1000);
-    launched = await ZBBAutomation.launchApp(APP_PACKAGES.QIANJI);
+    launched = await ZBBAutomation.launchApp(qianjiPkg);
     if (!launched) throw new Error('千机启动失败 (重试)');
     await ZBBAutomation.delay(3000);
   }
