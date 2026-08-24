@@ -2312,24 +2312,16 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     @ReactMethod
     fun readBuildEnv(promise: Promise) {
         try {
-            val stream = mReactContext.assets.open("env.json")
-            val envJson: String = stream.bufferedReader().use { br -> br.readText() }
-            stream.close()
-            val map = com.facebook.react.bridge.Arguments.createMap()
-            // 简单 JSON parse (JS 端还要做 fallback, native 只保证文件存在)
-            val regex = Regex("\"(\\w+)\"\\s*:\\s*\"([^\"]+)\"")
-            regex.findAll(envJson).forEach { match ->
-                map.putString(match.groupValues[1], match.groupValues[2])
-            }
-            Log.d(TAG, "[readBuildEnv] env=${map}")
-            promise.resolve(map)
-        } catch (e: Exception) {
-            Log.w(TAG, "[readBuildEnv] env.json 不存在, fallback BuildConfig: ${e.message}")
-            // fallback: 直接用 BuildConfig (跟 gradle.properties 同步)
+            // 🆕 08-24: 直接 fallback 到 BuildConfig (BuildConfig 已同步 gradle.properties)
+            // 不读 env.json 是因为它可能在 build 时未注入到 assets
             val map = com.facebook.react.bridge.Arguments.createMap()
             map.putString("appEnv", com.zbb.automation.v4.BuildConfig.APP_ENV)
             map.putString("qianjiPackage", com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE)
             map.putString("qianjiMainActivity", com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY)
+            Log.d(TAG, "[readBuildEnv] env=${map}")
             promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "[readBuildEnv] 失败: ${e.message}", e)
+            promise.reject("READ_ENV_FAILED", e.message)
         }
     }
