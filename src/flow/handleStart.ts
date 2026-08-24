@@ -4,7 +4,7 @@
  * 老板 3 种情况:
  * 1. 当前 = 千机 → 下滑屏幕保证数据刷新
  * 2. 当前 = ZBB 或桌面 → 拉起千机,继续下一步
- * 3. 当前 = 其他 APK → 2 轮大退出
+ * 3. 当前 = 其他 APK → 1 轮大退出
  *
  * 错误处理 (老板拍板):
  * - 3 次重试后弹 Alert让人工介入
@@ -62,10 +62,8 @@ export async function handleStart(): Promise<void> {
 
       case 'other':
       default: {
-        // 老板情况 3: 其他 APP → 2 轮大退出
-        console.warn('[handleStart] 当前在其他 APP, 执行 2 轮大退出 (home + 多功能 + 垃圾箱)');
-        await hardRollback();
-        await ZBBAutomation.delay(1000);
+        // 老板情况 3: 其他 APP → 1 轮大退出 (老板拍板 A: 实战反证金标准 1 轮已足够)
+        console.warn('[handleStart] 当前在其他 APP, 执行 1 轮大退出 (home + 多功能 + 垃圾箱)');
         await hardRollback();
         await ZBBAutomation.delay(1000);
         // 继续 loop 重试 (第 2 次 attempt 重新走入口判断)
@@ -91,12 +89,16 @@ export async function handleStart(): Promise<void> {
 }
 
 /**
- * 实战反证金标准: 2 轮大退出 (HOME → 多功能 → 垃圾箱)
- * 复用 V4 operations/rollback.byPolicy('trash') 实现
+ * 实战反证金标准: nova 7 5G 2 轮大退出 (老板 08-24 实测坐标, 物理 1080x2400 dpi 480)
+ *   1. tap HOME (555, 2350) → 回桌面
+ *   2. tap 多任务 (310, 2350) → 开多任务页
+ *   3. tap 垃圾箱 (545, 2160) → 清空所有任务 + 实战反证金标准自动回桌面
+ *
+ *   老板拍板 A: 改为 1 轮, 点击垃圾箱后结束 (不重复点 HOME)
  */
 async function hardRollback(): Promise<void> {
   try {
-    // 实战反证金标准: 按 V2.x v22.00 大回滚策略 — trash = HOME + 多功能 + 垃圾箱
+    // 实战反证金标准: 复用 V4 operations/rollback.byPolicy('trash') (留作未来扩展, 当前用坐标 tap)
     const rollbackModule = (await import('@/operations/rollback')).default
       ?? (await import('@/operations/rollback'));
     if (rollbackModule && typeof (rollbackModule as any).byPolicy === 'function') {
@@ -104,16 +106,15 @@ async function hardRollback(): Promise<void> {
       return;
     }
   } catch (e) {
-    console.warn(`[hardRollback] 复用失败, 直接调 native: ${e}`);
+    console.warn(`[hardRollback] 复用失败, 用 nova 坐标 tap: ${e}`);
   }
-  // fallback: 直接调 native
-  await ZBBAutomation.pressHome();
-  await ZBBAutomation.delay(500);
-  await ZBBAutomation.pressRecentApps();
-  await ZBBAutomation.delay(500);
-  // 垃圾箱按钮: 按 keyevent(187) 或 swipe up 清多任务 (不同 ROM 不同)
-  // 简化用 keyevent(4) 多次返回
-  await ZBBAutomation.pressBack().catch(() => {});
+  // nova 7 5G 1 轮大退出 (老板实战反证金标准 08-24)
+  await ZBBAutomation.click(555, 2350); // HOME
+  await ZBBAutomation.delay(1000);
+  await ZBBAutomation.click(310, 2350); // RECENTS
+  await ZBBAutomation.delay(1500);
+  await ZBBAutomation.click(545, 2160); // TRASH (实战反证金标准: 清空 + 自动回桌面)
+  await ZBBAutomation.delay(1500);
 }
 
 async function runZbbWorkflow(): Promise<void> {
