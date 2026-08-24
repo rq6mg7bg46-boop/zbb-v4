@@ -24,7 +24,8 @@ import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env'; 
 // 🆕 08-24: 删本地 APP_PACKAGES / QIANJI_MAIN_ACTIVITY (改用 @/config/env)
 // 实战反证金标准 (08-24): qianji.ts:24/29 hardcoded 'com.qianji.client' 是错的
 //   真千机包名 = com.lianjia.anchang (V2.x V22.x 实战反证, MEMORY.md §5)
-//   真千机 MainActivity = com.lianjia.app.icon.activity.APlusIconActivity (08-24 实测)
+//   真千机 MainActivity = com.lianjia.link.platform.main.MainActivity (V2.x 实战反证, AutomationModule.kt:936 注释)
+//   千机 launcher 图标 = com.lianjia.app.icon.activity.APlusIconActivity (误用, 只到 launcher 桌面不进业务页)
 // 老板拍板 a=方案A: 编译时切换, 包名从 gradle.properties 注入, JS 跟 native 同步
 
 // ============================================================
@@ -44,17 +45,27 @@ export interface CustomerInfo {
 }
 
 // ============================================================
-// 千机端步骤 1: 打开千机
+// 千机端步骤 1: 打开千机 (🆕 08-24 老板拍板: 用 launchAppWithAmStart)
 // ============================================================
 export async function stepOpenQianji(): Promise<void> {
   console.log('[千机:步骤1] 正在打开千机...');
 
-  // 🆕 08-24: 包名走 env 模块, 启动时从 native BuildConfig 读
-  const qianjiPkg = qianjiPackage(); // 'com.lianjia.anchang' 或 'com.zbb.qianji.mock'
+  // 🆕 08-24: 包名 + MainActivity 都从 env 模块读 (跟 BuildConfig 同步)
+  // 实战反证金标准 (V2.x AutomationModule.kt:936): 必须启动 .MainActivity, 不是 .APlusIconActivity
+  const qianjiPkg = qianjiPackage();
+  const qianjiAct = qianjiMainActivity();
+  console.log(`[千机:步骤1] package=${qianjiPkg}, mainActivity=${qianjiAct}`);
+
+  // 🆕 08-24 (老板拍板: 用 launchAppWithAmStart):
+  //   V4 旧 launchApp() 只走 getLaunchIntentForPackage (返回 launcher 图标 APlusIconActivity)
+  //   V2.x 实战反证 launchAppWithAmStart(package, activity) 才进真业务页 MainActivity
+  // @ts-ignore - launchAppWithAmStart 是 V2.x 实战反证金标准, V4 native 已实现 (AccessibilityServiceImpl.kt:2141)
+  const launchWithAm = (ZBBAutomation as any).launchAppWithAmStart
+    ?? (ZBBAutomation as any).launchApp; // fallback 到旧 launchApp (兼容 mock)
 
   let launched = false;
   try {
-    launched = await ZBBAutomation.launchApp(qianjiPkg);
+    launched = await launchWithAm(qianjiPkg, qianjiAct);
 
     if (launched) {
       console.log('[千机:步骤1] 千机已启动, 等待界面加载...');
@@ -66,7 +77,7 @@ export async function stepOpenQianji(): Promise<void> {
     console.warn(`[千机:步骤1] 启动失败, 准备重试: ${error}`);
     // 重试 1 次 (V2.x v22.02.32 实战反证金标准: force-stop 后重试)
     await ZBBAutomation.delay(1000);
-    launched = await ZBBAutomation.launchApp(qianjiPkg);
+    launched = await launchWithAm(qianjiPkg, qianjiAct);
     if (!launched) throw new Error('千机启动失败 (重试)');
     await ZBBAutomation.delay(3000);
   }
