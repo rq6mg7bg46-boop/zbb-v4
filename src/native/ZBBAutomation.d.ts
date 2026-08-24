@@ -105,7 +105,7 @@ export interface ZBBAutomationModule {
   recognizeScreen(): Promise<OcrResult[]>;
   extractScreenContent(type: 'phone' | 'name' | 'all'): Promise<ExtractContentResult>;
   screenshotForOcr(): Promise<string>;
-  getAllTextNodes(): Promise<Array<{ text: string; centerX: number; centerY: number; type: string }>>;
+  getAllTextNodes(): Promise<Array<{ text: string; contentDesc?: string; centerX: number; centerY: number; type: string }>>;  // 🆕 08-24 实战反证金标准: 加 contentDesc 字段 (千机端 80% 节点 text="", 必须靠 contentDesc 识别)
   recognizeTextWithPosition(): Promise<OcrResult[]>;
   setOcrOptions(usePreprocessing: boolean, useCorrection: boolean): void;
 
