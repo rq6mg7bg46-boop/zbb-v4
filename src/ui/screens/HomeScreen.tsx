@@ -29,7 +29,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { runQianjiFlow, runBaoliFlow } from '@/flow';
+import { runZbbWorkflow } from '@/flow';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
@@ -199,7 +199,8 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-  // 开始干活 (V4.x V4-13 铁律修法: 不调 ZBBAutomation.start, 直接调 V4 flow)
+  // 开始干活 (V4.x 实战反证金标准 08-24: 简化为调 runZbbWorkflow)
+  //   5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
       Alert.alert(
@@ -209,33 +210,18 @@ export default function HomeScreen() {
       return;
     }
     setIsRunning(true);
-    console.log('[开始干活] 启动千机端流程...');
+    console.log('[开始干活] 启动业务流程 (handleStart → runZbbWorkflow)...');
     try {
-      // 1. 千机端流程 (老板 nova 实测 08-23: 完整版需要 nova 装 com.lianjia.anchang 千机app)
-      const customer = await runQianjiFlow();
-      if (!customer) {
-        setIsRunning(false);
-        console.warn('[开始干活] 千机端流程失败');
-        Alert.alert('千机端流程失败', '请确认已安装千机app并打开报备审核');
-        return;
-      }
-      console.log(`[开始干活] 千机端返回客户: ${customer.customerName} (${customer.projectType})`);
-
-      // 2. 根据项目类型调对应报备流程
-      if (customer.projectType === 'baoli') {
-        console.log('[开始干活] 启动保利端流程...');
-        const ok = await runBaoliFlow(customer);
-        if (!ok) {
-          console.warn('[开始干活] 保利端流程失败');
-          Alert.alert('保利端流程失败', '请查看日志');
-          return;
-        }
-        console.log('[开始干活] 保利端流程完成');
-        Alert.alert('完成', `客户 ${customer.customerName} 报备完成`);
+      const result = await runZbbWorkflow();
+      if (result.skipped) {
+        console.warn(`[开始干活] 流程跳过: ${result.reason}`);
+        Alert.alert('提示', `流程跳过: ${result.reason}`);
+      } else if (result.ok) {
+        console.log(`[开始干活] 流程完成: ${result.customerName}`);
+        Alert.alert('完成', `客户 ${result.customerName} 报备完成`);
       } else {
-        // 越秀端待 S2.4 实现
-        console.log(`[开始干活] 越秀端流程待实现 (${customer.customerName})`);
-        Alert.alert('提示', `越秀端流程待 S2.4 实现\n客户: ${customer.customerName}`);
+        console.warn(`[开始干活] 流程失败: ${result.reason}`);
+        Alert.alert('失败', `流程失败: ${result.reason}\n请查看日志`);
       }
     } catch (e: any) {
       console.error('[开始干活] 流程异常:', e);

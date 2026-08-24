@@ -24,6 +24,19 @@ import { stateBus } from './eventBus';
 
 type StateChangeListener = (newState: OrchState, oldState: OrchState, event: TransitionEvent) => void;
 
+/** 业务跑状态集合 (实战反证金标准 08-24: 老板拍板 isRunning 语义)
+ *  - QianjiRefreshing: 千机端在跑
+ *  - BaoliRunning: 保利端在跑
+ *  - YuexiuRunning: 越秀端在跑
+ *  - Cooldown: 跑完冷却 (防止 5min 触发器跟 cooldown 抢跑)
+ */
+const RUNNING_STATES = new Set<OrchState>([
+  OrchState.QianjiRefreshing,
+  OrchState.BaoliRunning,
+  OrchState.YuexiuRunning,
+  OrchState.Cooldown,
+]);
+
 class Orchestrator {
   private currentState: OrchState = OrchState.Idle;
   private listeners: StateChangeListener[] = [];
@@ -42,6 +55,32 @@ class Orchestrator {
    */
   getState(): OrchState {
     return this.currentState;
+  }
+
+  /**
+   * 老板实战反证金标准 08-24:
+   *   isRunning = 是否在跑业务 (千机 / 保理 / 越秀 / 冷却)
+   *   用于 5min 触发器 / HomeScreen.handleStart 并发守卫
+   */
+  isRunning(): boolean {
+    return RUNNING_STATES.has(this.currentState);
+  }
+
+  /**
+   * V2.x 实战反证金标准 (services/index.ts L54-59):
+   *   USER_INTERVENTION 期间跳过 5min 触发 (防止 Bug E "流程已在运行中")
+   */
+  isInUserIntervention(): boolean {
+    return this.currentState === OrchState.UserIntervention;
+  }
+
+  /**
+   * V2.x 实战反证金标准 (services/index.ts L60-67):
+   *   修法: 5min 触发前查任一 mutex 忙 → 跳过本轮
+   *   V4 实战反证金标准: 当前状态在 RUNNING_STATES 集合即视为忙
+   */
+  isAnyServiceBusy(): boolean {
+    return this.isRunning();
   }
 
   /**

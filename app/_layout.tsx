@@ -2,6 +2,9 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+// 实战反证金标准 08-24: import services/index.ts 注册 5min 触发器监听
+import '@/services';
+
 /**
  * ZBB v4 RootLayout (老板实战反证金标准 08-22)
  *
