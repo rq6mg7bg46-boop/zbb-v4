@@ -29,7 +29,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { runZbbWorkflow } from '@/flow';
+import { handleStart as startWithScreenCheck } from '@/flow';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
@@ -199,7 +199,8 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-  // 开始干活 (V4.x 实战反证金标准 08-24: 简化为调 runZbbWorkflow)
+  // 开始干活 (V4.x 实战反证金标准 08-24)
+  //   🆕 08-24: 入口界面判断 (老板拍板: 当前=千机刷新, ZBB/桌面拉起千机, 其他 APP 2 轮大退出)
   //   5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
@@ -210,19 +211,12 @@ export default function HomeScreen() {
       return;
     }
     setIsRunning(true);
-    console.log('[开始干活] 启动业务流程 (handleStart → runZbbWorkflow)...');
+    console.log('[开始干活] 启动业务流程 (handleStart → 入口界面判断 → runZbbWorkflow)...');
     try {
-      const result = await runZbbWorkflow();
-      if (result.skipped) {
-        console.warn(`[开始干活] 流程跳过: ${result.reason}`);
-        Alert.alert('提示', `流程跳过: ${result.reason}`);
-      } else if (result.ok) {
-        console.log(`[开始干活] 流程完成: ${result.customerName}`);
-        Alert.alert('完成', `客户 ${result.customerName} 报备完成`);
-      } else {
-        console.warn(`[开始干活] 流程失败: ${result.reason}`);
-        Alert.alert('失败', `流程失败: ${result.reason}\n请查看日志`);
-      }
+      // 🆕 08-24: 先做界面判断 (3 种情况), 然后跑完整业务流
+      await startWithScreenCheck();
+      console.log('[开始干活] 流程完成');
+      Alert.alert('完成', '业务流程已完成');
     } catch (e: any) {
       console.error('[开始干活] 流程异常:', e);
       Alert.alert('启动失败', String(e?.message ?? e));
