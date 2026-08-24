@@ -2312,9 +2312,9 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     @ReactMethod
     fun readBuildEnv(promise: Promise) {
         try {
-            val envJson: String = mReactContext.assets.open("env.json")
-                .bufferedReader()
-                .use<String, String> { it.readText() }
+            val stream = mReactContext.assets.open("env.json")
+            val envJson: String = stream.bufferedReader().use { br -> br.readText() }
+            stream.close()
             val map = com.facebook.react.bridge.Arguments.createMap()
             // 简单 JSON parse (JS 端还要做 fallback, native 只保证文件存在)
             val regex = Regex("\"(\\w+)\"\\s*:\\s*\"([^\"]+)\"")
