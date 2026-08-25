@@ -24,6 +24,8 @@ import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.LinearLayout
+import android.widget.Button
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.io.ByteArrayOutputStream
@@ -1611,6 +1613,183 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     }
 
     /**
+     * 🆕 08-25 老板拍板 修法5B: 系统级 Toast 弹窗 (SYSTEM_ALERT_WINDOW overlay权限)
+     *
+     * 实战反证金标准 (V2.x v22.02.35):
+     *   - 千机端在前台时, ZBB 内置 showCenteredDialog 被千机覆盖看不见
+     *   - 改用 SYSTEM_ALERT_WINDOW overlay 权限, 直接 WindowManager.addView
+     *   - 即使千机在前台, 弹窗也能覆盖到系统最上层
+     *
+     * 实现:
+     *   - 检查 Settings.canDrawOverlays(context)
+     *   - 没权限 → fallback 用 Toast.makeText(...applicationContext, ..., LONG)
+     *     (Toast 是系统级, 不依赖 ZBB app 在前台)
+     *   - 有权限 → 用 WindowManager.addView 加 TextView, durationMs 后 removeView
+     *
+     * @param message 弹窗消息
+     * @param durationMs 显示时长 (默认 5000ms = 5s)
+     */
+    @ReactMethod
+    fun showSystemToast(message: String, durationMs: Double?, promise: Promise) {
+        val duration = (durationMs ?: 5000.0).toLong()
+        mainHandler.post {
+            try {
+                val context = mReactContext.applicationContext
+                if (android.provider.Settings.canDrawOverlays(context)) {
+                    // 有 overlay 权限 → WindowManager 直接弹窗
+                    val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    val tv = android.widget.TextView(context)
+                    tv.text = message
+                    tv.setTextColor(android.graphics.Color.WHITE)
+                    tv.setBackgroundColor(android.graphics.Color.argb(220, 200, 50, 50))
+                    tv.setPadding(60, 40, 60, 40)
+                    tv.textSize = 18f
+
+                    val params = WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                            or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                        android.graphics.PixelFormat.TRANSLUCENT
+                    )
+                    params.gravity = android.view.Gravity.CENTER
+
+                    wm.addView(tv, params)
+                    mainHandler.postDelayed({
+                        try {
+                            wm.removeView(tv)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "showSystemToast: removeView 失败 (忽略): ${e.message}")
+                        }
+                    }, duration)
+
+                    Log.d(TAG, "showSystemToast: 已通过 overlay 弹窗")
+                    promise.resolve(true)
+                } else {
+                    // 没权限 → fallback 系统 Toast
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    Log.w(TAG, "showSystemToast: 无 overlay 权限, fallback Toast")
+                    promise.resolve(true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "showSystemToast 失败: ${e.message}", e)
+                promise.reject("ERROR", e.message)
+            }
+        }
+    }
+
+    /**
+     * 🆕 08-25 老板拍板 修法5B 实战反证金标准: 系统级带按钮 Dialog (SYSTEM_ALERT_WINDOW + 确认按钮)
+     *
+     * 实战反证金标准:
+     *   - 千机端在前台时, ZBB 内置 showCenteredDialog 被千机覆盖看不见
+     *   - 用 SYSTEM_ALERT_WINDOW overlay 权限 + LinearLayout (TextView + Button)
+     *   - 用户点"我知道了" → dismiss overlay + JS promise.resolve(true)
+     *   - JS 收到回调 → 调 stopVibration 停震动
+     *
+     * @param: 弹窗消息
+     * @param: 按钮文字 (默认 "我知道了")
+     * @param: 自动超时毫秒 (默认 30000ms = 30s, 超时自动 dismiss + promise.resolve(false))
+     */
+    @ReactMethod
+    fun showSystemDialog(message: String, buttonText: String?, autoDismissMs: Double?, promise: Promise) {
+        val btnText = buttonText ?: "我知道了"
+        val autoMs = (autoDismissMs ?: 30000.0).toLong()
+        mainHandler.post {
+            try {
+                val context = mReactContext.applicationContext
+                if (!android.provider.Settings.canDrawOverlays(context)) {
+                    // 没权限 → fallback 系统 Toast
+                    Log.w(TAG, "showSystemDialog: 无 overlay 权限, fallback Toast")
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    mainHandler.postDelayed({ promise.resolve(false) }, 3000)
+                    return@post
+                }
+
+                val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+                // LinearLayout 垂直 (TextView + Button)
+                val container = LinearLayout(context)
+                container.orientation = LinearLayout.VERTICAL
+                // 🆕 08-25 老板拍板 修法5B 实战反证金标准: 蓝色底框 (V2.x 颜色标准)
+                //   实战反证金标准: 红色=危险, 蓝色=提醒, 千机端千机流程问题用蓝色
+                // 蓝色 argb(240, 50, 100, 200) ≈ #3264C8
+                container.setBackgroundColor(android.graphics.Color.argb(240, 50, 100, 200))
+                container.setPadding(80, 60, 80, 60)
+                val containerParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                container.layoutParams = containerParams
+
+                val tv = android.widget.TextView(context)
+                tv.text = message
+                tv.setTextColor(android.graphics.Color.WHITE)
+                tv.textSize = 18f
+                tv.setPadding(40, 20, 40, 20)
+                container.addView(tv)
+
+                val btn = Button(context)
+                btn.text = btnText
+                btn.setTextColor(android.graphics.Color.argb(255, 220, 50, 50))
+                btn.setBackgroundColor(android.graphics.Color.WHITE)
+                val btnLayoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                btnLayoutParams.topMargin = 40
+                btn.layoutParams = btnLayoutParams
+                container.addView(btn)
+
+                val params = WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    android.graphics.PixelFormat.TRANSLUCENT
+                )
+                params.gravity = android.view.Gravity.CENTER
+
+                wm.addView(container, params)
+                Log.d(TAG, "showSystemDialog: 已通过 overlay 弹窗 (button=$btnText, autoMs=$autoMs)")
+
+                // 超时自动 dismiss + promise.resolve(false) (必须先定义, lambda 引用)
+                val autoDismissRunnable = Runnable {
+                    try {
+                        wm.removeView(container)
+                        Log.w(TAG, "showSystemDialog: 超时 $autoMs ms 自动 dismiss")
+                    } catch (e: Exception) {
+                        // 可能用户已点过 dismiss
+                    }
+                    promise.resolve(false)
+                }
+
+                // 用户点 Button → dismiss + promise.resolve(true)
+                btn.setOnClickListener {
+                    try {
+                        wm.removeView(container)
+                        Log.d(TAG, "showSystemDialog: 用户点按钮,已 dismiss")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "showSystemDialog: removeView 失败 (忽略): ${e.message}")
+                    }
+                    mainHandler.removeCallbacksAndMessages(autoDismissRunnable)
+                    promise.resolve(true)
+                }
+
+                mainHandler.postDelayed(autoDismissRunnable, autoMs)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "showSystemDialog 失败: ${e.message}", e)
+                promise.reject("ERROR", e.message)
+            }
+        }
+    }
+
+    /**
      * 🆕 2026-07-18 v19.21 老板拍板：弹可交互 Dialog（屏幕正中间 + 必点按钮确认）
      *
      * 用法：
@@ -2299,9 +2478,8 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
             }
         }.start()
     }
-}
-
-    // ==================== 环境变量读取 (08-24 老板拍板 a=方案A) ====================
+// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实战反证金标准) ====================
+// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实战反证金标准) ====================
 
     /**
      * 读取 build-time 注入的 env.json (JS bundle 通过此方法拿 APP_ENV, 跟 BuildConfig 同步)
@@ -2312,8 +2490,6 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     @ReactMethod
     fun readBuildEnv(promise: Promise) {
         try {
-            // 🆕 08-24: 直接 fallback 到 BuildConfig (BuildConfig 已同步 gradle.properties)
-            // 不读 env.json 是因为它可能在 build 时未注入到 assets
             val map = com.facebook.react.bridge.Arguments.createMap()
             map.putString("appEnv", com.zbb.automation.v4.BuildConfig.APP_ENV)
             map.putString("qianjiPackage", com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE)
@@ -2325,3 +2501,25 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
             promise.reject("READ_ENV_FAILED", e.message)
         }
     }
+
+    /**
+     * 🆕 08-25 老板拍板 修法1 (V2.x 实战反证金标准): getConstants() 暴露 BuildConfig
+     *
+     * 实战反证金标准: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
+     */
+    override fun getConstants(): MutableMap<String, Any> {
+        val constants = mutableMapOf<String, Any>()
+        try {
+            constants["APP_ENV"] = com.zbb.automation.v4.BuildConfig.APP_ENV
+            constants["QIANJI_PACKAGE"] = com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE
+            constants["QIANJI_MAIN_ACTIVITY"] = com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY
+            constants["VERSION_NAME"] = com.zbb.automation.v4.BuildConfig.VERSION_NAME
+            constants["VERSION_CODE"] = com.zbb.automation.v4.BuildConfig.VERSION_CODE
+            constants["IS_NEW_ARCHITECTURE_ENABLED"] = com.zbb.automation.v4.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+            Log.d(TAG, "[getConstants] APP_ENV=${com.zbb.automation.v4.BuildConfig.APP_ENV}")
+        } catch (e: Exception) {
+            Log.e(TAG, "[getConstants] 失败: ${e.message}", e)
+        }
+        return constants
+    }
+}

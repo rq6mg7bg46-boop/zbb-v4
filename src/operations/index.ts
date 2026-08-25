@@ -19,4 +19,5 @@ export { pressKey, default as pressKeyDefault } from './pressKey';
 export { a11y, default as a11yDefault } from './a11y';
 export { judge, default as judgeDefault } from './judge';
 export { rollback, default as rollbackDefault } from './rollback';
+export { swipe, default as swipeDefault, swipeUp, swipeDown, swipeUpByDp, swipeDownByDp } from './swipe'; // 🆕 08-25 老板拍板 B 方案
 export type { A11yNode } from '@/native';

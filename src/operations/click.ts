@@ -35,13 +35,18 @@ async function waitForCondition<T>(
 
 /**
  * 按文字点击 (自动 OCR/A11y 找节点 + 点击中心)
+ *
+ * @param text 目标文字
+ * @param options.level HumanLevel 档位 (PRECISE=±2px / NORMAL=±5px / WIDE=±10px)
+ *                    文档步骤4 "中等坐标偏移" 对应 NORMAL, 默认 PRECISE
  */
 export async function byText(
   text: string,
-  options?: { timeoutMs?: number; useOcr?: boolean },
+  options?: { timeoutMs?: number; useOcr?: boolean; level?: HumanLevel },
 ): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const useOcr = options?.useOcr ?? false;
+  const level = options?.level ?? HumanLevel.PRECISE;
 
   if (useOcr) {
     // OCR 模式: 截图 + ML Kit 找文字 + 点击
@@ -56,7 +61,7 @@ export async function byText(
       console.warn(`[click.byText] OCR 没找到: "${text}"`);
       return false;
     }
-    const { x, y } = applyHumanOffset(result.x, result.y);
+    const { x, y } = applyHumanOffset(result.x, result.y, level);
     return ZBBAutomation.click(x, y);
   }
 
@@ -72,7 +77,7 @@ export async function byText(
     console.warn(`[click.byText] A11y 没找到: "${text}"`);
     return false;
   }
-  const { x, y } = applyHumanOffset(node.centerX, node.centerY);
+  const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
   return ZBBAutomation.click(x, y);
 }
 

@@ -41,8 +41,8 @@ import { NativeModules } from 'react-native';
  */
 export const APP_PACKAGES = {
   QIANJI: {
-    PACKAGE: 'com.lianjia.anchang', // 🆕 08-24 修: 实战反证 V2.x V22.x 真千机
-    MAIN_ACTIVITY: 'com.lianjia.app.icon.activity.APlusIconActivity', // 实测 08-24
+    PACKAGE: 'com.zbb.qianji.mock', // 🆕 08-25 mock (was com.lianjia.anchang 真千机)
+    MAIN_ACTIVITY: 'com.zbb.qianji.mock.MainActivity', // 🆕 08-25 mock (was APlusIconActivity 真千机 launcher)
     MOCK_PACKAGE: 'com.zbb.qianji.mock',
     MOCK_MAIN_ACTIVITY: 'com.zbb.qianji.mock.MainActivity',
   },
@@ -90,19 +90,26 @@ export async function loadAppEnv(): Promise<{
   };
 
   try {
-    const native = (NativeModules as any).ZBBAutomation;
-    if (native?.readBuildEnv) {
-      const env = await native.readBuildEnv();
-      if (env?.appEnv === 'production' || env?.appEnv === 'mock') {
+    // 🆕 08-25 老板拍板 修法1 (V2.x 实战反证金标准): 改用 getConstants() 同步字段
+    //   之前: readBuildEnv() Promise 异步方法 — 实测老板 RN bridge 不暴露 (native keys 列表里没有)
+    //   改后: NativeModules.ZBBAutomation.APP_ENV (同步字段, RN 启动时自动读)
+    const native = NativeModules.ZBBAutomation as any;
+    if (native) {
+      console.log('[env] native module keys count:', Object.keys(native).length);
+      // 直接读同步常量 (V2.x 实战反证金标准 getConstants)
+      const syncAppEnv = native.APP_ENV;
+      if (syncAppEnv === 'production' || syncAppEnv === 'mock') {
         result = {
-          appEnv: env.appEnv,
-          qianjiPackage: env.qianjiPackage || result.qianjiPackage,
-          qianjiMainActivity: env.qianjiMainActivity || result.qianjiMainActivity,
+          appEnv: syncAppEnv,
+          qianjiPackage: native.QIANJI_PACKAGE || result.qianjiPackage,
+          qianjiMainActivity: native.QIANJI_MAIN_ACTIVITY || result.qianjiMainActivity,
         };
+        console.log('[env] native BuildConfig (via getConstants):', result);
+      } else {
+        console.warn('[env] native.APP_ENV 不存在或值无效, fallback 默认值 production');
       }
-      console.log('[env] native BuildConfig:', result);
     } else {
-      console.warn('[env] readBuildEnv 不可用, 用默认值 production');
+      console.warn('[env] NativeModules.ZBBAutomation = undefined (module 未注册到 bridge)');
     }
   } catch (e) {
     console.error('[env] 读取失败, fallback 默认值:', e);

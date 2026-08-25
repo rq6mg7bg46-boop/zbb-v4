@@ -305,7 +305,22 @@ android {
         //        - 实战反证 08-17 nova 18:24: 步骤10 log 显示 projectName="" (L1016 reset 覆盖了 L350 默认值)
         //        - 修法: reset 用 PROJECT_NAME_ROUND_1, 第一轮 execute() 直接用对的项目名
         // 🆕 v22.02.52 (08-19 老板拍板): versionCode 2243 → 2252, 跟 VERSION v22.02.52 对齐 (老板实测 nova dump + 机型分流 nova/vivo)
-        versionCode 2252
+        // 🆕 v29-debug-mock (08-25 老板拍板 A+B 方案): versionCode 2252 → 2253
+        //   v29 patch:
+        //     1. parseVariableAFromNodes 收窄 3 字段 (项目/姓名/电话) - 轻量化, 只用于对比
+        //     2. parseVariableBFromNodes 保持 10 字段全解析 - 写库数据源
+        //     3. compareCustomer 加 normalize() 函数 - phone 去"联系方式"前缀 + 去空白, 修 v28 实战反证金标准
+        //     4. runQianjiFlow 步骤4 A vs B 对比 3 字段 - 失败 log 差异详情, 成功直接用 varB 写库 (不合并 A+B)
+        //   配套: parseVariableA 返回类型 CustomerInfo → 3 字段子对象, compareCustomer 入参 Pick<CustomerInfo, 3字段>
+        // 🆕 v30-debug-mock (08-25 老板拍板弹窗文案): versionCode 2253 → 2254
+        //   v30 patch:
+        //     1. raiseAlert 弹窗文案固定 (老板实测 v29 弹窗太啰嗦):
+        //        - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致),请你手动处理
+        //        - 差异详情只 log 不弹窗
+        //     2. parseVariableAFromNodes 项目名 fallback (08-25 实战反证金标准):
+        //        - mock 千机首页"保利缦城和颂"是独立卡片标题 (无"报备项目:"前缀)
+        //        - regex `^(保利|越秀|招商)[\u4e00-\u9fa5]{1,15}$` 匹配上
+        versionCode 2254
         // 🆕 v22.02 (08-11 老板拍板): versionCode 2236 → 2209, 跟 VERSION v22.02 对齐
         //   v22.02 patch:
         //     1. 步骤7 粘贴按钮坐标修正: dp(47, 240) = px(94, 480) → dp(55, 230) = px(110, 460)

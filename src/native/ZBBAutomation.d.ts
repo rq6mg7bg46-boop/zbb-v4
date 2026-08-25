@@ -148,6 +148,56 @@ export interface ZBBAutomationModule {
   // 自动化控制
   stopAutomation(): Promise<boolean>;
 
+  // 🆕 08-25 老板拍板 全修方案: readBuildEnv + 系统弹窗 + 震动 (V2.x 实战反证金标准)
+  /**
+   * 读 BuildConfig 注入的环境变量 (APP_ENV / qianjiPackage / qianjiMainActivity)
+   * 实战反证金标准 (V2.x v22.02.35): JS 端调此方法拿当前编译期环境
+   * @returns null 时 fallback 到 APP_PACKAGES 默认值
+   */
+  readBuildEnv(): Promise<{ appEnv: string; qianjiPackage: string; qianjiMainActivity: string } | null>;
+
+  /**
+   * 系统级 Toast 弹窗 (SYSTEM_ALERT_WINDOW overlay权限)
+   * 实战反证金标准 (08-25 老板拍板修法5B): 千机端在前台时也能弹窗通知老板
+   * 不依赖 ZBB app 在前台, 直接走 WindowManager SYSTEM_ALERT_WINDOW
+   * @param message 弹窗消息
+   * @param durationMs 显示时长 (默认 5000ms)
+   */
+  showSystemToast(message: string, durationMs?: number): Promise<boolean>;
+
+  /**
+   * 🆕 08-25 老板拍板 修法5B 实战反证金标准: 系统级带按钮 Dialog
+   *
+   * 与 showSystemToast 区别:
+   *   - Toast: 5s 自动消失, 无按钮
+   *   - Dialog: 显示直到用户点按钮 或 30s 超时, 返回 Promise<boolean>
+   *     true  = 用户点了按钮 (老板实战反证金标准拍板: 收到回调后调 stopVibration)
+   *     false = 超时 (震动超时自动停)
+   *
+   * 用法:
+   *   const clicked = = await native.showSystemDialog('流程出问题', '我知道了', 30000);
+   *   if (clicked) {
+   *     await native.stopVibration();  // 用户确认后停震动
+   *   }
+   *
+   * @param message 弹窗消息
+   * @param buttonText 按钮文字 (默认 "我知道了")
+   * @param autoDismissMs 超时毫秒 (默认 30000ms)
+   */
+  showSystemDialog(message: string, buttonText?: string, autoDismissMs?: number): Promise<boolean>;
+
+  /**
+   * 启动脉冲震动 (V2.x v22.02.35 实战反证金标准)
+   * 100ms 震 + 200ms 停 = 300ms 一周期
+   * 30s 自动停止, isVibrating 标志防重入
+   */
+  startPulseVibration(): Promise<boolean>;
+
+  /**
+   * 停止震动
+   */
+  stopVibration(): Promise<boolean>;
+
   // 事件监听
   addListener(eventName: string): void;
   removeListeners(count: number): void;

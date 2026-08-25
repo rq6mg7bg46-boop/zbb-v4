@@ -12,11 +12,15 @@
  */
 
 import { orchestrator, OrchState } from '@/core/stateMachine';
-import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe } from '@/operations';
+import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe, swipe } from '@/operations';
+import { HumanLevel } from '@/utils/HumanOffset';
 import ZBBAutomation from '@/native';
 import type { A11yNode } from '@/native';
 import { verifyAndRecover, waitForScreenWithRollback } from './verify';
-import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 08-24
+import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env';
+import { writeReport, writeBaoliDouble } from '@/services/database';
+import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
+import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
 
 // ============================================================
 // 常量 (08-24 实战反证金标准)
@@ -32,16 +36,24 @@ import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env'; 
 // 类型 (08-24 实战反证金标准)
 // ============================================================
 export interface CustomerInfo {
-  customerName: string;
-  phone: string;
-  phoneLast4: string;
-  agent: string;
-  agentPhone: string;
-  projectType: 'baoli' | 'yuexiu';
-  customerGender: '男' | '女';
-  reportTime: string;
-  expectedVisitTime: string;
-  city: string;
+  // 🆕 08-25 老板拍板 B 方案: 保利 10 字段,后续加越秀/招商 patch
+  companyName: string;        // 公司名称 (例: 贝壳)
+  customerName: string;       // 客户姓名 (例: 张先生)
+  customerGender: '男' | '女';// 客户性别
+  phone: string;              // 客户联系方式 (例: 158****6577)
+  phonePart1: string;         // 前 3 位 (例: 158)
+  phonePart2: string;         // 中间 4 位 (例: **** 符号保留)
+  phonePart3: string;         // 后 3 位 (例: 6577)
+  phoneLast4: string;         // 数字后 4 位 (用于 ID/检索)
+  projectName: string;        // 报备项目 (例: 保利缦城和颂)
+  projectType: string;        // 🆕 08-25 改 string (支持保利/越秀/招商等)
+  propertyType: string;       // 物业类型 (例: 住宅)
+  reportTime: string;         // 报备提交时间 (例: 2026/08/14 13:12)
+  expectedVisitTime: string;  // 预计到访时间 (例: 2026-08-14 13:52)
+  agent: string;              // 经纪人姓名 (例: 陈建行)
+  agentPhone: string;         // 经纪人电话 (文档无, V4 兼容保留)
+  agentNote: string;          // 经纪人备注 (例: 空)
+  city: string;               // 城市 (文档无, V4 兼容保留)
 }
 
 // ============================================================
@@ -145,23 +157,44 @@ export async function stepParseCustomerInfo(
   const lines = assembleKeyValueLines(textNodes);
   console.log(`[千机:步骤4] 拼装后行数: ${lines.length}`);
 
-  // 解析各字段
+  // 🆕 08-25 老板拍板 B 方案: 保利 10 字段全填 (公司/物业/备注 + phone 三段拆 + projectName)
+  const phoneRaw = extractValue(lines, '客户联系方式') || extractValue(lines, '联系方式') || '';
+  const phoneDigits = phoneRaw.match(/\d+/g)?.join('') || '';
+  const phoneLast4 = phoneDigits.slice(-4);
+
+  // 拆 phone 三段 (前 3 / 中间 4 / 后 3, 数字部分)
+  // 例: "158****6577" → phonePart1="158", phonePart2="****"(符号保留), phonePart3="6577"
+  let phonePart1 = '', phonePart2 = '', phonePart3 = '';
+  const phoneMatch = phoneRaw.match(/^(\d{3})(\*{4}|\d{4})(\d{3,4})$/);
+  if (phoneMatch) {
+    phonePart1 = phoneMatch[1];
+    phonePart2 = phoneMatch[2];
+    phonePart3 = phoneMatch[3];
+  } else {
+    // fallback: 按位置切
+    phonePart1 = phoneDigits.slice(0, 3);
+    phonePart3 = phoneDigits.slice(-3);
+  }
+
   const customerInfo: CustomerInfo = {
+    companyName: extractValue(lines, '公司名称') || '',
     customerName: extractValue(lines, '客户姓名') || extractValue(lines, '姓名') || '',
-    phone: extractValue(lines, '联系方式') || '',
-    phoneLast4: '',
-    agent: extractValue(lines, '经纪人') || '',
-    agentPhone: '',
-    projectType: lines.some(l => l.includes('越秀')) ? 'yuexiu' : 'baoli',
     customerGender: extractGender(lines) ?? '男', // 默认男 (兜底)
-    reportTime: extractValue(lines, '报备时间') || '',
-    expectedVisitTime: extractValue(lines, '预计到访') || '',
+    phone: phoneRaw,
+    phonePart1,
+    phonePart2,
+    phonePart3,
+    phoneLast4,
+    projectName: extractValue(lines, '报备项目') || '',
+    projectType: detectProjectType(lines), // 🆕 08-25: 保利/越秀/招商/未知
+    propertyType: extractValue(lines, '物业类型') || '',
+    reportTime: extractValue(lines, '报备提交时间') || '',
+    expectedVisitTime: extractValue(lines, '预计到访时间') || '',
+    agent: extractValue(lines, '经纪人姓名') || '',
+    agentPhone: extractValue(lines, '经纪人电话') || '',
+    agentNote: extractValue(lines, '经纪人备注') || '',
     city: extractValue(lines, '城市') || '',
   };
-
-  // 提取 phoneLast4
-  const phoneDigits = customerInfo.phone.match(/\d+/g)?.join('') || '';
-  customerInfo.phoneLast4 = phoneDigits.slice(-4);
 
   console.log(`[千机:步骤4] 解析结果: 客户=${customerInfo.customerName} 电话=${customerInfo.phone} phoneLast4=${customerInfo.phoneLast4} 项目=${customerInfo.projectType} 性别=${customerInfo.customerGender}`);
 
@@ -174,17 +207,23 @@ export async function stepParseCustomerInfo(
 }
 
 // ============================================================
-// 千机端步骤 5: 写库 (保利 / 越秀)
-// 实战经验铁证: 保利 + 越秀都写库, 后续 Orchestrator refreshAndGetNextPending 用
+// 千机端步骤 5: 写库 (保利双写 / 越秀/招商单写)
+// 实战反证金标准 (08-25 老板拍板文档):
+//   - 保利需要写 2 条数据 2 个 ID (缦城和颂 + 山水和颂, 其他信息一致)
+//   - 越秀/招商/其他 单写 1 条
 // ============================================================
-export async function stepWriteToReports(customer: CustomerInfo): Promise<number> {
+export async function stepWriteToReports(customer: CustomerInfo): Promise<number | number[]> {
   console.log(`[千机:步骤5] 写入 reports 表 (${customer.projectType}): 客户=${customer.customerName}`);
 
-  // V4.x TODO: 接 expo-sqlite 写库
-  // 当前 S2.2 阶段先 mock, 后续 S3 业务增强接入 CustomerTable
-  const mockId = Math.floor(Math.random() * 100000) + 1;
-  console.log(`[千机:步骤5] ✓ 已写库, ID=${mockId} (mock, 后续 S3 接 expo-sqlite)`);
-  return mockId;
+  if (customer.projectType === 'baoli') {
+    // 保利双写 (08-25 老板拍板文档实战反证金标准)
+    const [id1, id2] = await writeBaoliDouble(customer);
+    return [id1, id2];
+  } else {
+    // 越秀/招商/其他: 单写
+    const id = await writeReport(customer);
+    return id;
+  }
 }
 
 // ============================================================
@@ -209,35 +248,184 @@ export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void>
   }
 }
 
+// 千机端 8 步骤状态变量 (08-25 老板拍板 全修方案: 修法3 三次不一致报警)
+let _mismatchRetryCount = 0;
+const MISMATCH_MAX_RETRIES = 3;
+
 // ============================================================
-// 千机端完整流程 (V4.x 实战反证金标准)
+// 千机端完整 7 步骤流程 (08-25 老板拍板 修法3: 步骤3+4 合并 + 重新编号)
+//
+// 实战反证金标准文档 (08-25 老板拍板):
+//   1. 打开千机 (停留 1.5-2s)
+//   2. A11y 找"报备待审核"+数字检查+下滑刷新+解析变量A (3 字段: 项目/姓名/电话)
+//   3. A11y 找"转发"(含上滑重试) + 找到后点"转发"(中等偏移 1.5-2s) ← 合并
+//   4. A11y 找"公司名称" + 解析变量 B (10 字段) + A vs B 对比 + 写库
+//   5. A11y 找"转发" + 点转发 (中等偏移 1.5-2s)
+//   6. A11y 找"复制" + 点复制 (中等偏移 1.5-2s)
+//   7. 拉起企业微信 (后续保利端两轮报备从这里接手)
 // ============================================================
 export async function runQianjiFlow(): Promise<CustomerInfo | null> {
-  console.log('========== 千机端流程开始 ==========');
+  console.log('========== 千机端流程开始 (7 步骤文档实战反证金标准) ==========');
 
   try {
-    // Step 1: 打开千机
+    // ============ 步骤 1: 打开千机 (停留 1.5-2s) ============
     await stepOpenQianji();
+    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+    const step1Ok = await judge.isScreenText('报备待审核'); // 文档实战反证金标准: "报备待审核"
+    if (!step1Ok) {
+      console.warn('[千机:步骤1] 未找到"报备待审核", 1 轮退出操作 (home+多功能+垃圾箱) 重新进入');
+      await pressKey.home();
+      await ZBBAutomation.delay(500);
+      await pressKey.recent();
+      await ZBBAutomation.delay(800);
+      await pressKey.trash();
+      await ZBBAutomation.delay(1000);
+      // 重新进入
+      await stepOpenQianji();
+      await ZBBAutomation.delay(1800);
+    }
 
-    // Step 2: 识别界面 (A11y 节点, 不是 OCR)
-    const textNodes = await stepRecognizeInterface();
+    // ============ 步骤 2: A11y 找"报备待审核"下数字 + 数字=0 下滑刷新 + 解析变量 A ============
+    await ZBBAutomation.delay(1000);
+    const step2Nodes = await ZBBAutomation.getAllTextNodes();
+    const step2ReportCount = readReportCountFromNodes(step2Nodes); // 实战反证金标准: 读"报备待审核"下方数字
+    console.log(`[千机:步骤2] 报备数量=${step2ReportCount}`);
 
-    // Step 3: 找报备审核
-    await stepFindReportReview();
+    if (step2ReportCount === 0) {
+      console.log('[千机:步骤2] 报备数量=0, 下滑刷新');
+      await swipe.down(); // 缺口5: 单指下滑
+      await ZBBAutomation.delay(1500);
+      const refreshedNodes = await ZBBAutomation.getAllTextNodes();
+      const refreshedCount = readReportCountFromNodes(refreshedNodes);
+      console.log(`[千机:步骤2] 刷新后报备数量=${refreshedCount}`);
+      if (refreshedCount === 0) {
+        // 实战反证金标准: 弹窗"小主,当前无报备" + 返回键 + 本轮结束
+        console.log('[千机:步骤2] 刷新后仍=0, 提示用户并结束本轮');
+        await notifyNoReport(); // 缺口4: 异常通知 (系统 Toast, 千机端可见)
+        await pressKey.back();
+        return null;
+      }
+    }
 
-    // Step 4: 解析客户信息 (用 A11y 节点, 不用 OCR) — 老板实战反证金标准
-    const customer = await stepParseCustomerInfo(textNodes);
+    // 🆕 08-25 全修 (修法2): 解析变量 A — 精确解析,只取第一个匹配
+    const varA = parseVariableAFromNodes(step2Nodes); // 实战反证金标准: 简化版,项目名+姓名+电话
+    console.log(`[千机:步骤2] 变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
 
-    // Step 5: 写库
-    const customerId = await stepWriteToReports(customer);
+    // ============ 步骤 3: A11y 找"转发"(含上滑重试) + 找到后点"转发"(中等偏移) ← 合并 ============
+    console.log('[千机:步骤3] A11y 找"转发"...');
+    let step3Find = await a11y.findByText('转发');
+    let step3Slides = 0;
+    const MAX_SLIDES = 3; // 文档实战反证金标准: 上限 3 次
+    while (!step3Find && step3Slides < MAX_SLIDES) {
+      step3Slides++;
+      console.log(`[千机:步骤3] 未找到"转发", 上滑 (${step3Slides}/${MAX_SLIDES})`);
+      await swipe.up(); // 缺口5: 单指上滑
+      await ZBBAutomation.delay(1500);
+      step3Find = await a11y.findByText('转发');
+    }
+    if (!step3Find) {
+      console.error('[千机:步骤3] 上滑3次仍未找到"转发", 触发异常');
+      await raiseAlert('小主,千机端步骤3未找到"转发",请检查界面');
+      return null;
+    }
+    console.log(`[千机:步骤3] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
+    await click.byText('转发', { level: HumanLevel.NORMAL });
+    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
 
-    // Step 6: 复制号码 (越秀端)
-    await stepCopyPhoneNumber(customer);
+    // ============ 步骤 4: A11y 找"公司名称" + 解析变量 B(10字段) + A vs B 对比 + 写库 ============
+    const step4Nodes = await ZBBAutomation.getAllTextNodes();
+    const hasCompany = step4Nodes.some(n => n.text?.includes('公司名称'));
+    if (!hasCompany) {
+      // 🆕 08-25 全修 (修法4): hasCompany 失败不能再静默 return,要 raiseAlert
+      console.warn('[千机:步骤4] 未找到"公司名称", 系统弹窗报错');
+      await raiseAlert('小主,千机端步骤4未找到"公司名称",请检查界面');
+      return null;
+    }
 
-    console.log(`========== 千机端流程完成 (ID=${customerId}) ==========`);
-    return customer;
+    const varB = parseVariableBFromNodes(step4Nodes); // 10 字段全解析 (缺口1)
+
+    // A vs B 对比 (修法4: 只比 3 字段: 项目/姓名/电话)
+    // 🆕 08-25 老板拍板 A+B 方案: varA 轻量 3 字段, varB 全 10 字段, 直接传子对象
+    const compareResult = compareCustomer(
+      { projectName: varA.projectName, customerName: varA.customerName, phone: varA.phone },
+      { projectName: varB.projectName, customerName: varB.customerName, phone: varB.phone },
+    );
+    console.log(`[千机:步骤4] A vs B 对比: ${formatCompareResult(compareResult)}`);
+
+    if (!compareResult.isMatch) {
+      // 🆕 08-25 全修 (修法3): 3 次不一致 → raiseAlert 退出 (实战反证金标准文档实战反证金标准)
+      _mismatchRetryCount++;
+      // 实战反证金标准 (08-25): log 打差异详情 (项目/姓名/电话 各自对比), 弹窗不显示
+      const diffMsg = compareResult.diffs.map(d => `${d.field}: A="${d.aValue}" vs B="${d.bValue}"`).join('; ');
+      console.warn(`[千机:步骤4] 不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES}): ${diffMsg}`);
+      await pressKey.back();
+      await ZBBAutomation.delay(1000);
+
+      if (_mismatchRetryCount >= MISMATCH_MAX_RETRIES) {
+        // 🆕 08-25 老板拍板: 弹窗内容固定文案, 不显示 diffMsg
+        //   实战反证金标准 (08-25):
+        //     - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致)
+        //     - 描述: 请你手动处理
+        //     - 按钮: 我知道了 (raiseAlert 已自带, 点后弹窗消失 + 停震动 + 流程结束)
+        const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请你手动处理';
+        console.error(`[千机:步骤4] ${dialogMessage}`);
+        console.error(`[千机:步骤4] 差异详情: ${diffMsg}`);
+        await raiseAlert(dialogMessage);
+        _mismatchRetryCount = 0; // 重置,避免下次继续触发
+        return null;
+      }
+
+      // 未达上限 → 重试
+      return runQianjiFlow();
+    }
+
+    // 对比成功 → 重置计数 + 直接用 varB 写库 (不合并 A+B, 老板实战拍板 08-25)
+    _mismatchRetryCount = 0;
+    console.log(`[千机:步骤4] ✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
+
+    // 写库 (缺口2: 保利双写 / 其他单写)
+    const writeResult = await stepWriteToReports(varB);
+    if (Array.isArray(writeResult)) {
+      console.log(`[千机:步骤4] 保利双写: ID=${writeResult.join(',')}`);
+    } else {
+      console.log(`[千机:步骤4] 单写: ID=${writeResult}`);
+    }
+
+    // ============ 步骤 5: A11y 找"转发" + 点转发 (中等偏移1.5-2s) ============
+    console.log('[千机:步骤5] A11y 找"转发" (第二次, 进对象选择页)...');
+    const step5Find = await a11y.findByText('转发');
+    if (!step5Find) {
+      console.error('[千机:步骤5] 未找到"转发", 系统弹窗报错');
+      await raiseAlert('小主,千机端步骤5未找到"转发",请检查界面');
+      return null;
+    }
+    console.log('[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)');
+    await click.byText('转发', { level: HumanLevel.NORMAL });
+    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+
+    // ============ 步骤 6: A11y 找"复制" + 点复制 (中等偏移1.5-2s) ============
+    console.log('[千机:步骤6] A11y 找"复制"...');
+    const step6Find = await a11y.findByText('复制');
+    if (!step6Find) {
+      console.error('[千机:步骤6] 未找到"复制", 系统弹窗报错');
+      await raiseAlert('小主,千机端步骤6未找到"复制",请检查界面');
+      return null;
+    }
+    console.log('[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)');
+    await click.byText('复制', { level: HumanLevel.NORMAL });
+    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+
+    // ============ 步骤 7: 拉起企业微信 (后续保利端两轮报备从这里接手) ============
+    console.log('[千机:步骤7] 拉起企业微信 (后续保利端接力)');
+    await ZBBAutomation.launchApp(APP_PACKAGES.WECHAT_WORK);
+    await ZBBAutomation.delay(2000);
+
+    console.log('========== 千机端流程完成 ==========');
+    return varB;
   } catch (error) {
     console.error('[千机端] 流程失败:', error);
+    // 缺口4: 异常时系统弹窗 + 30s 震动
+    await raiseAlert('小主,千机端流程出问题了,请手动处理');
     return null;
   }
 }
@@ -291,4 +479,177 @@ function extractGender(lines: string[]): '男' | '女' | null {
     if (line.includes('女士') || line.includes('小姐') || line.includes('太太')) return '女';
   }
   return null;
+}
+
+/**
+ * 检测项目类型 (08-25 老板拍板 B 方案: 保利/越秀/招商等)
+ *
+ * 实战反证金标准:
+ *   - 项目名含 "保利" → 'baoli' (默认, V2.x V22.x 实战反证金标准)
+ *   - 含 "越秀" → 'yuexiu' (07-09 老板拍板双支持)
+ *   - 含 "招商" → 'zhaoshang' (08-25 后续扩展)
+ *   - 其他/未识别 → 'unknown' (上层 Orchestrator 跳过 + 提示用户)
+ */
+function detectProjectType(lines: string[]): string {
+  const allText = lines.join(' ');
+  if (allText.includes('保利')) return 'baoli';
+  if (allText.includes('越秀')) return 'yuexiu';
+  if (allText.includes('招商')) return 'zhaoshang';
+  return 'unknown';
+}
+
+/**
+ * 读"报备待审核"下方的数字 (08-25 V2.x 实战反证金标准: ±200px + X ±200px)
+ *
+ * 实战反证金标准 (V2.x v22.02.35 QianjiService.ts:469-485):
+ *   - 旧方案 v19.9 bug: 硬 px 坐标 nova 历史值 (107, 680) → vivo 真机偏移 ~226px 落空
+ *   - 修法: 语义匹配"报备待审核"label, 下方 ±200px + X ±200px 范围内最近的纯数字节点
+ *   - 实战反证金标准偏差: 我之前 ±30px 太严, 跨机型失败 (mock 千机界面 layout 跟 nova 不同)
+ *
+ * @returns 数字 (找不到返 0, 实战反证金标准: 永远不返 -1, 0 触发下滑刷新)
+ */
+function readReportCountFromNodes(nodes: A11yNode[]): number {
+  const labelNode = nodes.find(n => n.text?.includes('报备待审核'));
+  if (!labelNode) return 0; // 找不到关键字, 兜底返 0 (实战反证金标准: 0 = 无报备, 走下滑刷新路径)
+
+  // V2.x 实战反证金标准: label 下方 ±200px + X ±200px 范围内最近的纯数字节点
+  const pendingNode = nodes.find(n =>
+    n !== labelNode &&
+    /^\d+$/.test((n.text || '').trim()) &&
+    Math.abs((n.centerX ?? 0) - (labelNode.centerX ?? 0)) < 200 &&
+    (n.centerY ?? 0) > (labelNode.centerY ?? 0) &&
+    (n.centerY ?? 0) < (labelNode.centerY ?? 0) + 200
+  );
+
+  if (pendingNode) {
+    return parseInt(pendingNode.text!.trim(), 10);
+  }
+
+  // 找不到数字 → 兜底返 0 (不返 -1)
+  return 0;
+}
+
+/**
+ * 解析变量 A (08-25 老板拍板 A+B 方案: 轻量级,只用于 A vs B 对比)
+ *
+ * 实战反证金标准 (08-25):
+ *   - varA 只解析 3 字段 (项目名/姓名/电话), 用于 A vs B 对比
+ *   - varA 不参与写库, 对比成功后直接用 varB 写库
+ *   - mock 千机首页 a11y 节点是整句 "客户姓名 陈杰，点击复制" / "联系方式 192****7209"
+ *   - 首页没 "报备项目:" key 节点, 项目名直接是卡片标题 "保利缦城和颂"
+ *
+ * @returns 仅返回 { projectName, customerName, phone } 3 字段
+ */
+function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
+  const lines = assembleKeyValueLines(nodes);
+
+  let projectName = '';
+  let customerName = '';
+  let phoneRaw = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // 项目名: 先尝试"报备项目:" key:value 形式
+    if (!projectName && trimmed.includes('报备项目')) {
+      const m = trimmed.match(/报备项目\s*[:：]?\s*(.+)$/);
+      if (m) {
+        projectName = m[1].trim();
+        continue;
+      }
+    }
+
+    // 项目名 fallback (08-25 实战反证金标准):
+    //   mock 千机首页"保利缦城和颂"是独立卡片标题节点 (红字),
+    //   不带"报备项目:"前缀, 也不带"保利"前缀 (可能直接是"保利缦城和颂")
+    //   → 节点 text 匹配 (保利|越秀|招商) + 后面跟项目名 = 提取
+    //   排除 false positive: "公司名称: 贝壳" / "客户姓名: 陈杰" 等
+    if (!projectName) {
+      // 实战反证金标准: 项目名通常 4-12 字, 不能太长 (排除地址/句子)
+      const m = trimmed.match(/^((?:保利|越秀|招商)[\u4e00-\u9fa5]{1,15})$/);
+      if (m) {
+        projectName = m[1].trim();
+        continue;
+      }
+    }
+
+    // 客户姓名
+    if (!customerName && trimmed.includes('客户姓名')) {
+      let name = trimmed.replace(/客户姓名\s*[:：]?\s*/g, '').trim();
+      name = name.replace(/[，,]\s*点击复制.*$/, '').trim();
+      name = name.replace(/点击复制.*$/, '').trim();
+      customerName = name;
+      continue;
+    }
+
+    // 联系方式 (mock 用空格 "联系方式 192****7209", 真千机用 ":" / ":")
+    if (!phoneRaw && trimmed.includes('联系方式')) {
+      const m = trimmed.match(/联系方式\s*[:：]?\s*(.+)$/);
+      if (m) {
+        phoneRaw = m[1].trim();
+        phoneRaw = phoneRaw.replace(/[，,]\s*点击复制.*$/, '').trim();
+        phoneRaw = phoneRaw.replace(/点击复制.*$/, '').trim();
+      }
+    }
+  }
+
+  return { projectName, customerName, phone: phoneRaw };
+}
+
+/**
+ * 解析变量 B (08-25 老板拍板文档步骤5b: 10 字段全解析)
+ *
+ * 字段 (保利示例):
+ *   公司名称: 贝壳
+ *   客户姓名: 张先生
+ *   客户性别: 男
+ *   客户联系方式: 158****6577
+ *   报备项目: 保利缦城和颂
+ *   物业类型: 住宅
+ *   报备提交时间: 2026/08/14 13:12
+ *   预计到访时间: 2026-08-14 13:52
+ *   经纪人姓名: 陈建行
+ *   经纪人备注:
+ *
+ * 跟步骤4 的 stepParseCustomerInfo 复用 assembleKeyValueLines + extractValue
+ */
+function parseVariableBFromNodes(nodes: A11yNode[]): CustomerInfo {
+  const lines = assembleKeyValueLines(nodes);
+
+  // 复用 step4 的解析逻辑
+  const phoneRaw = extractValue(lines, '客户联系方式') || extractValue(lines, '联系方式') || '';
+  const phoneDigits = phoneRaw.match(/\d+/g)?.join('') || '';
+  const phoneLast4 = phoneDigits.slice(-4);
+
+  let phonePart1 = '', phonePart2 = '', phonePart3 = '';
+  const phoneMatch = phoneRaw.match(/^(\d{3})(\*{4}|\d{4})(\d{3,4})$/);
+  if (phoneMatch) {
+    phonePart1 = phoneMatch[1];
+    phonePart2 = phoneMatch[2];
+    phonePart3 = phoneMatch[3];
+  } else {
+    phonePart1 = phoneDigits.slice(0, 3);
+    phonePart3 = phoneDigits.slice(-3);
+  }
+
+  return {
+    companyName: extractValue(lines, '公司名称') || '',
+    customerName: extractValue(lines, '客户姓名') || extractValue(lines, '姓名') || '',
+    customerGender: extractGender(lines) ?? '男',
+    phone: phoneRaw,
+    phonePart1,
+    phonePart2,
+    phonePart3,
+    phoneLast4,
+    projectName: extractValue(lines, '报备项目') || '',
+    projectType: detectProjectType(lines),
+    propertyType: extractValue(lines, '物业类型') || '',
+    reportTime: extractValue(lines, '报备提交时间') || '',
+    expectedVisitTime: extractValue(lines, '预计到访时间') || '',
+    agent: extractValue(lines, '经纪人姓名') || '',
+    agentPhone: extractValue(lines, '经纪人电话') || '',
+    agentNote: extractValue(lines, '经纪人备注') || '',
+    city: extractValue(lines, '城市') || '',
+  };
 }
