@@ -23,12 +23,12 @@ import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
 
 // ============================================================
-// 常量 (08-24 实战反证金标准)
+// 常量 (08-24)
 // ============================================================
 // 🆕 08-24: 删本地 APP_PACKAGES / QIANJI_MAIN_ACTIVITY (改用 @/config/env)
-// 实战反证金标准 (08-24): qianji.ts:24/29 hardcoded 'com.qianji.client' 是错的
-//   真千机包名 = com.lianjia.anchang (V2.x V22.x 实战反证, MEMORY.md §5)
-//   真千机 MainActivity = com.lianjia.link.platform.main.MainActivity (V2.x 实战反证, AutomationModule.kt:936 注释)
+// qianji.ts:24/29 hardcoded 'com.qianji.client' 是错的 (老板 08-24 拍板修复)
+//   真千机包名 = com.lianjia.anchang (V2.x V22.x 实战, MEMORY.md §5)
+//   真千机 MainActivity = com.lianjia.link.platform.main.MainActivity (V2.x, AutomationModule.kt:936 注释)
 //   千机 launcher 图标 = com.lianjia.app.icon.activity.APlusIconActivity (误用, 只到 launcher 桌面不进业务页)
 // 老板拍板 a=方案A: 编译时切换, 包名从 gradle.properties 注入, JS 跟 native 同步
 
