@@ -29,7 +29,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { runZbbWorkflow } from '@/flow';
+import { runZbbWorkflow, handleStart as startWithScreenCheck } from '@/flow';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
 
@@ -214,9 +214,10 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-  // 开始干活 (V4.x 08-24 + 08-25 正常/非正常结束)
+// 开始干活 (V4.x 08-24 + 08-25 正常/非正常结束)
   //   - 正常结束 (Cooldown/Idle): 自动接龙 → runZbbWorkflow
   //   - 非正常结束 (UserIntervention): 老板点"开始干活" → USER_CONFIRM → Idle → 再跑
+  //   - 🆕 08-24: 入口界面判断 (老板拍板: 当前=千机刷新, ZBB/桌面拉起千机, 其他 APP 2 轮大退出)
   //   - 5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
@@ -248,8 +249,10 @@ export default function HomeScreen() {
     }
 
     setIsRunning(true);
-    console.log('[开始干活] 启动业务流程 (handleStart → runZbbWorkflow)...');
+    console.log('[开始干活] 启动业务流程 (handleStart → 入口界面判断 → runZbbWorkflow)...');
     try {
+      // 🆕 08-24: 先做界面判断 (3 种情况), 然后跑完整业务流
+      await startWithScreenCheck();
       const result = await runZbbWorkflow();
       if (result.skipped) {
         console.warn(`[开始干活] 流程跳过: ${result.reason}`);

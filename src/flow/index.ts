@@ -16,10 +16,12 @@ export { runQianjiFlow, stepOpenQianji, stepRecognizeInterface, stepFindReportRe
 export type { CustomerInfo } from './qianji';
 
 export { runBaoliFlow } from './baoli';
+export { handleStart } from './handleStart';  // 🆕 08-24 实战反证金标准: 入口界面判断 (老板 3 种情况)
 
 import { runQianjiFlow } from './qianji';
 import { runBaoliFlow } from './baoli';
 import { orchestrator, OrchState } from '@/core/stateMachine';
+import { setZbbWorkflowRunner } from './handleStart';
 
 export type WorkflowResult = {
   ok: boolean;
@@ -111,3 +113,8 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
     return { ok: false, skipped: false, reason: 'unknown_project' };
   }
 }
+
+// 🆕 08-24 实战反证金标准: 注册给 handleStart 用 (避免循环依赖)
+setZbbWorkflowRunner(async () => {
+  await runZbbWorkflow();
+});

@@ -206,6 +206,26 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
+    // 🆕 08-24 实战反证金标准: 给 PageIdentifier 用, 获取前台 app 包名
+    @ReactMethod
+    fun getForegroundPackage(promise: Promise) {
+        try {
+            // 实战反证金标准: 必须用 ActivityManager (不是 AccessibilityService 的 packageName, 后者可能空)
+            val activityManager = mReactContext.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val runningTask = activityManager.getRunningTasks(1)
+            val pkg = if (runningTask.isNotEmpty()) {
+                runningTask[0].topActivity?.packageName ?: ""
+            } else {
+                ""
+            }
+            Log.d(TAG, "getForegroundPackage=$pkg")
+            promise.resolve(pkg)
+        } catch (e: Exception) {
+            Log.e(TAG, "getForegroundPackage failed: ${e.message}")
+            promise.resolve("")
+        }
+    }
+
     // ==================== 悬浮窗权限 ====================
 
     @ReactMethod
