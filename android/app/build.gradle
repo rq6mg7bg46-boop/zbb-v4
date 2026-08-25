@@ -342,7 +342,13 @@ android {
         //       3. findWithRecovery (类型 C: 找按钮 + 3 层 fallback)
         //       4. withFlowRetry (整条流程重试包装, 3 次上限)
         //     - 下一步: 千机端 7 步骤接入, 保利/越秀后续复用
-        versionCode 2256
+        // 🆕 v32 (08-25 老板拍板 C 方案完整实现): versionCode 2256 → 2257
+        //   v32 patch:
+        //     1. runQianjiFlow 包装 withFlowRetry (3 次重试上限)
+        //     2. 7 步骤全面接入 retryUtils (waitForScreenChange / findWithRecovery / quickCheck)
+        //     3. 找不到节点 → 抛 RetryFlowError 触发整条重试 (返回 + 重新进入)
+        //     4. 实战目标: 减少用户介入率 (加载慢/界面走错时程序自己恢复)
+        versionCode 2257
         // 🆕 v22.02 (08-11 老板拍板): versionCode 2236 → 2209, 跟 VERSION v22.02 对齐
         //   v22.02 patch:
         //     1. 步骤7 粘贴按钮坐标修正: dp(47, 240) = px(94, 480) → dp(55, 230) = px(110, 460)
