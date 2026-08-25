@@ -30,6 +30,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { runZbbWorkflow } from '@/flow';
+import { orchestrator, OrchState } from '@/core/stateMachine';
+import { showSystemToast } from '@/services/alert';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
@@ -107,6 +109,8 @@ export default function HomeScreen() {
   const [overlayGranted, setOverlayGranted] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [todayCount, setTodayCount] = useState(0);
+  // 🆕 08-25: Cooldown 进入时间戳 (用于 Toast 显示剩余秒数)
+  const [_cooldownEnterTime, setCooldownEnterTime] = useState(0);
 
   // V4.x 实战反证金标准 (08-22): 每秒检测, 检测到开启就停
   const checkA11yOnce = useCallback(async (): Promise<boolean> => {
@@ -134,6 +138,16 @@ export default function HomeScreen() {
   useEffect(() => {
     let a11yTimer: ReturnType<typeof setInterval> | null = null;
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
+
+    // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳
+    const unsub = orchestrator.onChange((newState) => {
+      if (newState === OrchState.Cooldown) {
+        setCooldownEnterTime(Date.now());
+        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳');
+      } else if (newState === OrchState.Idle) {
+        setCooldownEnterTime(0); // 重置
+      }
+    });
 
     const startA11yPoll = () => {
       if (a11yTimer) return;
@@ -183,6 +197,7 @@ export default function HomeScreen() {
       if (a11yTimer) clearInterval(a11yTimer);
       if (overlayTimer) clearInterval(overlayTimer);
       sub?.remove?.();
+      unsub?.(); // 🆕 08-25: 释放 orchestrator.onChange 订阅
     };
   }, [checkA11yOnce, checkOverlayOnce, a11yEnabled, overlayGranted]);
 
@@ -199,8 +214,10 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-  // 开始干活 (V4.x 实战反证金标准 08-24: 简化为调 runZbbWorkflow)
-  //   5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
+  // 开始干活 (V4.x 08-24 + 08-25 正常/非正常结束)
+  //   - 正常结束 (Cooldown/Idle): 自动接龙 → runZbbWorkflow
+  //   - 非正常结束 (UserIntervention): 老板点"开始干活" → USER_CONFIRM → Idle → 再跑
+  //   - 5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
       Alert.alert(
@@ -209,6 +226,27 @@ export default function HomeScreen() {
       );
       return;
     }
+
+    // 🆕 08-25 老板拍板: UserIntervention 状态 → 先发 USER_CONFIRM 回 Idle, 再走流程
+    const currentState = orchestrator.getState();
+    if (currentState === OrchState.UserIntervention) {
+      console.log('[开始干活] UserIntervention 状态 → 发 USER_CONFIRM → Idle → 再跑流程');
+      orchestrator.send('USER_CONFIRM');
+      // fallthrough 继续跑流程 (USER_CONFIRM → Idle → START → QianjiRefreshing)
+    } else if (currentState === OrchState.Cooldown) {
+      // 🆕 08-25 老板拍板: Cooldown 中 → Toast 提示剩余冷却秒数, 不响应
+      const remainingMs = getCooldownRemainingMs();
+      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+      console.warn(`[开始干活] Cooldown 中 (剩 ${remainingSec}s), 跳过本次点击`);
+      await showSystemToast(`小主,再让我休息${remainingSec}秒嘛`, 3000);
+      return;
+    } else if (orchestrator.isRunning()) {
+      // 🆕 08-25 老板拍板: Running 中 → Toast 提示已在跑, 不响应
+      console.warn('[开始干活] Running 中 (千机/保利/越秀在跑), 跳过本次点击');
+      await showSystemToast('小主,我已经在努力干活中!', 3000);
+      return;
+    }
+
     setIsRunning(true);
     console.log('[开始干活] 启动业务流程 (handleStart → runZbbWorkflow)...');
     try {
@@ -217,11 +255,11 @@ export default function HomeScreen() {
         console.warn(`[开始干活] 流程跳过: ${result.reason}`);
         Alert.alert('提示', `流程跳过: ${result.reason}`);
       } else if (result.ok) {
-        console.log(`[开始干活] 流程完成: ${result.customerName}`);
-        Alert.alert('完成', `客户 ${result.customerName} 报备完成`);
+        console.log(`[开始干活] 流程完成: ${result.customerName} (自动接龙中...)`);
+        // 🆕 08-25 老板拍板: 正常结束不弹"完成" Alert, 避免打断自动接龙
       } else {
-        console.warn(`[开始干活] 流程失败: ${result.reason}`);
-        Alert.alert('失败', `流程失败: ${result.reason}\n请查看日志`);
+        console.warn(`[开始干活] 流程失败: ${result.reason} → UserIntervention`);
+        // 失败已转 UserIntervention, 等老板点"开始干活"才恢复
       }
     } catch (e: any) {
       console.error('[开始干活] 流程异常:', e);
@@ -230,6 +268,14 @@ export default function HomeScreen() {
       setIsRunning(false);
     }
   }, [a11yEnabled, overlayGranted]);
+
+  // 🆕 08-25 老板拍板: 计算 Cooldown 剩余秒数
+  //   Cooldown 进入时间存在 _cooldownEnterTime, 60s 后 COOLDOWN_DONE
+  function getCooldownRemainingMs(): number {
+    const COOLDOWN_MS = 60_000;
+    const elapsed = Date.now() - _cooldownEnterTime;
+    return Math.max(0, COOLDOWN_MS - elapsed);
+  }
 
   // 三指下滑截图测试
   const handleThreeFingerTest = useCallback(() => {
