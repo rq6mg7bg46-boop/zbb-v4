@@ -21,6 +21,7 @@ import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env';
 import { writeReport, writeBaoliDouble } from '@/services/database';
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
+import { withFlowRetry, quickCheck, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
 
 // ============================================================
 // 常量 (08-24)
@@ -264,14 +265,31 @@ const MISMATCH_MAX_RETRIES = 3;
 //   6. A11y 找"复制" + 点复制 (中等偏移 1.5-2s)
 //   7. 拉起企业微信 (后续保利端两轮报备从这里接手)
 // ============================================================
+// 千机端流程入口 (08-25 老板拍板 C 方案: 用 withFlowRetry 包装重试)
+//   - 内层 runQianjiFlowInner 抛 RetryFlowError → 自动重试整条流程
+//   - 内层 raiseAlert + return null → 算失败,触发整条重试 (返回 + 重新进入)
+//   - 重试 3 次都失败 → raiseAlert 等老板手动
+//   - 真异常 → 立即 raiseAlert
+// ============================================================
 export async function runQianjiFlow(): Promise<CustomerInfo | null> {
-  console.log('========== 千机端流程开始 (7 步骤文档实战反证金标准) ==========');
+  return withFlowRetry('千机端', runQianjiFlowInner, async () => {
+    // 整条重试前的恢复动作: 返回 + 等动画
+    console.log('[千机端] 整条重试前 → 返回键 + 等 1s');
+    await pressKey.back();
+    await ZBBAutomation.delay(1000);
+  });
+}
+
+async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
+  console.log('========== 千机端流程开始 (7 步骤) ==========');
 
   try {
-    // ============ 步骤 1: 打开千机 (停留 1.5-2s) ============
+    // ============ 步骤 1: 打开千机 (有界面变化, 1-2s 首轮 + 重试) ============
     await stepOpenQianji();
-    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
-    const step1Ok = await judge.isScreenText('报备待审核'); // 文档实战反证金标准: "报备待审核"
+    const step1Ok = await waitForScreenChange(
+      '千机:步骤1',
+      async () => await judge.isScreenText('报备待审核')
+    );
     if (!step1Ok) {
       console.warn('[千机:步骤1] 未找到"报备待审核", 1 轮退出操作 (home+多功能+垃圾箱) 重新进入');
       await pressKey.home();
@@ -280,72 +298,74 @@ export async function runQianjiFlow(): Promise<CustomerInfo | null> {
       await ZBBAutomation.delay(800);
       await pressKey.trash();
       await ZBBAutomation.delay(1000);
-      // 重新进入
       await stepOpenQianji();
-      await ZBBAutomation.delay(1800);
+      const step1RetryOk = await waitForScreenChange(
+        '千机:步骤1 (重进后)',
+        async () => await judge.isScreenText('报备待审核')
+      );
+      if (!step1RetryOk) {
+        throw new RetryFlowError('步骤1: 重进后仍未找到"报备待审核"');
+      }
     }
 
     // ============ 步骤 2: A11y 找"报备待审核"下数字 + 数字=0 下滑刷新 + 解析变量 A ============
-    await ZBBAutomation.delay(1000);
+    // 类型 A: 无界面变化 (复用步骤 1 的节点缓存, 直接读)
     const step2Nodes = await ZBBAutomation.getAllTextNodes();
-    const step2ReportCount = readReportCountFromNodes(step2Nodes); // 实战反证金标准: 读"报备待审核"下方数字
+    const step2ReportCount = readReportCountFromNodes(step2Nodes);
     console.log(`[千机:步骤2] 报备数量=${step2ReportCount}`);
 
     if (step2ReportCount === 0) {
       console.log('[千机:步骤2] 报备数量=0, 下滑刷新');
-      await swipe.down(); // 缺口5: 单指下滑
+      await swipe.down();
       await ZBBAutomation.delay(1500);
       const refreshedNodes = await ZBBAutomation.getAllTextNodes();
       const refreshedCount = readReportCountFromNodes(refreshedNodes);
       console.log(`[千机:步骤2] 刷新后报备数量=${refreshedCount}`);
       if (refreshedCount === 0) {
-        // 实战反证金标准: 弹窗"小主,当前无报备" + 返回键 + 本轮结束
         console.log('[千机:步骤2] 刷新后仍=0, 提示用户并结束本轮');
-        await notifyNoReport(); // 缺口4: 异常通知 (系统 Toast, 千机端可见)
+        await notifyNoReport();
         await pressKey.back();
         return null;
       }
     }
 
-    // 🆕 08-25 全修 (修法2): 解析变量 A — 精确解析,只取第一个匹配
-    const varA = parseVariableAFromNodes(step2Nodes); // 实战反证金标准: 简化版,项目名+姓名+电话
+    const varA = parseVariableAFromNodes(step2Nodes);
     console.log(`[千机:步骤2] 变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
 
-    // ============ 步骤 3: A11y 找"转发"(含上滑重试) + 找到后点"转发"(中等偏移) ← 合并 ============
+    // ============ 步骤 3: A11y 找"转发" (有界面变化, findWithRecovery + 上滑恢复) ============
     console.log('[千机:步骤3] A11y 找"转发"...');
-    let step3Find = await a11y.findByText('转发');
-    let step3Slides = 0;
-    const MAX_SLIDES = 3; // 文档实战反证金标准: 上限 3 次
-    while (!step3Find && step3Slides < MAX_SLIDES) {
-      step3Slides++;
-      console.log(`[千机:步骤3] 未找到"转发", 上滑 (${step3Slides}/${MAX_SLIDES})`);
-      await swipe.up(); // 缺口5: 单指上滑
-      await ZBBAutomation.delay(1500);
-      step3Find = await a11y.findByText('转发');
-    }
-    if (!step3Find) {
-      console.error('[千机:步骤3] 上滑3次仍未找到"转发", 触发异常');
-      await raiseAlert('小主,千机端步骤3未找到"转发",请检查界面');
-      return null;
+    const step3Ok = await findWithRecovery(
+      '千机:步骤3:转发',
+      async () => !!(await a11y.findByText('转发')),
+      async () => {
+        await swipe.up();
+        await ZBBAutomation.delay(1500);
+      }
+    );
+    if (!step3Ok) {
+      throw new RetryFlowError('步骤3: 上滑3次仍未找到"转发"');
     }
     console.log(`[千机:步骤3] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
     await click.byText('转发', { level: HumanLevel.NORMAL });
-    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+    await ZBBAutomation.delay(1800);
 
     // ============ 步骤 4: A11y 找"公司名称" + 解析变量 B(10字段) + A vs B 对比 + 写库 ============
-    const step4Nodes = await ZBBAutomation.getAllTextNodes();
-    const hasCompany = step4Nodes.some(n => n.text?.includes('公司名称'));
-    if (!hasCompany) {
-      // 🆕 08-25 全修 (修法4): hasCompany 失败不能再静默 return,要 raiseAlert
-      console.warn('[千机:步骤4] 未找到"公司名称", 系统弹窗报错');
-      await raiseAlert('小主,千机端步骤4未找到"公司名称",请检查界面');
-      return null;
+    // 类型 B: 有界面变化 (转发页加载), 1-2s 首轮 + 重试
+    const step4NodesFound = await waitForScreenChange(
+      '千机:步骤4:公司名称',
+      async () => {
+        const nodes = await ZBBAutomation.getAllTextNodes();
+        return nodes.some(n => n.text?.includes('公司名称'));
+      }
+    );
+    if (!step4NodesFound) {
+      throw new RetryFlowError('步骤4: 等待"公司名称"超时');
     }
 
-    const varB = parseVariableBFromNodes(step4Nodes); // 10 字段全解析 (缺口1)
+    const step4Nodes = await ZBBAutomation.getAllTextNodes();
+    const varB = parseVariableBFromNodes(step4Nodes);
 
     // A vs B 对比 (修法4: 只比 3 字段: 项目/姓名/电话)
-    // 🆕 08-25 老板拍板 A+B 方案: varA 轻量 3 字段, varB 全 10 字段, 直接传子对象
     const compareResult = compareCustomer(
       { projectName: varA.projectName, customerName: varA.customerName, phone: varA.phone },
       { projectName: varB.projectName, customerName: varB.customerName, phone: varB.phone },
@@ -353,37 +373,29 @@ export async function runQianjiFlow(): Promise<CustomerInfo | null> {
     console.log(`[千机:步骤4] A vs B 对比: ${formatCompareResult(compareResult)}`);
 
     if (!compareResult.isMatch) {
-      // 🆕 08-25 全修 (修法3): 3 次不一致 → raiseAlert 退出 (实战反证金标准文档实战反证金标准)
       _mismatchRetryCount++;
-      // 实战反证金标准 (08-25): log 打差异详情 (项目/姓名/电话 各自对比), 弹窗不显示
       const diffMsg = compareResult.diffs.map(d => `${d.field}: A="${d.aValue}" vs B="${d.bValue}"`).join('; ');
       console.warn(`[千机:步骤4] 不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES}): ${diffMsg}`);
       await pressKey.back();
       await ZBBAutomation.delay(1000);
 
       if (_mismatchRetryCount >= MISMATCH_MAX_RETRIES) {
-        // 🆕 08-25 老板拍板: 弹窗内容固定文案, 不显示 diffMsg
-        //   实战反证金标准 (08-25):
-        //     - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致)
-        //     - 描述: 请你手动处理
-        //     - 按钮: 我知道了 (raiseAlert 已自带, 点后弹窗消失 + 停震动 + 流程结束)
         const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请你手动处理';
         console.error(`[千机:步骤4] ${dialogMessage}`);
         console.error(`[千机:步骤4] 差异详情: ${diffMsg}`);
         await raiseAlert(dialogMessage);
-        _mismatchRetryCount = 0; // 重置,避免下次继续触发
+        _mismatchRetryCount = 0;
         return null;
       }
 
-      // 未达上限 → 重试
-      return runQianjiFlow();
+      // 未达上限 → 抛 RetryFlowError 让 withFlowRetry 重试整条
+      throw new RetryFlowError(`步骤4: A vs B 不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES})`);
     }
 
-    // 对比成功 → 重置计数 + 直接用 varB 写库 (不合并 A+B, 老板实战拍板 08-25)
+    // 对比成功 → 重置计数 + 直接用 varB 写库
     _mismatchRetryCount = 0;
     console.log(`[千机:步骤4] ✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
 
-    // 写库 (缺口2: 保利双写 / 其他单写)
     const writeResult = await stepWriteToReports(varB);
     if (Array.isArray(writeResult)) {
       console.log(`[千机:步骤4] 保利双写: ID=${writeResult.join(',')}`);
@@ -391,29 +403,31 @@ export async function runQianjiFlow(): Promise<CustomerInfo | null> {
       console.log(`[千机:步骤4] 单写: ID=${writeResult}`);
     }
 
-    // ============ 步骤 5: A11y 找"转发" + 点转发 (中等偏移1.5-2s) ============
+    // ============ 步骤 5: A11y 找"转发" + 点转发 (有界面变化) ============
     console.log('[千机:步骤5] A11y 找"转发" (第二次, 进对象选择页)...');
-    const step5Find = await a11y.findByText('转发');
-    if (!step5Find) {
-      console.error('[千机:步骤5] 未找到"转发", 系统弹窗报错');
-      await raiseAlert('小主,千机端步骤5未找到"转发",请检查界面');
-      return null;
+    const step5Ok = await findWithRecovery(
+      '千机:步骤5:转发',
+      async () => !!(await a11y.findByText('转发'))
+    );
+    if (!step5Ok) {
+      throw new RetryFlowError('步骤5: 未找到"转发"');
     }
-    console.log('[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)');
+    console.log(`[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
     await click.byText('转发', { level: HumanLevel.NORMAL });
-    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+    await ZBBAutomation.delay(1800);
 
-    // ============ 步骤 6: A11y 找"复制" + 点复制 (中等偏移1.5-2s) ============
+    // ============ 步骤 6: A11y 找"复制" + 点复制 (有界面变化) ============
     console.log('[千机:步骤6] A11y 找"复制"...');
-    const step6Find = await a11y.findByText('复制');
-    if (!step6Find) {
-      console.error('[千机:步骤6] 未找到"复制", 系统弹窗报错');
-      await raiseAlert('小主,千机端步骤6未找到"复制",请检查界面');
-      return null;
+    const step6Ok = await findWithRecovery(
+      '千机:步骤6:复制',
+      async () => !!(await a11y.findByText('复制'))
+    );
+    if (!step6Ok) {
+      throw new RetryFlowError('步骤6: 未找到"复制"');
     }
-    console.log('[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)');
+    console.log(`[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)`);
     await click.byText('复制', { level: HumanLevel.NORMAL });
-    await ZBBAutomation.delay(1800); // 文档实战反证金标准: 1.5-2s
+    await ZBBAutomation.delay(1800);
 
     // ============ 步骤 7: 拉起企业微信 (后续保利端两轮报备从这里接手) ============
     console.log('[千机:步骤7] 拉起企业微信 (后续保利端接力)');
@@ -423,8 +437,12 @@ export async function runQianjiFlow(): Promise<CustomerInfo | null> {
     console.log('========== 千机端流程完成 ==========');
     return varB;
   } catch (error) {
+    // RetryFlowError 抛出, 让 withFlowRetry 处理 (返回 + 重进 + 重试整条)
+    if (error instanceof RetryFlowError) {
+      throw error;
+    }
+    // 真异常 → 立即 raiseAlert, 不重试
     console.error('[千机端] 流程失败:', error);
-    // 缺口4: 异常时系统弹窗 + 30s 震动
     await raiseAlert('小主,千机端流程出问题了,请手动处理');
     return null;
   }
