@@ -406,12 +406,24 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       console.log(`[千机:步骤4] 单写: ID=${writeResult}`);
     }
 
-    // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID 计算)
+    // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID DESC)
     try {
       const recentReports = await getRecentReports(3);
       console.log(`[千机:步骤4] 📋 数据库最近 ${recentReports.length} 组客户:`);
       recentReports.forEach((r: any, idx: number) => {
-        console.log(`[千机:步骤4]   [${idx + 1}] ID=${r.id} 客户=${r.customerName} 项目=${r.projectName} 类型=${r.projectType} 电话=${r.phone}`);
+        // 🆕 08-26 老板实战要求: 用 camelCase 读字段 (snake_case fallback)
+        const id = r.id;
+        const customerName = r.customerName ?? r.customer_name ?? '';
+        const phone = r.phone ?? '';
+        const projectName = r.projectName ?? r.project_name ?? '';
+        const projectType = r.projectType ?? r.project_type ?? '';
+        // phone 三段拆
+        const phonePart1 = r.phonePart1 ?? r.phone_part1 ?? '';
+        const phonePart2 = r.phonePart2 ?? r.phone_part2 ?? '';
+        const phonePart3 = r.phonePart3 ?? r.phone_part3 ?? '';
+        const phoneLast4 = r.phoneLast4 ?? r.phone_last4 ?? '';
+        console.log(`[千机:步骤4]   [${idx + 1}] ID=${id} 客户=${customerName} 项目=${projectName} 类型=${projectType}`);
+        console.log(`[千机:步骤4]        电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后3=${phonePart3} 后4=${phoneLast4})`);
       });
     } catch (e: any) {
       console.warn(`[千机:步骤4] 读取数据库失败: ${e.message}`);
