@@ -22,6 +22,7 @@ import { writeReport, writeBaoliDouble, getRecentReports } from '@/services/data
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, quickCheck, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
+import { getDeviceFallbackCoords, type DeviceFallbackCoords } from '@/utils/deviceFallback';
 
 // ============================================================
 // 常量 (08-24)
@@ -434,7 +435,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       '千机:步骤5:转发',
       async () => {
         const node = await a11y.findByText('转发');
-        // 🆕 08-26 老板拍板兼容方案: 真千机 + mock 双兼容
+        // 🆕 08-26 老板拍板 兼容方案: 真千机 + mock 双兼容
         //   - 真千机 002.xml: text='', content-desc='转发', bounds 真实
         //   - mock: text='转发', content-desc='转发按钮', 但 bounds 可能是 (0,0)
         //   实战: 节点存在 + bounds 有效 → 才认为找到
@@ -447,11 +448,19 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
         return true;
       }
     );
-    if (!step5Ok) {
-      throw new RetryFlowError('步骤5: 未找到"转发"');
+    if (step5Ok) {
+      console.log(`[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
+      await click.byText('转发', { level: HumanLevel.NORMAL });
+    } else {
+      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
+      const fallback = getDeviceFallbackCoords();
+      if (fallback) {
+        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 (${fallback.forwardBtn.x}, ${fallback.forwardBtn.y}) dp`);
+        await click.byCoords(fallback.forwardBtn.x, fallback.forwardBtn.y, HumanLevel.NORMAL);
+      } else {
+        throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
+      }
     }
-    console.log(`[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
-    await click.byText('转发', { level: HumanLevel.NORMAL });
     await ZBBAutomation.delay(1800);
 
     // ============ 步骤 6: A11y 找"复制" + 点复制 (有界面变化) ============
@@ -469,11 +478,19 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
         return true;
       }
     );
-    if (!step6Ok) {
-      throw new RetryFlowError('步骤6: 未找到"复制"');
+    if (step6Ok) {
+      console.log(`[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)`);
+      await click.byText('复制', { level: HumanLevel.NORMAL });
+    } else {
+      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
+      const fallback = getDeviceFallbackCoords();
+      if (fallback) {
+        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 (${fallback.copyBtn.x}, ${fallback.copyBtn.y}) dp`);
+        await click.byCoords(fallback.copyBtn.x, fallback.copyBtn.y, HumanLevel.NORMAL);
+      } else {
+        throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
+      }
     }
-    console.log(`[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)`);
-    await click.byText('复制', { level: HumanLevel.NORMAL });
     await ZBBAutomation.delay(1800);
 
     // ============ 步骤 7: 拉起企业微信 (后续保利端两轮报备从这里接手) ============
