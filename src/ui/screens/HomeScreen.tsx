@@ -147,11 +147,10 @@ export default function HomeScreen() {
       } else if (newState === OrchState.Idle) {
         setCooldownEnterTime(0); // 重置
       } else if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
-        // 🆕 08-26 老板拍板 方案 B: 单一弹窗源 (HomeScreen)
-        //   - 只在 QianjiRefreshing/BaoliRunning → UserIntervention 时弹 1 次
-        //   - 避免重复弹 (e.g. 状态机切换时)
-        console.log('[HomeScreen] 进入 UserIntervention, 弹 1 次 Toast');
-        showSystemToast('小主,千机端流程连续3次异常,请手动处理', 5000);
+        // 🆕 08-26 老板拍板: 状态机切到 UserIntervention 不再弹窗
+        //   - 弹窗由 qianji.ts 步骤 4 raiseAlert 统一发 (有按钮 + 震动 30s)
+        //   - HomeScreen 只负责监听状态变化
+        console.log('[HomeScreen] 进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
       }
     });
 

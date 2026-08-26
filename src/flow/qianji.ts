@@ -380,10 +380,13 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       await ZBBAutomation.delay(1000);
 
       if (_mismatchRetryCount >= MISMATCH_MAX_RETRIES) {
-        // 3 次不一致 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
-        const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请你手动处理';
+        // 🆕 08-26 老板拍板: 弹 Dialog (有按钮 + 震动 30s) — 老板必须点"我知道了"
+        //   - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!
+        //   - 按钮: 我知道了 (raiseAlert 已自带, 点后弹窗消失 + 停震动 + 流程结束)
+        const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!';
         console.error(`[千机:步骤4] ${dialogMessage}`);
         console.error(`[千机:步骤4] 差异详情: ${diffMsg}`);
+        await raiseAlert(dialogMessage);
         _mismatchRetryCount = 0;
         return null;
       }
