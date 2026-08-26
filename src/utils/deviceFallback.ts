@@ -24,23 +24,23 @@ export interface DeviceFallbackCoords {
   description: string;                       // 设备描述
 }
 
-// 老板拍板坐标表 (px 物理坐标, native tap 接收 px)
+// 老板拍板坐标表 (dp 坐标, native tap 接收 px → 内部转 dp)
 // key = appEnv ('mock' / 'production')
-const FALLBACK_TABLE_PX: Record<string, Omit<DeviceFallbackCoords, 'description'> & { desc: string }> = {
+const FALLBACK_TABLE_DP: Record<string, Omit<DeviceFallbackCoords, 'description'> & { desc: string }> = {
   // mock (nova 测试) - 1080x2400, density 480
-  // 老板 08-26 拍板 (px 物理坐标):
-  //   - mock 转发按钮 (530, 2220) px
-  //   - mock 复制按钮 (540, 1986) px
+  // 老板 08-26 拍板 (dp 坐标):
+  //   - mock 转发按钮 (180, 740) dp = (540, 2220) px
+  //   - mock 复制按钮 (180, 662) dp = (540, 1986) px
   mock: {
-    forwardBtn: { x: 530, y: 2220 },
-    copyBtn: { x: 540, y: 1986 },
+    forwardBtn: { x: 180, y: 740 },
+    copyBtn: { x: 180, y: 662 },
     desc: 'mock (nova 测试)',
   },
   // 真千机基准 - 720x1473, density 320 (e470 老板拍板)
-  // 002.xml bounds=[40,1380][680,1473] → 中心 (360, 1426) px
+  // 002.xml bounds=[40,1380][680,1473] → 中心 (360, 1426) px = (180, 713) dp
   production: {
-    forwardBtn: { x: 360, y: 1426 },
-    copyBtn: { x: 360, y: 1426 }, // 真千机转发提交后弹层, 复制在弹层中央
+    forwardBtn: { x: 180, y: 713 },
+    copyBtn: { x: 180, y: 713 }, // 真千机转发提交后弹层, 复制在弹层中央
     desc: '真千机 (生产)',
   },
 };
@@ -60,7 +60,7 @@ export async function getDeviceFallbackCoords(): Promise<DeviceFallbackCoords | 
     appEnv = 'production';
   }
 
-  const entry = FALLBACK_TABLE_PX[appEnv];
+  const entry = FALLBACK_TABLE_DP[appEnv];
   if (!entry) {
     console.warn(`[deviceFallback] appEnv=${appEnv} 无 fallback 坐标表`);
     return null;
