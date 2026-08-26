@@ -22,7 +22,7 @@ import { writeReport, writeBaoliDouble, getRecentReports } from '@/services/data
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, quickCheck, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
-import { getDeviceFallbackCoords, type DeviceFallbackCoords } from '@/utils/deviceFallback';
+import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
 
 // ============================================================
 // 常量 (08-24)
@@ -435,20 +435,24 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       '千机:步骤5:转发',
       async () => {
         const node = await a11y.findByText('转发');
-        // 🆕 08-26 老板拍板兼容方案: 真千机 + mock 双兼容
-        //   - 真千机 002.xml: text='', content-desc='转发', Button 类, clickable=true
-        //   - mock: 父容器 cd='转发消息设置' 含'转发'子串, bounds=[0,0][1080,2153]
-        //     (实际是 ViewGroup 不是 Button), 误命中导致走 byText → 坐标错位
-        //   实战: 节点存在 + 是 Button 类 + bounds 有效 + clickable=true → 才命中
+        // 🆕 08-26 老板拍板: 检测 A11y 是否真实工作 (findByText 命中 stale 节点不算)
+        //   - 真实节点: text 或 content-desc 含"转发", bounds 在屏幕内, clickable=true, class=Button
+        //   - stale 节点: text='' (千机端 a11y 80% 节点 text 空), 但 bounds 真实, 命中父容器误判
         if (!node) return false;
-        // 排除 bounds 空节点 (mock 渲染 bug)
         const bounds = node.bounds;
+        // 排除 bounds 空节点
         if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
           return false;
         }
-        // 排除非 Button 类的节点 (mock 父容器误命中)
+        // 排除非 Button 类节点 (父容器 ViewGroup 误命中)
         const className = node.className ?? '';
         if (!/Button|button/i.test(className)) {
+          return false;
+        }
+        // 排除 text 空 + content-desc 空的节点 (a11y 无法识别的空节点)
+        const text = node.text ?? '';
+        const contentDesc = (node as any).contentDesc ?? '';
+        if (!text && !contentDesc) {
           return false;
         }
         return true;
@@ -461,8 +465,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
-        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 (${fallback.forwardBtn.x}, ${fallback.forwardBtn.y}) px`);
-        await click.byCoords(fallback.forwardBtn.x, fallback.forwardBtn.y, HumanLevel.NORMAL);
+        const dp = fallback.forwardBtn;
+        const px = dpToPx(dp);
+        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
+        await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
       }
@@ -475,7 +481,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       '千机:步骤6:复制',
       async () => {
         const node = await a11y.findByText('复制');
-        // 🆕 08-26 老板拍板兼容方案: 同步骤 5, 排除 bounds=(0,0) + 非 Button 类
+        // 🆕 08-26 老板拍板: 同步骤 5, 加 A11y 真实性检测 (text + content-desc 不能都空)
         if (!node) return false;
         const bounds = node.bounds;
         if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
@@ -483,6 +489,11 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
         }
         const className = node.className ?? '';
         if (!/Button|button/i.test(className)) {
+          return false;
+        }
+        const text = node.text ?? '';
+        const contentDesc = (node as any).contentDesc ?? '';
+        if (!text && !contentDesc) {
           return false;
         }
         return true;
@@ -495,8 +506,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
-        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 (${fallback.copyBtn.x}, ${fallback.copyBtn.y}) px`);
-        await click.byCoords(fallback.copyBtn.x, fallback.copyBtn.y, HumanLevel.NORMAL);
+        const dp = fallback.copyBtn;
+        const px = dpToPx(dp);
+        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
+        await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
       }
