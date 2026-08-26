@@ -25,20 +25,20 @@ export interface DeviceFallbackCoords {
 }
 
 // 老板拍板坐标表 (按 px, 实际使用按设备 density 缩放)
-// key = BuildConfig.MODEL (小写)
+// key = appEnv ('mock' / 'production')
 const FALLBACK_TABLE_PX: Record<string, Omit<DeviceFallbackCoords, 'description'> & { desc: string }> = {
-  // nova (mock 测试) - 1080x2400, density 480
+  // mock (nova 测试) - 1080x2400, density 480
   // 老板 08-26 拍板:
   //   - mock 转发按钮 (530, 2220) px = (177, 740) dp
   //   - mock 复制按钮 (540, 1986) px = (180, 662) dp
-  'qmf4c20528002273': {
+  mock: {
     forwardBtn: { x: 530, y: 2220 },
     copyBtn: { x: 540, y: 1986 },
-    desc: 'nova (mock 测试)',
+    desc: 'mock (nova 测试)',
   },
   // 真千机基准 - 720x1473, density 320 (e470 老板拍板)
   // 002.xml bounds=[40,1380][680,1473] → 中心 (360, 1426) px = (180, 713) dp
-  'e470-qianji': {
+  production: {
     forwardBtn: { x: 360, y: 1426 },
     copyBtn: { x: 360, y: 1426 }, // 真千机转发提交后弹层, 复制在弹层中央
     desc: '真千机 (生产)',
@@ -46,24 +46,17 @@ const FALLBACK_TABLE_PX: Record<string, Omit<DeviceFallbackCoords, 'description'
 };
 
 /**
- * 按 BuildConfig.MODEL 查 fallback 坐标
- * 找不到对应机型 → 返回 null (走 raiseAlert, 不硬点)
+ * 按 appEnv 查 fallback 坐标
+ * 找不到对应 appEnv → 返回 null (走 raiseAlert, 不硬点)
  */
 export function getDeviceFallbackCoords(): DeviceFallbackCoords | null {
   const buildConstants = NativeModules.ZBBAutomation?.getConstants?.() ?? {};
-  const model = (buildConstants.MODEL ?? '').toLowerCase();
+  const appEnv = buildConstants.appEnv ?? 'production';
   const density = buildConstants.DENSITY ?? 320; // 默认 320 (xhdpi)
 
-  // 老板拍板 08-26: 优先匹配 BuildConfig.MODEL
-  let entry = FALLBACK_TABLE_PX[model];
-
-  // 兜底: 模糊匹配 (qmf... 开头 = nova)
-  if (!entry && model.startsWith('qmf')) {
-    entry = FALLBACK_TABLE_PX['qmf4c20528002273'];
-  }
-
+  const entry = FALLBACK_TABLE_PX[appEnv];
   if (!entry) {
-    console.warn(`[deviceFallback] 机型 ${model} 无 fallback 坐标表`);
+    console.warn(`[deviceFallback] appEnv=${appEnv} 无 fallback 坐标表`);
     return null;
   }
 
@@ -74,7 +67,7 @@ export function getDeviceFallbackCoords(): DeviceFallbackCoords | null {
     y: Math.round(px.y / scale),
   });
 
-  console.log(`[deviceFallback] 机型 ${model} density=${density} scale=${scale.toFixed(2)}: ${entry.desc}`);
+  console.log(`[deviceFallback] appEnv=${appEnv} density=${density} scale=${scale.toFixed(2)}: ${entry.desc}`);
   console.log(`[deviceFallback] 转发按钮 fallback 坐标 dp=(${convert(entry.forwardBtn).x}, ${convert(entry.forwardBtn).y})`);
 
   return {
