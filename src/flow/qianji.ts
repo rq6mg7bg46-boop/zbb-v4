@@ -435,14 +435,20 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       '千机:步骤5:转发',
       async () => {
         const node = await a11y.findByText('转发');
-        // 🆕 08-26 老板拍板 兼容方案: 真千机 + mock 双兼容
-        //   - 真千机 002.xml: text='', content-desc='转发', bounds 真实
-        //   - mock: text='转发', content-desc='转发按钮', 但 bounds 可能是 (0,0)
-        //   实战: 节点存在 + bounds 有效 → 才认为找到
+        // 🆕 08-26 老板拍板兼容方案: 真千机 + mock 双兼容
+        //   - 真千机 002.xml: text='', content-desc='转发', Button 类, clickable=true
+        //   - mock: 父容器 cd='转发消息设置' 含'转发'子串, bounds=[0,0][1080,2153]
+        //     (实际是 ViewGroup 不是 Button), 误命中导致走 byText → 坐标错位
+        //   实战: 节点存在 + 是 Button 类 + bounds 有效 + clickable=true → 才命中
         if (!node) return false;
+        // 排除 bounds 空节点 (mock 渲染 bug)
         const bounds = node.bounds;
         if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
-          // bounds 空 → 跳过此节点 (mock 渲染 bug)
+          return false;
+        }
+        // 排除非 Button 类的节点 (mock 父容器误命中)
+        const className = node.className ?? '';
+        if (!/Button|button/i.test(className)) {
           return false;
         }
         return true;
@@ -469,10 +475,14 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       '千机:步骤6:复制',
       async () => {
         const node = await a11y.findByText('复制');
-        // 🆕 08-26 老板拍板兼容方案: 同步骤 5, 排除 bounds=(0,0) 的节点
+        // 🆕 08-26 老板拍板兼容方案: 同步骤 5, 排除 bounds=(0,0) + 非 Button 类
         if (!node) return false;
         const bounds = node.bounds;
         if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
+          return false;
+        }
+        const className = node.className ?? '';
+        if (!/Button|button/i.test(className)) {
           return false;
         }
         return true;
