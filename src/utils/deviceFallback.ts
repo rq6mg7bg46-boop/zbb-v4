@@ -16,7 +16,7 @@
  *   - 360 px / 2 = 180 dp
  *   - 1426 px / 2 = 713 dp
  */
-import { NativeModules } from 'react-native';
+import { loadAppEnv } from '@/config/env';
 
 export interface DeviceFallbackCoords {
   forwardBtn: { x: number; y: number };      // "转发" 按钮
@@ -46,13 +46,24 @@ const FALLBACK_TABLE_PX: Record<string, Omit<DeviceFallbackCoords, 'description'
 };
 
 /**
- * 按 appEnv 查 fallback 坐标
+ * 异步查 fallback 坐标 (用 loadAppEnv, 不依赖 NativeModules.getConstants)
  * 找不到对应 appEnv → 返回 null (走 raiseAlert, 不硬点)
  */
-export function getDeviceFallbackCoords(): DeviceFallbackCoords | null {
-  const buildConstants = NativeModules.ZBBAutomation?.getConstants?.() ?? {};
-  const appEnv = buildConstants.appEnv ?? 'production';
-  const density = buildConstants.DENSITY ?? 320; // 默认 320 (xhdpi)
+export async function getDeviceFallbackCoords(): Promise<DeviceFallbackCoords | null> {
+  // 用 loadAppEnv (跟 env.ts 一致, 读 assets/env.json)
+  let appEnv: string;
+  try {
+    const env = await loadAppEnv();
+    appEnv = env.appEnv;
+  } catch (e) {
+    console.warn(`[deviceFallback] loadAppEnv 失败, 用 production:`, e);
+    appEnv = 'production';
+  }
+
+  // 从 native 拿真实 density (通过 React Native PixelRatio)
+  const { PixelRatio } = require('react-native');
+  const density = PixelRatio.get(); // 返回 dpi 倍率 (e.g. 3.0 for xxhdpi)
+  const dpi = Math.round(160 * density); // e.g. 480
 
   const entry = FALLBACK_TABLE_PX[appEnv];
   if (!entry) {
@@ -61,13 +72,13 @@ export function getDeviceFallbackCoords(): DeviceFallbackCoords | null {
   }
 
   // px → dp 转换 (density / 160 是 dpi 倍率)
-  const scale = density / 160;
+  const scale = density;
   const convert = (px: { x: number; y: number }) => ({
     x: Math.round(px.x / scale),
     y: Math.round(px.y / scale),
   });
 
-  console.log(`[deviceFallback] appEnv=${appEnv} density=${density} scale=${scale.toFixed(2)}: ${entry.desc}`);
+  console.log(`[deviceFallback] appEnv=${appEnv} density=${dpi} scale=${scale.toFixed(2)}: ${entry.desc}`);
   console.log(`[deviceFallback] 转发按钮 fallback 坐标 dp=(${convert(entry.forwardBtn).x}, ${convert(entry.forwardBtn).y})`);
 
   return {

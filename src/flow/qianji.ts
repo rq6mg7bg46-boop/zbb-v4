@@ -459,7 +459,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       await click.byText('转发', { level: HumanLevel.NORMAL });
     } else {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
-      const fallback = getDeviceFallbackCoords();
+      const fallback = await getDeviceFallbackCoords();
       if (fallback) {
         console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 (${fallback.forwardBtn.x}, ${fallback.forwardBtn.y}) dp`);
         await click.byCoords(fallback.forwardBtn.x, fallback.forwardBtn.y, HumanLevel.NORMAL);
@@ -493,7 +493,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       await click.byText('复制', { level: HumanLevel.NORMAL });
     } else {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
-      const fallback = getDeviceFallbackCoords();
+      const fallback = await getDeviceFallbackCoords();
       if (fallback) {
         console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 (${fallback.copyBtn.x}, ${fallback.copyBtn.y}) dp`);
         await click.byCoords(fallback.copyBtn.x, fallback.copyBtn.y, HumanLevel.NORMAL);
