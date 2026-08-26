@@ -138,19 +138,45 @@ export default function HomeScreen() {
   useEffect(() => {
     let a11yTimer: ReturnType<typeof setInterval> | null = null;
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
+    let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
 
     // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
     const unsub = orchestrator.onChange((newState, prevState) => {
       if (newState === OrchState.Cooldown) {
-        setCooldownEnterTime(Date.now());
-        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳');
+        const enterTime = Date.now();
+        setCooldownEnterTime(enterTime);
+        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳, 60s 后自动 COOLDOWN_DONE');
+        // 🆕 08-26 老板拍板修法: Cooldown 60s 后自动发 COOLDOWN_DONE → Idle
+        //   - 之前没自动 trigger → 一直 stuck Cooldown
+        //   - 用 setTimeout, 重复进入 Cooldown 时清旧 timer
+        if (cooldownTimer) {
+          clearTimeout(cooldownTimer);
+          cooldownTimer = null;
+        }
+        cooldownTimer = setTimeout(() => {
+          cooldownTimer = null;
+          // 二次校验: 状态仍是 Cooldown 才发 (避免被 RESET/USER_CONFIRM 抢先)
+          if (orchestrator.getState() === OrchState.Cooldown) {
+            console.log('[HomeScreen] Cooldown 60s 到期 → 发 COOLDOWN_DONE → Idle');
+            orchestrator.send('COOLDOWN_DONE');
+          }
+        }, 60_000);
       } else if (newState === OrchState.Idle) {
         setCooldownEnterTime(0); // 重置
+        if (cooldownTimer) {
+          clearTimeout(cooldownTimer);
+          cooldownTimer = null;
+        }
       } else if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
         // 🆕 08-26 老板拍板: 状态机切到 UserIntervention 不再弹窗
         //   - 弹窗由 qianji.ts 步骤 4 raiseAlert 统一发 (有按钮 + 震动 30s)
         //   - HomeScreen 只负责监听状态变化
         console.log('[HomeScreen] 进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
+        // 清 Cooldown timer (避免在 UserIntervention 状态误发 COOLDOWN_DONE)
+        if (cooldownTimer) {
+          clearTimeout(cooldownTimer);
+          cooldownTimer = null;
+        }
       }
     });
 
@@ -201,6 +227,7 @@ export default function HomeScreen() {
     return () => {
       if (a11yTimer) clearInterval(a11yTimer);
       if (overlayTimer) clearInterval(overlayTimer);
+      if (cooldownTimer) clearTimeout(cooldownTimer); // 🆕 08-26: 清 Cooldown timer
       sub?.remove?.();
       unsub?.(); // 🆕 08-25: 释放 orchestrator.onChange 订阅
     };
@@ -239,12 +266,33 @@ export default function HomeScreen() {
       orchestrator.send('USER_CONFIRM');
       // fallthrough 继续跑流程 (USER_CONFIRM → Idle → START → QianjiRefreshing)
     } else if (currentState === OrchState.Cooldown) {
-      // 🆕 08-25 老板拍板: Cooldown 中 → Toast 提示剩余冷却秒数, 不响应
+      // 🆕 08-26 老板拍板: Cooldown 中 → 给老板两个选项
+      //   1. 老板等 (Toast 提示剩余秒数)
+      //   2. 老板强制开始 (发 COOLDOWN_DONE → Idle → 跑流程)
       const remainingMs = getCooldownRemainingMs();
       const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
-      console.warn(`[开始干活] Cooldown 中 (剩 ${remainingSec}s), 跳过本次点击`);
-      await showSystemToast(`小主,再让我休息${remainingSec}秒嘛`, 3000);
-      return;
+      console.warn(`[开始干活] Cooldown 中 (剩 ${remainingSec}s), 询问老板是否强制开始`);
+
+      const userWantsForce = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          '小主还在冷却中',
+          `剩余 ${remainingSec}s 后可自动开始, 是否要强制开始干活?`,
+          [
+            { text: '再等等', style: 'cancel', onPress: () => resolve(false) },
+            { text: '强制开始', style: 'destructive', onPress: () => resolve(true) },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        );
+      });
+
+      if (!userWantsForce) {
+        await showSystemToast(`小主,再让我休息${remainingSec}秒嘛`, 3000);
+        return;
+      }
+      // 老板强制 → 发 COOLDOWN_DONE → Idle → 走流程
+      console.log('[开始干活] 老板强制开始 → 发 COOLDOWN_DONE → Idle');
+      orchestrator.send('COOLDOWN_DONE');
+      // fallthrough 继续跑流程
     } else if (orchestrator.isRunning()) {
       // 🆕 08-25 老板拍板: Running 中 → Toast 提示已在跑, 不响应
       console.warn('[开始干活] Running 中 (千机/保利/越秀在跑), 跳过本次点击');
