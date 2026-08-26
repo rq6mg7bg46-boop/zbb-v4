@@ -214,10 +214,10 @@ export async function stepParseCustomerInfo(
 //   - 越秀/招商/其他 单写 1 条
 // ============================================================
 export async function stepWriteToReports(customer: CustomerInfo): Promise<number | number[]> {
-  console.log(`[千机:步骤5] 写入 reports 表 (${customer.projectType}): 客户=${customer.customerName}`);
+  console.log(`[千机:步骤4] 写入 reports 表 (${customer.projectType}): 客户=${customer.customerName}`);
 
   if (customer.projectType === 'baoli') {
-    // 保利双写 (08-25 老板拍板文档实战反证金标准)
+    // 保利双写 (08-25 老板拍板: 缦城 + 山水, 其他信息一致)
     const [id1, id2] = await writeBaoliDouble(customer);
     return [id1, id2];
   } else {
