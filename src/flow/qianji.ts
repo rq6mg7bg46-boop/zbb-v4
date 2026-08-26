@@ -110,11 +110,11 @@ export async function stepRecognizeInterface(): Promise<A11yNode[]> {
 
   // 过滤业务关键节点
   const businessNodes = textNodes.filter(node =>
-    node.text && node.text.trim().length > 0 && node.centerX > 0 && node.centerY > 0
+    node.text && node.text.trim().length > 0 && (node.centerX ?? 0) > 0 && (node.centerY ?? 0) > 0
   );
 
   businessNodes.forEach((node) => {
-    console.log(`[千机:步骤2] "${node.text}" at (${Math.round(node.centerX)}, ${Math.round(node.centerY)})`);
+    console.log(`[千机:步骤2] "${node.text}" at (${Math.round(node.centerX ?? 0)}, ${Math.round(node.centerY ?? 0)})`);
   });
 
   console.log(`[千机:步骤2] ✓ 界面识别完成 (${businessNodes.length} 个有效节点)`);
@@ -567,43 +567,46 @@ function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: string; cust
   let customerName = '';
   let phoneRaw = '';
 
+  // 🆕 08-26 老板拍板 修法 D: 真千机 + mock 双兼容
+  //   优先级 0: content-desc 前缀 "楼盘 " (mock 首页独有, 语义最准)
+  for (const node of nodes) {
+    if (!projectName && node.contentDesc?.startsWith('楼盘 ')) {
+      projectName = node.contentDesc.substring(3).trim();
+      break;
+    }
+  }
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // 项目名: 先尝试"报备项目:" key:value 形式
-    if (!projectName && trimmed.includes('报备项目')) {
-      const m = trimmed.match(/报备项目\s*[:：]?\s*(.+)$/);
-      if (m) {
-        projectName = m[1].trim();
-        continue;
-      }
-    }
-
-    // 项目名 fallback (08-25 实战反证金标准):
-    //   mock 千机首页"保利缦城和颂"是独立卡片标题节点 (红字),
-    //   不带"报备项目:"前缀, 也不带"保利"前缀 (可能直接是"保利缦城和颂")
-    //   → 节点 text 匹配 (保利|越秀|招商) + 后面跟项目名 = 提取
-    //   排除 false positive: "公司名称: 贝壳" / "客户姓名: 陈杰" 等
+    // 项目名 (修法 D 双兼容):
+    //   优先级 1: 严格独立行 "保利缦城和颂" — 防误匹配
+    //   优先级 2: 拼接行里找 "保利缦城和颂 报备审核" — 兜底真千机
     if (!projectName) {
-      // 实战反证金标准: 项目名通常 4-12 字, 不能太长 (排除地址/句子)
-      const m = trimmed.match(/^((?:保利|越秀|招商)[\u4e00-\u9fa5]{1,15})$/);
-      if (m) {
-        projectName = m[1].trim();
+      const strictMatch = trimmed.match(/^((?:保利|越秀|招商)[\u4e00-\u9fa5]{1,15})$/);
+      if (strictMatch) {
+        projectName = strictMatch[1].trim();
+        continue;
+      }
+      const looseMatch = trimmed.match(/((?:保利|越秀|招商)[\u4e00-\u9fa5]{1,15})/);
+      if (looseMatch) {
+        projectName = looseMatch[1].trim();
         continue;
       }
     }
 
-    // 客户姓名
+    // 客户姓名 (兼容真千机半角: + mock 全角：, 都接 : 和 )
     if (!customerName && trimmed.includes('客户姓名')) {
       let name = trimmed.replace(/客户姓名\s*[:：]?\s*/g, '').trim();
       name = name.replace(/[，,]\s*点击复制.*$/, '').trim();
       name = name.replace(/点击复制.*$/, '').trim();
+      name = name.replace(/\s+非首次报备.*$/, '').trim(); // 🆕 真千机: "王女士 非首次报备"
       customerName = name;
       continue;
     }
 
-    // 联系方式 (mock 用空格 "联系方式 192****7209", 真千机用 ":" / ":")
+    // 联系方式 (兼容真千机 "联系方式:" + mock "联系方式：", 拼接行)
     if (!phoneRaw && trimmed.includes('联系方式')) {
       const m = trimmed.match(/联系方式\s*[:：]?\s*(.+)$/);
       if (m) {
