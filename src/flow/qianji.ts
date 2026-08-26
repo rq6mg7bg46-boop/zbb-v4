@@ -18,7 +18,7 @@ import ZBBAutomation from '@/native';
 import type { A11yNode } from '@/native';
 import { verifyAndRecover, waitForScreenWithRollback } from './verify';
 import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env';
-import { writeReport, writeBaoliDouble } from '@/services/database';
+import { writeReport, writeBaoliDouble, getRecentReports } from '@/services/database';
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, quickCheck, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
@@ -398,12 +398,23 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
     // 对比成功 → 重置计数 + 直接用 varB 写库
     _mismatchRetryCount = 0;
     console.log(`[千机:步骤4] ✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
-
+    // 写库 (缺口2: 保利双写 / 其他单写)
     const writeResult = await stepWriteToReports(varB);
     if (Array.isArray(writeResult)) {
       console.log(`[千机:步骤4] 保利双写: ID=${writeResult.join(',')}`);
     } else {
       console.log(`[千机:步骤4] 单写: ID=${writeResult}`);
+    }
+
+    // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID 计算)
+    try {
+      const recentReports = await getRecentReports(3);
+      console.log(`[千机:步骤4] 📋 数据库最近 ${recentReports.length} 组客户:`);
+      recentReports.forEach((r: any, idx: number) => {
+        console.log(`[千机:步骤4]   [${idx + 1}] ID=${r.id} 客户=${r.customerName} 项目=${r.projectName} 类型=${r.projectType} 电话=${r.phone}`);
+      });
+    } catch (e: any) {
+      console.warn(`[千机:步骤4] 读取数据库失败: ${e.message}`);
     }
 
     // ============ 步骤 5: A11y 找"转发" + 点转发 (有界面变化) ============

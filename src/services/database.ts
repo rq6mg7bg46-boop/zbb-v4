@@ -144,6 +144,15 @@ export async function getPendingReports(projectType?: string): Promise<any[]> {
 }
 
 /**
+ * 🆕 08-26 老板实战要求: 查数据库最近 N 条记录 (按 id DESC)
+ *   步骤 4 末尾打印, 实战双写是否真的写了 2 条
+ */
+export async function getRecentReports(limit: number = 3): Promise<any[]> {
+  const db = await ensureDb();
+  return db.getAllAsync(`SELECT * FROM reports ORDER BY id DESC LIMIT ?`, limit);
+}
+
+/**
  * 标记 report 完成
  */
 export async function markReportDone(id: number, status: 'done' | 'failed' = 'done'): Promise<void> {
