@@ -380,10 +380,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       await ZBBAutomation.delay(1000);
 
       if (_mismatchRetryCount >= MISMATCH_MAX_RETRIES) {
+        // 3 次不一致 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
         const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请你手动处理';
         console.error(`[千机:步骤4] ${dialogMessage}`);
         console.error(`[千机:步骤4] 差异详情: ${diffMsg}`);
-        await raiseAlert(dialogMessage);
         _mismatchRetryCount = 0;
         return null;
       }
@@ -441,9 +441,8 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
     if (error instanceof RetryFlowError) {
       throw error;
     }
-    // 真异常 → 立即 raiseAlert, 不重试
+    // 真异常 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
     console.error('[千机端] 流程失败:', error);
-    await raiseAlert('小主,千机端流程出问题了,请手动处理');
     return null;
   }
 }

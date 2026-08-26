@@ -94,7 +94,7 @@ export class RetryFlowError extends Error {
 }
 
 /**
- * 千机端整条流程重试包装 (08-25 老板拍板 C 方案)
+ * 千机端整条流程重试包装 (08-25 老板拍板 方案 B: 单一弹窗源)
  *
  * 用法:
  *   export async function runXxxFlow(): Promise<Result | null> {
@@ -105,8 +105,10 @@ export class RetryFlowError extends Error {
  *
  * 行为:
  *   - 内部函数抛 RetryFlowError → 返回 + 重新进入 → 重试整条
- *   - 内部函数抛其他异常 → 直接 raiseAlert
- *   - 重试 MAX_FLOW_RETRIES 次都失败 → raiseAlert
+ *   - 内部函数抛其他异常 → 直接 return null (不 raiseAlert)
+ *   - 内部函数 return null → 视为失败, 触发整条重试
+ *   - 重试 MAX_FLOW_RETRIES 次都失败 → return null (不 raiseAlert)
+ *   - 弹窗源统一在 HomeScreen (监听 orchestrator state 切到 UserIntervention)
  */
 export const MAX_FLOW_RETRIES = 3;
 
@@ -120,7 +122,7 @@ export async function withFlowRetry<T>(
     try {
       const result = await fn();
       if (result !== null) return result;
-      // 返回 null 也算失败, 但用 throw 显式表达
+      // 返回 null 也算失败, 触发整条重试
       console.warn(`[${flowName}] 返回 null (attempt ${attempt})`);
     } catch (e: any) {
       if (e instanceof RetryFlowError) {
@@ -132,15 +134,13 @@ export async function withFlowRetry<T>(
           continue; // 重试整条
         }
       } else {
-        // 真异常 → 立即 raiseAlert
+        // 真异常 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
         console.error(`[${flowName}] 真异常:`, e);
-        await raiseAlert(`小主,${flowName}流程出问题了,请手动处理`);
         return null;
       }
     }
   }
-  // 重试上限
-  console.error(`[${flowName}] 重试 ${MAX_FLOW_RETRIES} 次都失败, raiseAlert`);
-  await raiseAlert(`小主,${flowName}连续${MAX_FLOW_RETRIES}次异常,请手动处理`);
+  // 重试上限 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
+  console.error(`[${flowName}] 重试 ${MAX_FLOW_RETRIES} 次都失败`);
   return null;
 }

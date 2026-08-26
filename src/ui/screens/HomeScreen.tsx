@@ -139,13 +139,19 @@ export default function HomeScreen() {
     let a11yTimer: ReturnType<typeof setInterval> | null = null;
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
 
-    // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳
-    const unsub = orchestrator.onChange((newState) => {
+    // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
+    const unsub = orchestrator.onChange((newState, prevState) => {
       if (newState === OrchState.Cooldown) {
         setCooldownEnterTime(Date.now());
         console.log('[HomeScreen] 进入 Cooldown, 记录时间戳');
       } else if (newState === OrchState.Idle) {
         setCooldownEnterTime(0); // 重置
+      } else if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
+        // 🆕 08-26 老板拍板 方案 B: 单一弹窗源 (HomeScreen)
+        //   - 只在 QianjiRefreshing/BaoliRunning → UserIntervention 时弹 1 次
+        //   - 避免重复弹 (e.g. 状态机切换时)
+        console.log('[HomeScreen] 进入 UserIntervention, 弹 1 次 Toast');
+        showSystemToast('小主,千机端流程连续3次异常,请手动处理', 5000);
       }
     });
 
