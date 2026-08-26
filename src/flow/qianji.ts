@@ -432,7 +432,20 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
     console.log('[千机:步骤5] A11y 找"转发" (第二次, 进对象选择页)...');
     const step5Ok = await findWithRecovery(
       '千机:步骤5:转发',
-      async () => !!(await a11y.findByText('转发'))
+      async () => {
+        const node = await a11y.findByText('转发');
+        // 🆕 08-26 老板拍板兼容方案: 真千机 + mock 双兼容
+        //   - 真千机 002.xml: text='', content-desc='转发', bounds 真实
+        //   - mock: text='转发', content-desc='转发按钮', 但 bounds 可能是 (0,0)
+        //   实战: 节点存在 + bounds 有效 → 才认为找到
+        if (!node) return false;
+        const bounds = node.bounds;
+        if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
+          // bounds 空 → 跳过此节点 (mock 渲染 bug)
+          return false;
+        }
+        return true;
+      }
     );
     if (!step5Ok) {
       throw new RetryFlowError('步骤5: 未找到"转发"');
@@ -445,7 +458,16 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
     console.log('[千机:步骤6] A11y 找"复制"...');
     const step6Ok = await findWithRecovery(
       '千机:步骤6:复制',
-      async () => !!(await a11y.findByText('复制'))
+      async () => {
+        const node = await a11y.findByText('复制');
+        // 🆕 08-26 老板拍板兼容方案: 同步骤 5, 排除 bounds=(0,0) 的节点
+        if (!node) return false;
+        const bounds = node.bounds;
+        if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
+          return false;
+        }
+        return true;
+      }
     );
     if (!step6Ok) {
       throw new RetryFlowError('步骤6: 未找到"复制"');
