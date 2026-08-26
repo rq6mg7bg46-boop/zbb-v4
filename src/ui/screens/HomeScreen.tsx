@@ -16,6 +16,8 @@
  *                只用 V4.x 精简 native module + ZBBAutomation basic methods
  */
 
+// 🆕 08-26 老板拍板 v32.18: 模块级 cooldownTimer (不被 useEffect 依赖变化清理)
+let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -138,7 +140,7 @@ export default function HomeScreen() {
   useEffect(() => {
     let a11yTimer: ReturnType<typeof setInterval> | null = null;
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
-    let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
+    // 🆕 08-26 v32.18: cooldownTimer 改为模块级, 不在这里声明
 
     // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
     const unsub = orchestrator.onChange((newState, prevState) => {
@@ -225,11 +227,10 @@ export default function HomeScreen() {
     });
 
     return () => {
+      unsub();
       if (a11yTimer) clearInterval(a11yTimer);
       if (overlayTimer) clearInterval(overlayTimer);
-      if (cooldownTimer) clearTimeout(cooldownTimer); // 🆕 08-26: 清 Cooldown timer
-      sub?.remove?.();
-      unsub?.(); // 🆕 08-25: 释放 orchestrator.onChange 订阅
+      // 🆕 08-26 v32.18: 不清模块级 cooldownTimer, 让 60s 计时继续跑
     };
   }, [checkA11yOnce, checkOverlayOnce, a11yEnabled, overlayGranted]);
 
@@ -266,33 +267,10 @@ export default function HomeScreen() {
       orchestrator.send('USER_CONFIRM');
       // fallthrough 继续跑流程 (USER_CONFIRM → Idle → START → QianjiRefreshing)
     } else if (currentState === OrchState.Cooldown) {
-      // 🆕 08-26 老板拍板: Cooldown 中 → 给老板两个选项
-      //   1. 老板等 (Toast 提示剩余秒数)
-      //   2. 老板强制开始 (发 COOLDOWN_DONE → Idle → 跑流程)
-      const remainingMs = getCooldownRemainingMs();
-      const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
-      console.warn(`[开始干活] Cooldown 中 (剩 ${remainingSec}s), 询问老板是否强制开始`);
-
-      const userWantsForce = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          '小主还在冷却中',
-          `剩余 ${remainingSec}s 后可自动开始, 是否要强制开始干活?`,
-          [
-            { text: '再等等', style: 'cancel', onPress: () => resolve(false) },
-            { text: '强制开始', style: 'destructive', onPress: () => resolve(true) },
-          ],
-          { cancelable: true, onDismiss: () => resolve(false) },
-        );
-      });
-
-      if (!userWantsForce) {
-        await showSystemToast(`小主,再让我休息${remainingSec}秒嘛`, 3000);
-        return;
-      }
-      // 老板强制 → 发 COOLDOWN_DONE → Idle → 走流程
-      console.log('[开始干活] 老板强制开始 → 发 COOLDOWN_DONE → Idle');
+      // 🆕 08-26 老板拍板 v32.18: 老板点开始干活 → 直接强制退出 Cooldown, 不弹窗
+      console.log('[开始干活] 老板强制退出 Cooldown → 发 COOLDOWN_DONE → Idle → 走流程');
       orchestrator.send('COOLDOWN_DONE');
-      // fallthrough 继续跑流程
+      // fallthrough 继续走流程 (COOLDOWN_DONE → Idle → START → QianjiRefreshing)
     } else if (orchestrator.isRunning()) {
       // 🆕 08-25 老板拍板: Running 中 → Toast 提示已在跑, 不响应
       console.warn('[开始干活] Running 中 (千机/保利/越秀在跑), 跳过本次点击');
