@@ -458,10 +458,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       console.log(`[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
       await click.byText('转发', { level: HumanLevel.NORMAL });
     } else {
-      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
+      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
-        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 (${fallback.forwardBtn.x}, ${fallback.forwardBtn.y}) dp`);
+        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 (${fallback.forwardBtn.x}, ${fallback.forwardBtn.y}) px`);
         await click.byCoords(fallback.forwardBtn.x, fallback.forwardBtn.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
@@ -492,10 +492,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       console.log(`[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)`);
       await click.byText('复制', { level: HumanLevel.NORMAL });
     } else {
-      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按机型)
+      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
-        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 (${fallback.copyBtn.x}, ${fallback.copyBtn.y}) dp`);
+        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 (${fallback.copyBtn.x}, ${fallback.copyBtn.y}) px`);
         await click.byCoords(fallback.copyBtn.x, fallback.copyBtn.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
