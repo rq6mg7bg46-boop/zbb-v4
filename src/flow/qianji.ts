@@ -417,13 +417,12 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
         const phone = r.phone ?? '';
         const projectName = r.projectName ?? r.project_name ?? '';
         const projectType = r.projectType ?? r.project_type ?? '';
-        // phone 三段拆
+        // phone 三段拆 (老板 08-26 要求: 不需要后3)
         const phonePart1 = r.phonePart1 ?? r.phone_part1 ?? '';
         const phonePart2 = r.phonePart2 ?? r.phone_part2 ?? '';
-        const phonePart3 = r.phonePart3 ?? r.phone_part3 ?? '';
         const phoneLast4 = r.phoneLast4 ?? r.phone_last4 ?? '';
         console.log(`[千机:步骤4]   [${idx + 1}] ID=${id} 客户=${customerName} 项目=${projectName} 类型=${projectType}`);
-        console.log(`[千机:步骤4]        电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后3=${phonePart3} 后4=${phoneLast4})`);
+        console.log(`[千机:步骤4]        电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后4=${phoneLast4})`);
       });
     } catch (e: any) {
       console.warn(`[千机:步骤4] 读取数据库失败: ${e.message}`);
