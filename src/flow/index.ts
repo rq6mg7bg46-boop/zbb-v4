@@ -32,7 +32,8 @@ export type WorkflowResult = {
     | 'qianji_failed'
     | 'baoli_failed'
     | 'unknown_project'
-    | 'success';
+    | 'success'
+    | 'no_report';
   customerName?: string;
   projectType?: string;
 };
@@ -70,8 +71,16 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
   try {
     // 3. 千机端
     const customer = await runQianjiFlow();
+    if (customer === 'no_report') {
+      // 🆕 08-26 老板拍板: 无客户 = 正常业务状态, 进 Cooldown (不打扰老板)
+      //   - notifyNoReport Toast 已显示
+      //   - 状态机: QianjiRefreshing + QIANJI_NO_REPORT → Cooldown (60s)
+      console.log('[runZbbWorkflow] 千机端无客户 → 进 Cooldown (正常跳过)');
+      orchestrator.send('QIANJI_NO_REPORT'); // 需要状态机支持这个事件
+      return { ok: true, skipped: true, reason: 'no_report' };
+    }
     if (!customer) {
-      // 🆕 08-25 老板拍板: 千机端 raiseAlert / return null = 非正常结束
+      // 千机端 raiseAlert / return null = 非正常结束
       //   → 进 UserIntervention, 等老板点"开始干活"才恢复
       //   状态机: QianjiRefreshing + QIANJI_INTERVENE → UserIntervention
       console.warn('[runZbbWorkflow] 千机端失败 → 进 UserIntervention (等老板)');

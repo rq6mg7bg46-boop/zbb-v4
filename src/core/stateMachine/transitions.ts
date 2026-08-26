@@ -30,6 +30,7 @@ export type TransitionEvent =
   | 'QIANJI_READY'       // 千机数据 ready
   | 'QIANJI_FAILED'      // 千机真正失败 → Error
   | 'QIANJI_INTERVENE'   // 千机 raiseAlert → UserIntervention (老板实战反证金标准 08-25)
+  | 'QIANJI_NO_REPORT'   // 千机无客户 → Cooldown (08-26 老板拍板, 不打扰老板)
   | 'BAOLI_COMPLETE'     // 保利完成
   | 'BAOLI_FAILED'       // 保利失败
   | 'BAOLI_INTERVENE'    // 保利需要老板介入
@@ -58,6 +59,8 @@ export const TRANSITIONS: Transition[] = [
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_FAILED', to: OrchState.Error, description: '千机真正失败 -> 错误' },
   // 🆕 08-25 老板拍板: 千机 raiseAlert → UserIntervention (非正常结束, 等老板点"开始干活")
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_INTERVENE', to: OrchState.UserIntervention, description: '千机 raiseAlert → 老板介入' },
+  // 🆕 08-26 老板拍板: 千机无客户 → Cooldown (正常业务状态, 不打扰老板)
+  { from: OrchState.QianjiRefreshing, event: 'QIANJI_NO_REPORT', to: OrchState.Cooldown, description: '千机无客户 → 冷却 60s → Idle' },
 
   // 保利 -> 越秀
   { from: OrchState.BaoliRunning, event: 'BAOLI_COMPLETE', to: OrchState.YuexiuRunning, description: '保利完成 -> 越秀' },

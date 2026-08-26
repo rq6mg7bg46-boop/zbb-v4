@@ -272,7 +272,7 @@ const MISMATCH_MAX_RETRIES = 3;
 //   - 重试 3 次都失败 → raiseAlert 等老板手动
 //   - 真异常 → 立即 raiseAlert
 // ============================================================
-export async function runQianjiFlow(): Promise<CustomerInfo | null> {
+export async function runQianjiFlow(): Promise<CustomerInfo | null | 'no_report'> {
   return withFlowRetry('千机端', runQianjiFlowInner, async () => {
     // 整条重试前的恢复动作: 返回 + 等动画
     console.log('[千机端] 整条重试前 → 返回键 + 等 1s');
@@ -281,7 +281,7 @@ export async function runQianjiFlow(): Promise<CustomerInfo | null> {
   });
 }
 
-async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
+async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> {
   console.log('========== 千机端流程开始 (7 步骤) ==========');
 
   try {
@@ -323,10 +323,12 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null> {
       const refreshedCount = readReportCountFromNodes(refreshedNodes);
       console.log(`[千机:步骤2] 刷新后报备数量=${refreshedCount}`);
       if (refreshedCount === 0) {
-        console.log('[千机:步骤2] 刷新后仍=0, 提示用户并结束本轮');
+        // 🆕 08-26 老板拍板: 无客户 = 正常业务状态 (非异常), 不打扰老板
+        //   - 用 notifyNoReport (Toast, 不弹 Dialog)
+        //   - 返回特殊值 'no_report' 让 runZbbWorkflow 进 Cooldown
+        console.log('[千机:步骤2] 刷新后仍=0, 无客户 → 进 Cooldown (不打扰老板)');
         await notifyNoReport();
-        await pressKey.back();
-        return null;
+        return 'no_report' as any; // 特殊标识: 无客户 → 进 Cooldown
       }
     }
 
