@@ -7,7 +7,7 @@
  * - 新增 chromeContents 字段给千机端
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 const CHROME_TOP_Y_MIN = 40;
 const CHROME_TOP_Y_MAX = 150;

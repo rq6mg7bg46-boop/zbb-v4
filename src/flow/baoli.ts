@@ -22,12 +22,12 @@
  * 业务流程 = 只调 operations + orchestrator
  */
 
-import { orchestrator, OrchState } from '@/core/stateMachine';
-import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe } from '@/operations';
-import ZBBAutomation from '@/native';
+import { orchestrator } from '@/core/stateMachine';
+import { click, longPress, a11y, judge, pressKey } from '@/operations';
+import { ZBBAutomation } from '@/native';
 import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
-import { px } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板实战反证金标准 08-23)
+import { px } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23)
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',

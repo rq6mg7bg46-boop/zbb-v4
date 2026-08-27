@@ -11,17 +11,16 @@
  * 业务流程 = 只调 operations method + orchestrator.send()
  */
 
-import { orchestrator, OrchState } from '@/core/stateMachine';
-import { click, longPress, a11y, judge, rollback, pressKey, threeFingerSwipe, swipe } from '@/operations';
+import { click, a11y, judge, pressKey, swipe } from '@/operations';
 import { HumanLevel } from '@/utils/HumanOffset';
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 import type { A11yNode } from '@/native';
 import { verifyAndRecover, waitForScreenWithRollback } from './verify';
 import { APP_PACKAGES, qianjiPackage, qianjiMainActivity } from '@/config/env';
 import { writeReport, writeBaoliDouble, getRecentReports } from '@/services/database';
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
-import { raiseAlert, showToast, notifyNoReport } from '@/services/alert';
-import { withFlowRetry, quickCheck, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
+import { raiseAlert, notifyNoReport } from '@/services/alert';
+import { withFlowRetry, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
 import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
 
 // ============================================================
@@ -325,10 +324,10 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       if (refreshedCount === 0) {
         // 🆕 08-26 老板拍板: 无客户 = 正常业务状态 (非异常), 不打扰老板
         //   - 用 notifyNoReport (Toast, 不弹 Dialog)
-        //   - 返回特殊值 'no_report' 让 runZbbWorkflow 进 Cooldown
-        console.log('[千机:步骤2] 刷新后仍=0, 无客户 → 进 Cooldown (不打扰老板)');
+        //   - 返回特殊值 'no_report' 让 runZbbWorkflow → QIANJI_NO_REPORT → Idle (08-27 拍板直 Idle, 不绕 Cooldown)
+        console.log('[千机:步骤2] 刷新后仍=0, 无客户 → 直 Idle (不打扰老板)');
         await notifyNoReport();
-        return 'no_report' as any; // 特殊标识: 无客户 → 进 Cooldown
+        return 'no_report' as any; // 特殊标识: 无客户 → 直 Idle
       }
     }
 

@@ -9,7 +9,7 @@
  * - getWindowTree()          获取整棵 UI 树
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 import type { A11yNode } from '@/native';
 
 export async function findByText(text: string): Promise<A11yNode | null> {

@@ -13,7 +13,7 @@
  *   await click.byText('开始');
  */
 
-import ZBBAutomation, { A11yNode } from '@/native';
+import { ZBBAutomation, A11yNode } from '@/native';
 import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
 
 const DEFAULT_TIMEOUT_MS = 5000;

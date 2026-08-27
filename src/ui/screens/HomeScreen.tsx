@@ -16,8 +16,7 @@
  *                只用 V4.x 精简 native module + ZBBAutomation basic methods
  */
 
-// 🆕 08-27 v32.19: cooldownTimer 用 native Handler.postDelayed, 不需 JS 模块级变量
-// (Handler 是 Android native, 跨 RN reload 不失效)
+// 🆕 08-27: 删冷却 (Cooldown 状态已删除, 不再需要 native timer)
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -26,20 +25,18 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Platform,
   AppState,
+  NativeModules,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { runZbbWorkflow } from '@/flow';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
-import { setNativeTimer, clearNativeTimer } from '@/services/nativeTimer';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
 // 实战反证金标准 (08-22): V4.x native 暴露 isAccessibilityServiceRunning, 不是 isServiceRunning
-import { NativeModules } from 'react-native';
 const ZBBAutomation = (NativeModules as any).ZBBAutomation ?? {
   isAccessibilityServiceRunning: () => Promise.resolve(false),
   isOverlayPermissionGranted: () => Promise.resolve(false),
@@ -111,9 +108,8 @@ export default function HomeScreen() {
   const [a11yEnabled, setA11yEnabled] = useState(false);
   const [overlayGranted, setOverlayGranted] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [todayCount, setTodayCount] = useState(0);
-  // 🆕 08-25: Cooldown 进入时间戳 (用于 Toast 显示剩余秒数)
-  const [_cooldownEnterTime, setCooldownEnterTime] = useState(0);
+  const [todayCount, setTodayCount] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars -- await V4.x 实装: 完成 customer 写入数据库后回填计数
+  // 🆕 08-27 删冷却: _cooldownEnterTime state 已删除 (Cooldown 状态不存在了)
 
   // V4.x 实战反证金标准 (08-22): 每秒检测, 检测到开启就停
   const checkA11yOnce = useCallback(async (): Promise<boolean> => {
@@ -141,32 +137,14 @@ export default function HomeScreen() {
   useEffect(() => {
     let a11yTimer: ReturnType<typeof setInterval> | null = null;
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
-    // 🆕 08-26 v32.18: cooldownTimer 改为模块级, 不在这里声明
 
-    // 🆕 08-26 老板拍板: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
+    // 🆕 08-27 删冷却: 状态机监听简化为只处理 UserIntervention 弹窗
+    //   - Cooldown 状态已删除
+    //   - 弹窗由 qianji.ts 步骤 4 raiseAlert 统一发 (有按钮 + 震动 30s)
+    //   - HomeScreen 只负责监听状态变化
     const unsub = orchestrator.onChange((newState, prevState) => {
-      if (newState === OrchState.Cooldown) {
-        const enterTime = Date.now();
-        setCooldownEnterTime(enterTime);
-        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳, 60s 后 native timer 自动 COOLDOWN_DONE');
-        // 🆕 08-27 v32.19: 用 native timer (Handler.postDelayed 持久化, 跨 RN reload 不失效)
-        //   - 之前 v32.18 JS setTimeout 模块级变量 reload 后丢失 → stuck Cooldown
-        setNativeTimer('COOLDOWN_DONE', 60_000, () => {
-          if (orchestrator.getState() === OrchState.Cooldown) {
-            console.log('[HomeScreen] native Cooldown 60s 到期 → 发 COOLDOWN_DONE → Idle');
-            orchestrator.send('COOLDOWN_DONE');
-          }
-        });
-      } else if (newState === OrchState.Idle) {
-        setCooldownEnterTime(0); // 重置
-        clearNativeTimer('COOLDOWN_DONE');
-      } else if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
-        // 🆕 08-26 老板拍板: 状态机切到 UserIntervention 不再弹窗
-        //   - 弹窗由 qianji.ts 步骤 4 raiseAlert 统一发 (有按钮 + 震动 30s)
-        //   - HomeScreen 只负责监听状态变化
+      if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
         console.log('[HomeScreen] 进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
-        // 清 Cooldown native timer (避免在 UserIntervention 状态误发 COOLDOWN_DONE)
-        clearNativeTimer('COOLDOWN_DONE');
       }
     });
 
@@ -216,9 +194,9 @@ export default function HomeScreen() {
 
     return () => {
       unsub();
+      sub.remove();
       if (a11yTimer) clearInterval(a11yTimer);
       if (overlayTimer) clearInterval(overlayTimer);
-      // 🆕 08-26 v32.18: 不清模块级 cooldownTimer, 让 60s 计时继续跑
     };
   }, [checkA11yOnce, checkOverlayOnce, a11yEnabled, overlayGranted]);
 
@@ -235,10 +213,11 @@ export default function HomeScreen() {
     ZBBAutomation.openOverlaySettings?.();
   }, []);
 
-// 开始干活 (V4.x 08-24 + 08-25 正常/非正常结束)
-  //   - 正常结束 (Cooldown/Idle): 自动接龙 → runZbbWorkflow
-  //   - 非正常结束 (UserIntervention): 老板点"开始干活" → USER_CONFIRM → Idle → 再跑
-  //   - 5min 自动触发器也调同一个 runZbbWorkflow, 100% 复用同一套流程
+// 开始干活 (V4.x 08-24 + 08-27 删冷却)
+  //   - Idle / Running 中: 老板点 / 反息屏 / 千机监听 都能立刻启动
+  //   - UserIntervention (流程异常结束): 老板点"开始干活" → USER_CONFIRM → Idle → 再跑
+  //   - 流程入口 1: HomeScreen 点"开始干活"; 入口 2: 千机监听; 入口 3: 反息屏 (services/index.ts)
+  //   - 三个入口都调同一个 runZbbWorkflow, 100% 复用同一套流程
   const handleStart = useCallback(async () => {
     if (!a11yEnabled || !overlayGranted) {
       Alert.alert(
@@ -254,11 +233,6 @@ export default function HomeScreen() {
       console.log('[开始干活] UserIntervention 状态 → 发 USER_CONFIRM → Idle → 再跑流程');
       orchestrator.send('USER_CONFIRM');
       // fallthrough 继续跑流程 (USER_CONFIRM → Idle → START → QianjiRefreshing)
-    } else if (currentState === OrchState.Cooldown) {
-      // 🆕 08-26 老板拍板 v32.18: 老板点开始干活 → 直接强制退出 Cooldown, 不弹窗
-      console.log('[开始干活] 老板强制退出 Cooldown → 发 COOLDOWN_DONE → Idle → 走流程');
-      orchestrator.send('COOLDOWN_DONE');
-      // fallthrough 继续走流程 (COOLDOWN_DONE → Idle → START → QianjiRefreshing)
     } else if (orchestrator.isRunning()) {
       // 🆕 08-25 老板拍板: Running 中 → Toast 提示已在跑, 不响应
       console.warn('[开始干活] Running 中 (千机/保利/越秀在跑), 跳过本次点击');
@@ -274,8 +248,7 @@ export default function HomeScreen() {
         console.warn(`[开始干活] 流程跳过: ${result.reason}`);
         Alert.alert('提示', `流程跳过: ${result.reason}`);
       } else if (result.ok) {
-        console.log(`[开始干活] 流程完成: ${result.customerName} (自动接龙中...)`);
-        // 🆕 08-25 老板拍板: 正常结束不弹"完成" Alert, 避免打断自动接龙
+        console.log(`[开始干活] 流程完成: ${result.customerName}`);
       } else {
         console.warn(`[开始干活] 流程失败: ${result.reason} → UserIntervention`);
         // 失败已转 UserIntervention, 等老板点"开始干活"才恢复
@@ -288,13 +261,7 @@ export default function HomeScreen() {
     }
   }, [a11yEnabled, overlayGranted]);
 
-  // 🆕 08-25 老板拍板: 计算 Cooldown 剩余秒数
-  //   Cooldown 进入时间存在 _cooldownEnterTime, 60s 后 COOLDOWN_DONE
-  function getCooldownRemainingMs(): number {
-    const COOLDOWN_MS = 60_000;
-    const elapsed = Date.now() - _cooldownEnterTime;
-    return Math.max(0, COOLDOWN_MS - elapsed);
-  }
+  // 🆕 08-27 删冷却: getCooldownRemainingMs 已删除 (Cooldown 不存在)
 
   // 三指下滑截图测试
   const handleThreeFingerTest = useCallback(() => {

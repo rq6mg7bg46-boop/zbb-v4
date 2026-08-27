@@ -1,14 +1,18 @@
 /**
  * V4.x State Machine States (老板实战反证金标准 08-22)
  *
- * 7 态定义 (V3.0 实战反证金标准):
- * - Idle              空闲 (等待老板点"开始干活")
+ * 6 态定义 (08-27 老板拍板: 删 Cooldown, 正常结束直接 Idle):
+ * - Idle              空闲 (流程正常结束) → 老板点 / 千机监听 / 反息屏触发 都能立刻启动
  * - QianjiRefreshing  千机端刷数据
  * - BaoliRunning      保利流程
  * - YuexiuRunning     越秀流程
- * - UserIntervention  用户介入 (需要老板手动确认)
- * - Cooldown          冷却 (60s 内不重复触发)
+ * - UserIntervention  用户介入 (流程异常结束, 必须老板点"开始干活")
  * - Error             错误 (需要恢复)
+ *
+ * 设计:
+ * - 流程跑完 (YUEXIU_COMPLETE / QIANJI_NO_REPORT) → 直 → Idle, 不再绕 Cooldown
+ * - 反息屏 5min 触发跟业务流程互相不感知 (各自守卫), 反息屏不能打断运行中的业务
+ * - UserIntervention 期间 = 异常结束, 反息屏不触发业务 (老板不介入, 没人操作, lastInteraction 不刷新, 永远不触发)
  */
 
 export enum OrchState {
@@ -17,12 +21,11 @@ export enum OrchState {
   BaoliRunning = 'BaoliRunning',
   YuexiuRunning = 'YuexiuRunning',
   UserIntervention = 'UserIntervention',
-  Cooldown = 'Cooldown',
   Error = 'Error',
 }
 
 /**
- * 7 态列表 (用于 UI 渲染)
+ * 6 态列表 (用于 UI 渲染)
  */
 export const ALL_STATES: OrchState[] = [
   OrchState.Idle,
@@ -30,7 +33,6 @@ export const ALL_STATES: OrchState[] = [
   OrchState.BaoliRunning,
   OrchState.YuexiuRunning,
   OrchState.UserIntervention,
-  OrchState.Cooldown,
   OrchState.Error,
 ];
 
@@ -71,13 +73,7 @@ export const STATE_INFO: Record<OrchState, {
     label: '需要老板介入',
     icon: '✋',
     color: '#F59E0B',
-    description: '需要老板手动确认',
-  },
-  [OrchState.Cooldown]: {
-    label: '冷却中',
-    icon: '❄',
-    color: '#06B6D4',
-    description: '60s 内不重复触发',
+    description: '流程异常结束,需要老板手动点"开始干活"',
   },
   [OrchState.Error]: {
     label: '错误',

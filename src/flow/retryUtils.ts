@@ -14,8 +14,7 @@
  *     4. raiseAlert — 3 次都失败才打扰老板
  */
 
-import ZBBAutomation from '@/native';
-import { raiseAlert } from '@/services/alert';
+import { ZBBAutomation } from '@/native';
 
 /**
  * 类型 A: 无界面变化的快速检测

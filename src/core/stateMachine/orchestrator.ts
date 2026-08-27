@@ -18,23 +18,23 @@ import {
   TransitionEvent,
   canTransition,
   applyTransition,
-  findTransition,
+  TRANSITIONS,
 } from './transitions';
 import { stateBus } from './eventBus';
 
 type StateChangeListener = (newState: OrchState, oldState: OrchState, event: TransitionEvent) => void;
 
-/** 业务跑状态集合 (实战反证金标准 08-24: 老板拍板 isRunning 语义)
+/** 业务跑状态集合 (实战反证金标准 08-24 + 08-27: 删 Cooldown, isRunning = 是否在跑业务)
  *  - QianjiRefreshing: 千机端在跑
  *  - BaoliRunning: 保利端在跑
  *  - YuexiuRunning: 越秀端在跑
- *  - Cooldown: 跑完冷却 (防止 5min 触发器跟 cooldown 抢跑)
+ *  用途: 用于 5min 反息屏 / HomeScreen.handleStart 并发守卫 (Cooldown 已删除, 正常结束 = Idle,
+ *        所以反息屏触发和老板点击都能立刻启动流程)
  */
 const RUNNING_STATES = new Set<OrchState>([
   OrchState.QianjiRefreshing,
   OrchState.BaoliRunning,
   OrchState.YuexiuRunning,
-  OrchState.Cooldown,
 ]);
 
 class Orchestrator {
@@ -58,9 +58,10 @@ class Orchestrator {
   }
 
   /**
-   * 老板实战反证金标准 08-24:
-   *   isRunning = 是否在跑业务 (千机 / 保理 / 越秀 / 冷却)
-   *   用于 5min 触发器 / HomeScreen.handleStart 并发守卫
+   * 老板实战反证金标准 08-24 + 08-27:
+   *   isRunning = 是否在跑业务 (千机 / 保利 / 越秀)
+   *   用于 5min 反息屏 / HomeScreen.handleStart / 千机监听 并发守卫
+   *   注意: 正常结束的"自动接龙"已由 Idle 直可达 -> 老板点 / 反息屏 / 千机监听 都能立即触发, 不再受 Cooldown 阻碍
    */
   isRunning(): boolean {
     return RUNNING_STATES.has(this.currentState);
@@ -68,7 +69,8 @@ class Orchestrator {
 
   /**
    * V2.x 实战反证金标准 (services/index.ts L54-59):
-   *   USER_INTERVENTION 期间跳过 5min 触发 (防止 Bug E "流程已在运行中")
+   *   USER_INTERVENTION 期间跳过所有自动触发 (防止 Bug E "流程已在运行中")
+   *   08-27: 反息屏触发也被这个守卫挡掉, 保证异常期间不打扰老板
    */
   isInUserIntervention(): boolean {
     return this.currentState === OrchState.UserIntervention;
@@ -77,7 +79,7 @@ class Orchestrator {
   /**
    * V2.x 实战反证金标准 (services/index.ts L60-67):
    *   修法: 5min 触发前查任一 mutex 忙 → 跳过本轮
-   *   V4 实战反证金标准: 当前状态在 RUNNING_STATES 集合即视为忙
+   *   V4 实战反证金标准 08-27: 删 Cooldown 后 = isRunning, 业务跑完自动 Idle, 反息屏也能立刻触发
    */
   isAnyServiceBusy(): boolean {
     return this.isRunning();
@@ -112,9 +114,6 @@ class Orchestrator {
         break;
       case OrchState.Error:
         stateBus.emit('state.error', { oldState, event });
-        break;
-      case OrchState.Cooldown:
-        stateBus.emit('state.cooldown', { oldState, event });
         break;
       case OrchState.UserIntervention:
         stateBus.emit('state.user_intervention', { oldState, event });
@@ -171,10 +170,9 @@ class Orchestrator {
    * 获取当前可执行的 events
    */
   getAvailableEvents(): TransitionEvent[] {
-    const { TRANSITIONS } = require('./transitions');
     return TRANSITIONS
-      .filter((t: any) => t.from === this.currentState)
-      .map((t: any) => t.event);
+      .filter((t) => t.from === this.currentState)
+      .map((t) => t.event);
   }
 }
 

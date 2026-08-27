@@ -17,7 +17,7 @@ import type { CustomerInfo } from '@/flow/qianji';
 
 export interface CompareResult {
   isMatch: boolean;
-  diffs: Array<{ field: string; aValue: string; bValue: string }>;
+  diffs: { field: string; aValue: string; bValue: string }[];
 }
 
 /**
@@ -33,7 +33,7 @@ type CompareInput = Pick<CustomerInfo, 'projectName' | 'customerName' | 'phone'>
  * varB 独有的字段 (propertyType/reportTime/expectedVisitTime/agent/agentNote)
  * 不在 A 里, 永远 A空≠B, 不应纳入对比
  */
-const COMPARE_FIELDS: Array<keyof CompareInput> = [
+const COMPARE_FIELDS: (keyof CompareInput)[] = [
   'projectName',
   'customerName',
   'phone',

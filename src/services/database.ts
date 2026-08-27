@@ -17,6 +17,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
+import type { CustomerInfo } from '@/flow/qianji';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 let _initialized = false;
@@ -56,8 +57,6 @@ async function ensureDb(): Promise<SQLite.SQLiteDatabase> {
   console.log('[database] expo-sqlite reports 表已初始化');
   return _db;
 }
-
-import type { CustomerInfo } from '@/flow/qianji';
 
 /**
  * 写 1 条客户记录到 reports 表

@@ -13,7 +13,7 @@
  *   - showSystemDialog(message, btnText)    系统 Dialog (有按钮, 等用户点)
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 /**
  * 异常通知: 系统弹窗 + 30s 脉冲震动 (V2.x v22.02.35 实战反证金标准)

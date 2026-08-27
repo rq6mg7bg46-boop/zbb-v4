@@ -11,9 +11,9 @@
  */
 
 import { Alert } from 'react-native';
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
-import { classifyScreenKind, ScreenKind } from '@/core/screen/PageIdentifier';
+import { classifyScreenKind } from '@/core/screen/PageIdentifier';
 
 // 实战反证金标准: 跑完整业务流 (千机→保利→越秀, 导入在文件末尾避免循环依赖)
 let runZbbWorkflowRef: (() => Promise<void>) | null = null;

@@ -11,7 +11,7 @@
  *   }
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 import { pressKey } from './pressKey';
 
 export type RollbackPolicy = 'back' | 'home' | 'trash' | 'doubleBack';

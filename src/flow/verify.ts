@@ -6,7 +6,7 @@
  */
 
 import { judge, rollback } from '@/operations';
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 export interface VerifyResult {
   ok: boolean;
@@ -44,6 +44,7 @@ export async function waitForScreenWithRollback(
 export async function verifyAndRecover(
   expectedText: string,
   options: {
+    /** 单次 judge 等待超时 (ms), 默认 5000 */
     timeoutMs?: number;
     maxRetries?: number;
     rollbackPolicy?: 'back' | 'home' | 'trash';
@@ -51,7 +52,6 @@ export async function verifyAndRecover(
   } = {},
 ): Promise<VerifyResult> {
   const maxRetries = options.maxRetries ?? 2;
-  const timeoutMs = options.timeoutMs ?? 5000;
   const rollbackPolicy = options.rollbackPolicy ?? 'back';
 
   let lastResult: VerifyResult | null = null;

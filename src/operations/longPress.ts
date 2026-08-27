@@ -7,7 +7,7 @@
  * - byCoords(x, y, durationMs)  按坐标长按
  */
 
-import ZBBAutomation, { A11yNode } from '@/native';
+import { ZBBAutomation, A11yNode } from '@/native';
 import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
 
 const DEFAULT_DURATION_MS = 600;

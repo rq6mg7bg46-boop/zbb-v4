@@ -17,7 +17,7 @@
  *       本文件提供 distancePx/Dp 参数化的上下滑
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 const DEFAULT_DISTANCE_PX = 600;
 const DEFAULT_DURATION_MS = 300;

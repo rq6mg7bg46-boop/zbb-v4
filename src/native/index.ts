@@ -5,7 +5,7 @@
  * 这个文件 = NativeModules.ZBBAutomation 的 wrapper, 提供类型安全 + 错误处理
  */
 
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 import type { ZBBAutomationModule } from './ZBBAutomation';
 export type { ZBBAutomationModule, A11yNode, OcrResult, FindTextResult, ExtractContentResult } from './ZBBAutomation';
 

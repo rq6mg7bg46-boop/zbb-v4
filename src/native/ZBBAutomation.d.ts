@@ -203,11 +203,5 @@ export interface ZBBAutomationModule {
   addListener(eventName: string): void;
   removeListeners(count: number): void;
 
-  // 🆕 08-27 v32.19 老板拍板: native setTimeout 持久化 timer (跨 RN reload 不失效)
-  //   - JS setTimeout 在 RN reload 时模块级变量丢失 → timer 失效
-  //   - 用 native Handler.postDelayed 持久化 → reload 后仍生效
-  //   - 用于 Cooldown 60s 自动 COOLDOWN_DONE
-  //   - onNativeTimeout 事件通过 sendEvent 回调, payload = timerId
-  setNativeTimeout(timerId: string, delayMs: number): Promise<boolean>;
-  clearNativeTimeout(timerId: string): Promise<boolean>;
+  // 🆕 08-27 删冷却: setNativeTimeout / clearNativeTimeout 已删除 (Cooldown 不存在, 原 v32.19 用来跑 60s 倒计时)
 }

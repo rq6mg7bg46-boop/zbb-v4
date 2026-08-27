@@ -12,7 +12,7 @@
  *   await threeFingerSwipe.down(); // 默认从屏幕顶部滑到底部
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 const DEFAULT_START_Y = 500;
 const DEFAULT_END_Y = 1500;

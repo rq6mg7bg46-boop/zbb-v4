@@ -12,7 +12,7 @@
  *   await pressKey.back();
  */
 
-import ZBBAutomation from '@/native';
+import { ZBBAutomation } from '@/native';
 
 /**
  * 点击返回键

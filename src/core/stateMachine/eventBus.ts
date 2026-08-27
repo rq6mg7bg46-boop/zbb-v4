@@ -18,7 +18,6 @@ export type StateMachineEvent =
   | 'state.changed'           // 状态变更
   | 'state.idle'              // 进入空闲
   | 'state.error'             // 进入错误
-  | 'state.cooldown'          // 进入冷却
   | 'state.user_intervention' // 进入用户介入
   | 'flow.started'            // 业务流程开始
   | 'flow.completed'          // 业务流程完成

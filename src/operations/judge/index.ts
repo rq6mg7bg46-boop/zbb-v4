@@ -7,7 +7,7 @@
  * - waitForScreen(text, ms)    等待屏幕出现文字 (轮询)
  */
 
-import ZBBAutomation, { A11yNode } from '@/native';
+import { ZBBAutomation } from '@/native';
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 200;

@@ -1,118 +1,108 @@
 /**
- * V4.x services/index.ts (老板实战反证金标准 08-24)
+ * V4.x services/index.ts (08-27 老板拍板: 重构自动触发链路, 删冷却)
  *
- * 5min 静默触发器 (复刻 V2.x v7 A2, 老板实战反证金标准):
+ * 自动触发入口 (V4.x 08-27):
+ *   - 入口 1: HomeScreen.handleStart → runZbbWorkflow (老板点"开始干活", 已存在)
+ *   - 入口 2: 千机监听新客户 → listenForQianjiNewCustomer → runZbbWorkflow (08-27 接口预留, 实装待补)
+ *   - 入口 3: native 反息屏 5min 触发 → emit 'zbbIdleWorkTrigger' → 本文件监听 → runZbbWorkflow (native 端已实装, JS 端 08-27 补齐)
+ *   - 入口 4 (JS 5min setInterval): 已删除 (08-27 老板拍板, 语义跟 native 反息屏冲突)
  *
- * 链路 (08-26 v32.18 老板拍板):
- *   - V2.x 原设计: AlarmManager 5min tick (native IdleTriggerReceiver)
- *     ↓ WorkManager → IdleTriggerWorker → emit DeviceEvent
- *     ↓ 'zbbIdleWorkTrigger' → 本文件 listener
- *     ↓ runZbbWorkflow()
- *   - V4.x 实际 (v32.18): V2.x 没真正实现 native AlarmManager, 用 JS setInterval 替代
- *     ↓ setInterval 每 60s 检查一次
- *     ↓ 距上次触发 ≥ 5min → 调 runZbbWorkflow()
- *     ↓ runZbbWorkflow() ← 跟 HomeScreen.handleStart 100% 复用
+ * 守卫 (runZbbWorkflow 内部已实现):
+ *   - 状态守卫: 当前不在 RUNNING_STATES 才允许启动
+ *   - UserIntervention 守卫: 流程异常结束期间, 反息屏 / 千机监听 / 老板点击 都跳过自动触发
+ *   - 千机监听: 5s 防抢屏推迟 (08-27 接口预留, 实装待老板拍板延迟参数)
  *
- * 实战反证金标准 (08-24 + 08-26):
- *   - 5min 触发器跟 HomeScreen.handleStart 走同一个 runZbbWorkflow, 避免抢跑
- *   - 并发守卫: orchestrator.isInUserIntervention() / isAnyServiceBusy() → 跳过
- *   - 状态守卫: 必须是 Idle 状态 (V2.x 实战反证 Bug E)
- *   - 间隔守卫: 距上次触发 ≥ 5 分钟 (localStorage 防重入)
+ * 反息屏 5min 时间基准:
+ *   - native ZbbKeepAliveService.kt 检查 OperationDetector.getLastInteractionMs()
+ *   - lastInteraction = 最后操作时间 (含 ZBB 操作和老板操作)
+ *   - 设计意图: 永远比系统 10min 熄屏早 5min 触发 → 屏幕不熄
+ *   - 流程正常结束 = 一次 ZBB 操作 → lastInteraction 已刷新 → 反息屏重计时 5min
+ *   - 流程异常结束 = UserIntervention → 老板不操作 → lastInteraction 不变 → 反息屏不会触发 (符合预期)
+ *
+ * 自动接龙语义 (08-27 重构后):
+ *   - 流程正常结束 → Idle → 老板点 / 千机监听 / 反息屏 都能立刻启动下一次
+ *   - 流程异常结束 → UserIntervention → 只有老板点"开始干活"才能恢复 (反息屏 / 千机监听都被守卫挡掉)
  */
 
-import { DeviceEventEmitter } from 'react-native';
+import { NativeEventEmitter, NativeModules } from 'react-native';
 import { runZbbWorkflow } from '@/flow';
-import { orchestrator, OrchState } from '@/core/stateMachine';
+import { orchestrator } from '@/core/stateMachine';
 import { loadAppEnv } from '@/config/env';
 
-// 🆕 08-24 (老板拍板 a=方案A): 启动时从 native BuildConfig 读 APP_ENV + 千机包名
+// 🆕 08-24: 启动时从 native BuildConfig 读 APP_ENV + 千机包名 (实装待补)
 loadAppEnv().then((env) => {
   console.log(`[services/index.ts] APP_ENV=${env.appEnv}, qianji=${env.qianjiPackage}`);
 }).catch((e) => {
   console.error('[services/index.ts] loadAppEnv 失败:', e);
 });
 
-// 🆕 08-26 v32.18: 5min 静默触发器 (JS setInterval 实现)
-//   - V2.x 设计意图: 5min 静默无操作 → 自动跑业务
-//   - V2.x 实际: 代码注释提到 5min 触发器, 但 V2.x 代码里没真正实现 native AlarmManager
-//   - V4.x v32.18: 用 JS setInterval 替代, 每 60s 检查一次
-//
-// 防重入: 用模块级 lastTriggerMs + localStorage (持久化, app 重启也不丢)
-let lastTriggerMs = 0;
-const FIVE_MIN_MS = 5 * 60 * 1000;
-const CHECK_INTERVAL_MS = 60 * 1000; // 每分钟检查
-const LAST_TRIGGER_KEY = 'zbb_5min_last_trigger';
+// ================== 入口 3: native 反息屏 5min 触发监听 ==================
+// native 端 WorkOrchestrator.startIdleWork emit 'zbbIdleWorkTrigger' (source=5min_idle_trigger, ts=...)
+// JS 端收到事件 → runZbbWorkflow (复用同一套流程)
+const ZBBAutomation = NativeModules.ZBBAutomation;
+const nativeEmitter = ZBBAutomation ? new NativeEventEmitter(ZBBAutomation) : null;
 
-// app 启动时读 localStorage (上次触发时间)
-try {
-  const stored = (globalThis as any).localStorage?.getItem?.(LAST_TRIGGER_KEY);
-  if (stored) {
-    lastTriggerMs = parseInt(stored, 10) || 0;
-    console.log(`[5minTrigger] 读 localStorage 上次触发: ${new Date(lastTriggerMs).toISOString()}`);
-  }
-} catch {
-  // ignore (Hermes 可能不支持 localStorage)
+if (nativeEmitter) {
+  nativeEmitter.addListener('zbbIdleWorkTrigger', (payload?: { source?: string; timestamp?: number; reason?: string }) => {
+    const reason = payload?.reason ?? 'unknown';
+    console.log(`[zbbIdleWorkTrigger] 收到反息屏事件 source=${payload?.source} reason=${reason}`);
+
+    // 守卫: UserIntervention / Running → 跳过
+    if (orchestrator.isInUserIntervention()) {
+      console.warn('[zbbIdleWorkTrigger] 跳过: UserIntervention 中 (反息屏不打扰异常结束)');
+      return;
+    }
+    if (orchestrator.isRunning()) {
+      console.warn('[zbbIdleWorkTrigger] 跳过: 业务已在运行中 (反息屏不打断 ZBB)');
+      return;
+    }
+
+    // 调 runZbbWorkflow (并发守卫复用)
+    runZbbWorkflow().then((result) => {
+      console.log(`[zbbIdleWorkTrigger] runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
+    }).catch((e: any) => {
+      console.error('[zbbIdleWorkTrigger] runZbbWorkflow 异常:', e);
+    });
+  });
+  console.log('[services/index.ts] 入口 3 监听器已注册: zbbIdleWorkTrigger → runZbbWorkflow');
+} else {
+  console.warn('[services/index.ts] ZBBAutomation native module 不可用, 跳过入口 3 监听器注册');
 }
 
-setInterval(async () => {
-  const now = Date.now();
+// ================== 入口 2: 千机监听新客户 (08-27 接口预留) ==================
+/**
+ * 监听千机端收到符合要求的新客户, 触发 ZBB
+ *
+ * 08-27 老板拍板 (接口预留, 实装待补):
+ *   - 触发对象: 千机收到合规新客户 (8 步骤流程里的步骤 2 / stepParseCustomerInfo 阶段)
+ *   - 5s 防抢屏: 监听事件触发后等 5s 再启动 runZbbWorkflow (防系统动画 / 千机 toast 抢屏幕)
+ *   - 关联运行:
+ *     - 如果当前 Idle, 启动跑
+ *     - 如果当前 Running 中 (千机/保利/越秀), 跳过 (并发守卫)
+ *     - 如果当前 UserIntervention, 跳过 (异常不打扰)
+ *
+ * 🆕 实装接口签名 (锁定):
+ *   listenForQianjiNewCustomer(callback?: (customerInfo) => void): () => void
+ *     - callback: 收到新客户时同步回调 (供业务层打 log / 上报)
+ *     - 返回: unsubscribe 函数
+ *
+ * 实装待老板确认延迟参数 (5s) 和触发阈值 (合规客户定义)
+ *
+ * @returns unsubscribe 函数
+ */
+export function listenForQianjiNewCustomer(
+  callback?: (customerInfo: any) => void,
+): () => void {
+  // TODO(08-27): 实装千机端 notification / accessibility 监听, 检测"新客户到达"事件
+  //   - 候选 1: NotificationMonitorService 监听千机 notification
+  //   - 候选 2: 千机界面 a11y 节点扫描 (新增客户字段变化)
+  //   - 实装时: 加 5s 防抢屏推迟 → runZbbWorkflow
+  console.warn('[listenForQianjiNewCustomer] 🆕 08-27 接口预留, 实装待老板拍板 (TODO)');
+  // 占位: 返回空 unsubscribe, 不影响现有逻辑
+  return () => {
+    console.log('[listenForQianjiNewCustomer] unsubscribe (no-op)');
+  };
+}
 
-  // 1. 间隔守卫: 距上次触发 ≥ 5 分钟
-  if (now - lastTriggerMs < FIVE_MIN_MS) {
-    return; // 静默, 不刷屏
-  }
-
-  // 2. 状态守卫: 必须是 Idle
-  if (orchestrator.getState() !== OrchState.Idle) {
-    return;
-  }
-
-  // 3. 用户介入守卫 (V2.x Bug E 实战反证)
-  if (orchestrator.isInUserIntervention()) {
-    return;
-  }
-
-  // 4. mutex 守卫
-  if (orchestrator.isAnyServiceBusy()) {
-    return;
-  }
-
-  // 全部通过 → 触发 + 记录 lastTriggerMs
-  lastTriggerMs = now;
-  try {
-    (globalThis as any).localStorage?.setItem?.(LAST_TRIGGER_KEY, now.toString());
-  } catch {
-    // ignore
-  }
-
-  console.log(`[5minTrigger] 5min 静默触发器 → runZbbWorkflow (距上次 ${Math.round((now - (lastTriggerMs - FIVE_MIN_MS)) / 1000)}s)`);
-  try {
-    const result = await runZbbWorkflow();
-    console.log(`[5minTrigger] runZbbWorkflow 结果: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
-  } catch (e: any) {
-    console.error('[5minTrigger] runZbbWorkflow 异常:', e);
-  }
-}, CHECK_INTERVAL_MS);
-
-console.log(`[services/index.ts] 5min 触发器已注册 (JS setInterval 每 ${CHECK_INTERVAL_MS / 1000}s 检查一次, 距上次 ≥ ${FIVE_MIN_MS / 1000}s 自动跑)`);
-
-// 保留 V2.x 原始事件 listener (兼容 native AlarmManager 实现, 即使 V4.x 没用到)
-DeviceEventEmitter.addListener('zbbIdleWorkTrigger', async () => {
-  console.log('[5minTrigger] 收到 native zbbIdleWorkTrigger 事件 → runZbbWorkflow');
-
-  if (orchestrator.isInUserIntervention()) {
-    console.log('[5minTrigger] USER_INTERVENTION 中, 跳过');
-    return;
-  }
-  if (orchestrator.isAnyServiceBusy()) {
-    console.log('[5minTrigger] mutex 忙, 跳过');
-    return;
-  }
-
-  try {
-    const result = await runZbbWorkflow();
-    console.log(`[5minTrigger] runZbbWorkflow 结果: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
-  } catch (e: any) {
-    console.error('[5minTrigger] runZbbWorkflow 异常:', e);
-  }
-});
+// ================== 模块加载完成 log ==================
+console.log(`[services/index.ts] 已注册: 入口 3 反息屏监听 (入口 2 千机监听仅接口预留, 未实装)`);
