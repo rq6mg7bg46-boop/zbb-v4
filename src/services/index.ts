@@ -170,10 +170,15 @@ orchestrator.onChange((newState, prevState) => {
  *   - 闸门全过 (Idle + 活跃期 + 解锁) → 5s 防抢屏推迟 + 调 runZbbWorkflow
  *   - ZBB 在工作 / 卡死 / 静默期 / 锁屏 → 入 pending 队列, 状态机转回 Idle 时消费
  *
+ * 🆕 08-27 bug fix: 改为模块加载时立即订阅 (跟入口 3 形态一致)
+ *   - 旧设计: export function, 需外部调用才会触发
+ *   - 新设计: 模块加载时 IIFE 自动调一次, 保留 export 兼容外部调用
+ *   - 单例模式: qianjiListenerSubscription 全局唯一, 防重复订阅
+ *
  * @param callback 收到新客户时同步回调 (供业务层打 log / 上报)
  * @returns unsubscribe 函数
  */
-export function listenForQianjiNewCustomer(
+function subscribeQianjiNewCustomer(
   callback?: (customerInfo: any) => void,
 ): () => void {
   // 单例模式: 已订阅过直接返回 unsub (防止多个 component 重复订阅)
@@ -224,6 +229,21 @@ export function listenForQianjiNewCustomer(
     qianjiListenerSubscription = null;
     logger.info('listenForQianjiNewCustomer', 'unsubscribe 已移除监听器');
   };
+}
+
+// 🆕 08-27 bug fix: 模块加载时立即订阅 (跟入口 3 形态一致)
+// 旧 bug: export function 需外部调用才会订阅, 没人调 = 永远不触发
+// 修法: IIFE 自动调一次, 单例防重复
+subscribeQianjiNewCustomer();
+
+/**
+ * 导出函数: 兼容外部调用 (返回 unsub)
+ * 注意: 内部已模块加载时订阅, 此函数仅返回 unsub 用于清理
+ */
+export function listenForQianjiNewCustomer(
+  callback?: (customerInfo: any) => void,
+): () => void {
+  return subscribeQianjiNewCustomer(callback);
 }
 
 // ================== 模块加载完成 log ==================
