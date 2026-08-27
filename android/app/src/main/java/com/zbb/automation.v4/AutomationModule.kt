@@ -268,7 +268,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     private val nativeTimers = mutableMapOf<String, Runnable>()
 
     @ReactMethod
-    fun setNativeTimeout(timerId: String, delayMs: Number, promise: Promise) {
+    fun setNativeTimeout(timerId: String, delayMs: Int, promise: Promise) {
         try {
             // 清旧 timer
             clearNativeTimeoutInternal(timerId)
