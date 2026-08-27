@@ -1,5 +1,5 @@
 /**
- * V4.x Flow 公共验证 (老板实战反证金标准 08-22)
+ * V4.x Flow 公共验证 (老板实测 08-22)
  *
  * verifyAndRecover: 每个 step 后, 验证是否进入预期状态
  * verifyTimeout: 验证超时处理

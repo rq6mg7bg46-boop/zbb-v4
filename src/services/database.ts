@@ -1,7 +1,7 @@
 /**
  * V4.x expo-sqlite 数据库封装 (08-25 老板拍板 B 方案: 接入 S3 expo-sqlite)
  *
- * 实战反证金标准:
+ * 实测:
  *   - V2.x V22.x 用 op-sqlite + 27 张表
  *   - V4.x S2.2 阶段先 mock, S3 业务增强接入 expo-sqlite
  *   - 当前实现: expo-sqlite 16.0.10 + 单表 reports (千机端写库)
@@ -11,7 +11,7 @@
  *     ↓ writeReport(customer, projectNameOverride?)
  *   reports 表 (id, customer_name, phone, project_name, project_type, status, created_at)
  *
- * 保利双写 (08-25 老板拍板文档实战反证金标准):
+ * 保利双写 (08-25 老板拍板文档实测):
  *   - 保利缦城和颂 + 保利山水和颂 = 2 条记录, 2 个 ID
  *   - 其他客户类型 (越秀/招商) 只写 1 条
  */
@@ -96,7 +96,7 @@ export async function writeReport(
 }
 
 /**
- * 保利双写 (08-25 老板拍板文档实战反证金标准)
+ * 保利双写 (08-25 老板拍板文档实测)
  *
  * 保利项目需写 2 条数据:
  *   - "保利缦城和颂" (round 1)

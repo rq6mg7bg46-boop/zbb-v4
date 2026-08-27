@@ -1,5 +1,5 @@
 /**
- * ZBB v4 HomeScreen - 精简版 (老板实战反证金标准 08-22)
+ * ZBB v4 HomeScreen - 精简版 (老板实测 08-22)
  *
  * V4.x UI = V2.x HomeScreen 截图里 9 个元素:
  * 1. 标题 Action Surrogate + 副标题 Disconnect to reconnect with life.
@@ -11,7 +11,7 @@
  * 7. 三指下滑截图测试按钮
  * 8. 悬浮窗徽章
  *
- * 实战反证金标准: 不复制 V2.x 巨型 services (BaoliService / CustomerTable / QianjiService)
+ * 实测: 不复制 V2.x 巨型 services (BaoliService / CustomerTable / QianjiService)
  *                不复制 V2.x 流程步骤 / 客户信息 / License / Admin
  *                只用 V4.x 精简 native module + ZBBAutomation basic methods
  */
@@ -35,8 +35,8 @@ import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
 
 // ================== V4.x 精简 Native Bridge ==================
-// 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
-// 实战反证金标准 (08-22): V4.x native 暴露 isAccessibilityServiceRunning, 不是 isServiceRunning
+// 实测: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
+// 实测 (08-22): V4.x native 暴露 isAccessibilityServiceRunning, 不是 isServiceRunning
 const ZBBAutomation = (NativeModules as any).ZBBAutomation ?? {
   isAccessibilityServiceRunning: () => Promise.resolve(false),
   isOverlayPermissionGranted: () => Promise.resolve(false),
@@ -47,7 +47,7 @@ const ZBBAutomation = (NativeModules as any).ZBBAutomation ?? {
 };
 
 // ================== 5 时段情绪话术库 ==================
-// 实战反证金标准: 老板 nova 截图里"上午好,小主,今天见到你真开心~"
+// 实测: 老板 nova 截图里"上午好,小主,今天见到你真开心~"
 type IdleMsg = { icon: string; text: string };
 
 const IDLE_MESSAGES: Record<string, IdleMsg[]> = {
@@ -111,7 +111,7 @@ export default function HomeScreen() {
   const [todayCount, setTodayCount] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars -- await V4.x 实装: 完成 customer 写入数据库后回填计数
   // 🆕 08-27 删冷却: _cooldownEnterTime state 已删除 (Cooldown 状态不存在了)
 
-  // V4.x 实战反证金标准 (08-22): 每秒检测, 检测到开启就停
+  // V4.x 实测 (08-22): 每秒检测, 检测到开启就停
   const checkA11yOnce = useCallback(async (): Promise<boolean> => {
     try {
       const ok = await ZBBAutomation.isAccessibilityServiceRunning();
@@ -347,7 +347,7 @@ export default function HomeScreen() {
         <Text style={styles.secondaryButtonArrow}>›</Text>
       </TouchableOpacity>
 
-      {/* (实战反证金标准 08-22 老板 nova 实测: 左下角 G 徽章删除, 不符合跨应用设计) */}
+      {/* (实测 08-22 老板 nova 实测: 左下角 G 徽章删除, 不符合跨应用设计) */}
     </ScrollView>
   );
 }

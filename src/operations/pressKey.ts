@@ -1,5 +1,5 @@
 /**
- * V4.x pressKey operation (老板实战反证金标准 08-22)
+ * V4.x pressKey operation (老板实测 08-22)
  *
  * 系统按键封装:
  * - back()       点击返回键

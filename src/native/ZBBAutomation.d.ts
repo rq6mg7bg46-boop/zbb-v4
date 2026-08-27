@@ -1,5 +1,5 @@
 // ZBBAutomation Native Module TypeScript Declarations
-// 实战反证金标准: 复用 V2.x native 60+ method, 不重写
+// 实测: 复用 V2.x native 60+ method, 不重写
 // 来源: V2.x client/native/ZBBAutomation.d.ts (08-22 V2.x 跑通版)
 
 /**
@@ -149,17 +149,17 @@ export interface ZBBAutomationModule {
   // 自动化控制
   stopAutomation(): Promise<boolean>;
 
-  // 🆕 08-25 老板拍板 全修方案: readBuildEnv + 系统弹窗 + 震动 (V2.x 实战反证金标准)
+  // 🆕 08-25 老板拍板 全修方案: readBuildEnv + 系统弹窗 + 震动 (V2.x 实测)
   /**
    * 读 BuildConfig 注入的环境变量 (APP_ENV / qianjiPackage / qianjiMainActivity)
-   * 实战反证金标准 (V2.x v22.02.35): JS 端调此方法拿当前编译期环境
+   * 实测 (V2.x v22.02.35): JS 端调此方法拿当前编译期环境
    * @returns null 时 fallback 到 APP_PACKAGES 默认值
    */
   readBuildEnv(): Promise<{ appEnv: string; qianjiPackage: string; qianjiMainActivity: string } | null>;
 
   /**
    * 系统级 Toast 弹窗 (SYSTEM_ALERT_WINDOW overlay权限)
-   * 实战反证金标准 (08-25 老板拍板修法5B): 千机端在前台时也能弹窗通知老板
+   * 实测 (08-25 老板拍板修法5B): 千机端在前台时也能弹窗通知老板
    * 不依赖 ZBB app 在前台, 直接走 WindowManager SYSTEM_ALERT_WINDOW
    * @param message 弹窗消息
    * @param durationMs 显示时长 (默认 5000ms)
@@ -167,12 +167,12 @@ export interface ZBBAutomationModule {
   showSystemToast(message: string, durationMs?: number): Promise<boolean>;
 
   /**
-   * 🆕 08-25 老板拍板 修法5B 实战反证金标准: 系统级带按钮 Dialog
+   * 🆕 08-25 老板拍板 修法5B 实测: 系统级带按钮 Dialog
    *
    * 与 showSystemToast 区别:
    *   - Toast: 5s 自动消失, 无按钮
    *   - Dialog: 显示直到用户点按钮 或 30s 超时, 返回 Promise<boolean>
-   *     true  = 用户点了按钮 (老板实战反证金标准拍板: 收到回调后调 stopVibration)
+   *     true  = 用户点了按钮 (老板实测拍板: 收到回调后调 stopVibration)
    *     false = 超时 (震动超时自动停)
    *
    * 用法:
@@ -188,7 +188,7 @@ export interface ZBBAutomationModule {
   showSystemDialog(message: string, buttonText?: string, autoDismissMs?: number): Promise<boolean>;
 
   /**
-   * 启动脉冲震动 (V2.x v22.02.35 实战反证金标准)
+   * 启动脉冲震动 (V2.x v22.02.35 实测)
    * 100ms 震 + 200ms 停 = 300ms 一周期
    * 30s 自动停止, isVibrating 标志防重入
    */

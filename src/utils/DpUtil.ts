@@ -1,5 +1,5 @@
 /**
- * DP 工具 (老板实战反证金标准 08-23 拍板 V4 跨机型适配)
+ * DP 工具 (老板实测 08-23 拍板 V4 跨机型适配)
  *
  * 复刻 V2.x src/utils/DpUtil.ts:
  * - 业务代码用 dp 写坐标
@@ -12,7 +12,7 @@
  *   // 旧: await ZBBAutomation.swipe(540, 1500, 540, 800, 500);  // nova px 硬编码
  *   // 新: await ZBBAutomation.swipe(px(180), px(500), px(180), px(267), 500);  // 跨机型
  *
- * 实战反证金标准 08-23:
+ * 实测 08-23:
  * - click / longPress / swipe 全部接受 px 入参 (业务代码转 dp 后再传)
  * - native 返回的坐标 (centerX/Y) 是 px, 直接用
  */

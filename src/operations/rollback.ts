@@ -1,5 +1,5 @@
 /**
- * V4.x rollback operation (老板实战反证金标准 08-22)
+ * V4.x rollback operation (老板实测 08-22)
  *
  * 回滚 = 出错时恢复到上一个稳定状态
  * - oneStep()                按一次返回键 (默认策略)

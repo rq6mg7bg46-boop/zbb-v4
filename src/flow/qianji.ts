@@ -1,5 +1,5 @@
 /**
- * V4.x 千机端 → 保利流程 (老板实战反证金标准 08-22, 08-23 重排)
+ * V4.x 千机端 → 保利流程 (老板实测 08-22, 08-23 重排)
  *
  * 实战经验铁证 (V2.x QianjiService + BaoliService 真实代码):
  * - 千机端步骤 1-6: 打开千机 → 识别界面 → 找报备审核 → 解析客户 (用 A11y, 不用 OCR)
@@ -34,7 +34,7 @@ import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
 // 老板拍板 a=方案A: 编译时切换, 包名从 gradle.properties 注入, JS 跟 native 同步
 
 // ============================================================
-// 类型 (08-24 实战反证金标准)
+// 类型 (08-24 实测)
 // ============================================================
 export interface CustomerInfo {
   // 🆕 08-25 老板拍板 B 方案: 保利 10 字段,后续加越秀/招商 patch
@@ -64,15 +64,15 @@ export async function stepOpenQianji(): Promise<void> {
   console.log('[千机:步骤1] 正在打开千机...');
 
   // 🆕 08-24: 包名 + MainActivity 都从 env 模块读 (跟 BuildConfig 同步)
-  // 实战反证金标准 (V2.x AutomationModule.kt:936): 必须启动 .MainActivity, 不是 .APlusIconActivity
+  // 实测 (V2.x AutomationModule.kt:936): 必须启动 .MainActivity, 不是 .APlusIconActivity
   const qianjiPkg = qianjiPackage();
   const qianjiAct = qianjiMainActivity();
   console.log(`[千机:步骤1] package=${qianjiPkg}, mainActivity=${qianjiAct}`);
 
   // 🆕 08-24 (老板拍板: 用 launchAppWithAmStart):
   //   V4 旧 launchApp() 只走 getLaunchIntentForPackage (返回 launcher 图标 APlusIconActivity)
-  //   V2.x 实战反证 launchAppWithAmStart(package, activity) 才进真业务页 MainActivity
-  // @ts-ignore - launchAppWithAmStart 是 V2.x 实战反证金标准, V4 native 已实现 (AccessibilityServiceImpl.kt:2141)
+  //   V2.x 实测 launchAppWithAmStart(package, activity) 才进真业务页 MainActivity
+  // @ts-ignore - launchAppWithAmStart 是 V2.x 实测, V4 native 已实现 (AccessibilityServiceImpl.kt:2141)
   const launchWithAm = (ZBBAutomation as any).launchAppWithAmStart
     ?? (ZBBAutomation as any).launchApp; // fallback 到旧 launchApp (兼容 mock)
 
@@ -88,7 +88,7 @@ export async function stepOpenQianji(): Promise<void> {
     }
   } catch (error) {
     console.warn(`[千机:步骤1] 启动失败, 准备重试: ${error}`);
-    // 重试 1 次 (V2.x v22.02.32 实战反证金标准: force-stop 后重试)
+    // 重试 1 次 (V2.x v22.02.32 实测: force-stop 后重试)
     await ZBBAutomation.delay(1000);
     launched = await launchWithAm(qianjiPkg, qianjiAct);
     if (!launched) throw new Error('千机启动失败 (重试)');
@@ -147,7 +147,7 @@ export async function stepFindReportReview(): Promise<void> {
 
 // ============================================================
 // 千机端步骤 4: 解析客户信息 (用 lastTextNodes, 不用 OCR)
-// 实战反证金标准: 千机不能读剪贴板 → 用 A11y 节点解析
+// 实测: 千机不能读剪贴板 → 用 A11y 节点解析
 // ============================================================
 export async function stepParseCustomerInfo(
   textNodes: A11yNode[],
@@ -209,7 +209,7 @@ export async function stepParseCustomerInfo(
 
 // ============================================================
 // 千机端步骤 5: 写库 (保利双写 / 越秀/招商单写)
-// 实战反证金标准 (08-25 老板拍板文档):
+// 实测 (08-25 老板拍板文档):
 //   - 保利需要写 2 条数据 2 个 ID (缦城和颂 + 山水和颂, 其他信息一致)
 //   - 越秀/招商/其他 单写 1 条
 // ============================================================
@@ -244,7 +244,7 @@ export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void>
       console.log('[千机:步骤6] ✓ 已复制脱敏号码');
     }
   } else {
-    // 保利端: 不复制 (老板实战反证金标准: 保利端不复制脱敏号码, 用 customerInfo.phone)
+    // 保利端: 不复制 (老板实测: 保利端不复制脱敏号码, 用 customerInfo.phone)
     console.log('[千机:步骤6] 保利端跳过复制 (用 customerInfo.phone)');
   }
 }
@@ -256,7 +256,7 @@ const MISMATCH_MAX_RETRIES = 3;
 // ============================================================
 // 千机端完整 7 步骤流程 (08-25 老板拍板 修法3: 步骤3+4 合并 + 重新编号)
 //
-// 实战反证金标准文档 (08-25 老板拍板):
+// 实测文档 (08-25 老板拍板):
 //   1. 打开千机 (停留 1.5-2s)
 //   2. A11y 找"报备待审核"+数字检查+下滑刷新+解析变量A (3 字段: 项目/姓名/电话)
 //   3. A11y 找"转发"(含上滑重试) + 找到后点"转发"(中等偏移 1.5-2s) ← 合并
@@ -542,7 +542,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
 
 // ============================================================
 // 工具函数: A11y 节点拼装 key-value 行
-// 实战反证金标准: 同行 Y 坐标匹配
+// 实测: 同行 Y 坐标匹配
 // ============================================================
 function assembleKeyValueLines(nodes: A11yNode[]): string[] {
   if (!nodes || nodes.length === 0) return [];
@@ -589,8 +589,8 @@ function extractGender(lines: string[]): '男' | '女' | null {
 /**
  * 检测项目类型 (08-25 老板拍板 B 方案: 保利/越秀/招商等)
  *
- * 实战反证金标准:
- *   - 项目名含 "保利" → 'baoli' (默认, V2.x V22.x 实战反证金标准)
+ * 实测:
+ *   - 项目名含 "保利" → 'baoli' (默认, V2.x V22.x 实测)
  *   - 含 "越秀" → 'yuexiu' (07-09 老板拍板双支持)
  *   - 含 "招商" → 'zhaoshang' (08-25 后续扩展)
  *   - 其他/未识别 → 'unknown' (上层 Orchestrator 跳过 + 提示用户)
@@ -604,20 +604,20 @@ function detectProjectType(lines: string[]): string {
 }
 
 /**
- * 读"报备待审核"下方的数字 (08-25 V2.x 实战反证金标准: ±200px + X ±200px)
+ * 读"报备待审核"下方的数字 (08-25 V2.x 实测: ±200px + X ±200px)
  *
- * 实战反证金标准 (V2.x v22.02.35 QianjiService.ts:469-485):
+ * 实测 (V2.x v22.02.35 QianjiService.ts:469-485):
  *   - 旧方案 v19.9 bug: 硬 px 坐标 nova 历史值 (107, 680) → vivo 真机偏移 ~226px 落空
  *   - 修法: 语义匹配"报备待审核"label, 下方 ±200px + X ±200px 范围内最近的纯数字节点
- *   - 实战反证金标准偏差: 我之前 ±30px 太严, 跨机型失败 (mock 千机界面 layout 跟 nova 不同)
+ *   - 实测偏差: 我之前 ±30px 太严, 跨机型失败 (mock 千机界面 layout 跟 nova 不同)
  *
- * @returns 数字 (找不到返 0, 实战反证金标准: 永远不返 -1, 0 触发下滑刷新)
+ * @returns 数字 (找不到返 0, 实测: 永远不返 -1, 0 触发下滑刷新)
  */
 function readReportCountFromNodes(nodes: A11yNode[]): number {
   const labelNode = nodes.find(n => n.text?.includes('报备待审核'));
-  if (!labelNode) return 0; // 找不到关键字, 兜底返 0 (实战反证金标准: 0 = 无报备, 走下滑刷新路径)
+  if (!labelNode) return 0; // 找不到关键字, 兜底返 0 (实测: 0 = 无报备, 走下滑刷新路径)
 
-  // V2.x 实战反证金标准: label 下方 ±200px + X ±200px 范围内最近的纯数字节点
+  // V2.x 实测: label 下方 ±200px + X ±200px 范围内最近的纯数字节点
   const pendingNode = nodes.find(n =>
     n !== labelNode &&
     /^\d+$/.test((n.text || '').trim()) &&
@@ -637,7 +637,7 @@ function readReportCountFromNodes(nodes: A11yNode[]): number {
 /**
  * 解析变量 A (08-25 老板拍板 A+B 方案: 轻量级,只用于 A vs B 对比)
  *
- * 实战反证金标准 (08-25):
+ * 实测 (08-25):
  *   - varA 只解析 3 字段 (项目名/姓名/电话), 用于 A vs B 对比
  *   - varA 不参与写库, 对比成功后直接用 varB 写库
  *   - mock 千机首页 a11y 节点是整句 "客户姓名 陈杰，点击复制" / "联系方式 192****7209"

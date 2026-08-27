@@ -1,5 +1,5 @@
 /**
- * V4.x longPress operation (老板实战反证金标准 08-22)
+ * V4.x longPress operation (老板实测 08-22)
  *
  * 长按 = 按住 + 持续时间 + 释放
  * - byText(text, durationMs)    按文字找节点 + 长按中心 (默认 600ms)

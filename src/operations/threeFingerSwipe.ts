@@ -1,7 +1,7 @@
 /**
- * V4.x threeFingerSwipe operation (老板实战反证金标准 08-22)
+ * V4.x threeFingerSwipe operation (老板实测 08-22)
  *
- * V2.x v22.02.30 老板实战反证金标准补丁: 三指下滑触发系统截图
+ * V2.x v22.02.30 老板实测补丁: 三指下滑触发系统截图
  * - down(startY, endY, duration)    单次三指下滑
  * - multiStage(stages, gapMs)        多阶段三指手势 (V22.02.30)
  * - byKeyevent(keyCode1, keyCode2)   按键触发 (V22.02.30)
@@ -30,7 +30,7 @@ export async function down(
 }
 
 /**
- * 多阶段三指手势 (V22.02.30 老板实战反证金标准)
+ * 多阶段三指手势 (V22.02.30 老板实测)
  * stages: [[手指1角度, 手指2角度, 手指3角度], ...]
  */
 export async function multiStage(
@@ -66,7 +66,7 @@ export async function bySendevent(
  * 触发截图 (优先用 multiStage, 失败 fallback 到 down)
  */
 export async function triggerScreenshot(): Promise<boolean> {
-  // 1. 试 multiStage (V22.02.30 老板实战反证金标准)
+  // 1. 试 multiStage (V22.02.30 老板实测)
   const ok1 = await multiStage([
     [0, 1000, 2000],
     [0, 1000, 2000],

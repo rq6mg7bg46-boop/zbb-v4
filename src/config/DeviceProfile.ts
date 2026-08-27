@@ -1,5 +1,5 @@
 /**
- * Device Profile (老板实战反证金标准 08-23 拍板 V4 跨机型适配)
+ * Device Profile (老板实测 08-23 拍板 V4 跨机型适配)
  *
  * 复刻 V2.x src/config/DeviceProfile.ts:
  * - nova 7 5G (480 dpi, 1dp = 3px) - 老板真机
@@ -8,7 +8,7 @@
  *
  * 业务代码用 dp 写坐标, DpUtil.px(dp) 自动按机型转换
  *
- * 实战反证金标准 08-23: V4.x 跨机型适配 (老板拍板方案)
+ * 实测 08-23: V4.x 跨机型适配 (老板拍板方案)
  * V4.x 第一次支持 nova + vivo 双机型 (V3.x 只支持 nova)
  */
 

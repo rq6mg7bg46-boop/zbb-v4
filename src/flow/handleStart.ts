@@ -1,5 +1,5 @@
 /**
- * handleStart.ts - 实战反证金标准 08-24 老板拍板
+ * handleStart.ts - 实测 08-24 老板拍板
  *
  * 老板 3 种情况:
  * 1. 当前 = 千机 → 下滑屏幕保证数据刷新
@@ -15,7 +15,7 @@ import { ZBBAutomation } from '@/native';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
 import { classifyScreenKind } from '@/core/screen/PageIdentifier';
 
-// 实战反证金标准: 跑完整业务流 (千机→保利→越秀, 导入在文件末尾避免循环依赖)
+// 实测: 跑完整业务流 (千机→保利→越秀, 导入在文件末尾避免循环依赖)
 let runZbbWorkflowRef: (() => Promise<void>) | null = null;
 export function setZbbWorkflowRunner(fn: () => Promise<void>) {
   runZbbWorkflowRef = fn;
@@ -37,7 +37,7 @@ export async function handleStart(): Promise<void> {
       case 'qianji_inside': {
         // 老板情况 1: 已在千机 → 下滑刷新, 不重新打开
         console.log('[handleStart] 已在千机内, 下滑刷新保证数据最新');
-        // 实战反证金标准 (V2.x qianjiFlow.refresh): swipe 540,1800 → 540,600, 800ms
+        // 实测 (V2.x qianjiFlow.refresh): swipe 540,1800 → 540,600, 800ms
         await ZBBAutomation.swipe(540, 1800, 540, 600, 800);
         await ZBBAutomation.delay(1500); // 等刷新加载
         return await runZbbWorkflow();
@@ -62,7 +62,7 @@ export async function handleStart(): Promise<void> {
 
       case 'other':
       default: {
-        // 老板情况 3: 其他 APP → 1 轮大退出 (老板拍板 A: 实战反证金标准 1 轮已足够)
+        // 老板情况 3: 其他 APP → 1 轮大退出 (老板拍板 A: 实测 1 轮已足够)
         console.warn('[handleStart] 当前在其他 APP, 执行 1 轮大退出 (home + 多功能 + 垃圾箱)');
         await hardRollback();
         await ZBBAutomation.delay(1000);
@@ -89,16 +89,16 @@ export async function handleStart(): Promise<void> {
 }
 
 /**
- * 实战反证金标准: nova 7 5G 2 轮大退出 (老板 08-24 实测坐标, 物理 1080x2400 dpi 480)
+ * 实测: nova 7 5G 2 轮大退出 (老板 08-24 实测坐标, 物理 1080x2400 dpi 480)
  *   1. tap HOME (555, 2350) → 回桌面
  *   2. tap 多任务 (310, 2350) → 开多任务页
- *   3. tap 垃圾箱 (545, 2160) → 清空所有任务 + 实战反证金标准自动回桌面
+ *   3. tap 垃圾箱 (545, 2160) → 清空所有任务 + 实测自动回桌面
  *
  *   老板拍板 A: 改为 1 轮, 点击垃圾箱后结束 (不重复点 HOME)
  */
 async function hardRollback(): Promise<void> {
   try {
-    // 实战反证金标准: 复用 V4 operations/rollback.byPolicy('trash') (留作未来扩展, 当前用坐标 tap)
+    // 实测: 复用 V4 operations/rollback.byPolicy('trash') (留作未来扩展, 当前用坐标 tap)
     const rollbackModule = (await import('@/operations/rollback')).default
       ?? (await import('@/operations/rollback'));
     if (rollbackModule && typeof (rollbackModule as any).byPolicy === 'function') {
@@ -108,12 +108,12 @@ async function hardRollback(): Promise<void> {
   } catch (e) {
     console.warn(`[hardRollback] 复用失败, 用 nova 坐标 tap: ${e}`);
   }
-  // nova 7 5G 1 轮大退出 (老板实战反证金标准 08-24)
+  // nova 7 5G 1 轮大退出 (老板实测 08-24)
   await ZBBAutomation.click(555, 2350); // HOME
   await ZBBAutomation.delay(1000);
   await ZBBAutomation.click(310, 2350); // RECENTS
   await ZBBAutomation.delay(1500);
-  await ZBBAutomation.click(545, 2160); // TRASH (实战反证金标准: 清空 + 自动回桌面)
+  await ZBBAutomation.click(545, 2160); // TRASH (实测: 清空 + 自动回桌面)
   await ZBBAutomation.delay(1500);
 }
 

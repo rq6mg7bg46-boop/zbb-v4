@@ -1,5 +1,5 @@
 /**
- * V4.x click operation (老板实战反证金标准 08-22)
+ * V4.x click operation (老板实测 08-22)
  *
  * 5 个 method:
  * - byText(text)         按文字找节点 + 点击中心

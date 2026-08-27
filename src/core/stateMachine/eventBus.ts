@@ -1,5 +1,5 @@
 /**
- * V4.x State Machine Event Bus (老板实战反证金标准 08-22)
+ * V4.x State Machine Event Bus (老板实测 08-22)
  *
  * 状态变更事件总线: DeviceEventEmitter 包装
  * - emit(event, payload)  广播状态变更

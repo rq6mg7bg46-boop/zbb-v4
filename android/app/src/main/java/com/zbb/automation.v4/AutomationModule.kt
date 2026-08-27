@@ -93,7 +93,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     
     @ReactMethod
     fun isAccessibilityServiceRunning(promise: Promise) {
-        // 实战反证金标准 (08-22 老板 nova 实测): 老板说开了 2 个 ZBB 的无障碍
+        // 实测 (08-22 老板 nova 实测): 老板说开了 2 个 ZBB 的无障碍
         //   但 dumpsys 只显示 V2.x, 说明 V4.x service 可能没真正注册到 Settings
         //   修法: 多重匹配, 兼容包名格式
         //   1) 单例 (instance != null)
@@ -118,7 +118,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
                 mReactContext.contentResolver,
                 android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ) ?: ""
-            // 实战反证金标准 (08-22): 兼容多种格式
+            // 实测 (08-22): 兼容多种格式
             val v4Patterns = listOf(
                 "com.zbb.automation.v4/.AccessibilityServiceImpl",
                 "com.zbb.automation.v4/com.zbb.automation.v4.AccessibilityServiceImpl",
@@ -206,11 +206,11 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
-    // 🆕 08-24 实战反证金标准: 给 PageIdentifier 用, 获取前台 app 包名
+    // 🆕 08-24 实测: 给 PageIdentifier 用, 获取前台 app 包名
     @ReactMethod
     fun getForegroundPackage(promise: Promise) {
         try {
-            // 实战反证金标准: 必须用 ActivityManager (不是 AccessibilityService 的 packageName, 后者可能空)
+            // 实测: 必须用 ActivityManager (不是 AccessibilityService 的 packageName, 后者可能空)
             val activityManager = mReactContext.getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
             val runningTask = activityManager.getRunningTasks(1)
             val pkg = if (runningTask.isNotEmpty()) {
@@ -998,7 +998,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
 
     /**
      * 🆕 v22.02.32 (08-15 老板拍板): 通用 shell 命令执行 (用于 force-stop + am start 等)
-     *   老板实战反证: v7 A2 5min 静默触发器反复 "千机启动失败" (08-15 vivo log 06:29:42/06:40:42)
+     *   老板实测: v7 A2 5min 静默触发器反复 "千机启动失败" (08-15 vivo log 06:29:42/06:40:42)
      *   根因: AccessibilityService launchAppWithAmStart 在 launcher 切换竞态失败
      *   修法: catch 后 force-stop 千机清干净, 再 am start 重试
      *   example: shellExec("am force-stop com.lianjia.anchang")
@@ -1638,7 +1638,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     /**
      * 🆕 08-25 老板拍板 修法5B: 系统级 Toast 弹窗 (SYSTEM_ALERT_WINDOW overlay权限)
      *
-     * 实战反证金标准 (V2.x v22.02.35):
+     * 实测 (V2.x v22.02.35):
      *   - 千机端在前台时, ZBB 内置 showCenteredDialog 被千机覆盖看不见
      *   - 改用 SYSTEM_ALERT_WINDOW overlay 权限, 直接 WindowManager.addView
      *   - 即使千机在前台, 弹窗也能覆盖到系统最上层
@@ -1704,9 +1704,9 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     }
 
     /**
-     * 🆕 08-25 老板拍板 修法5B 实战反证金标准: 系统级带按钮 Dialog (SYSTEM_ALERT_WINDOW + 确认按钮)
+     * 🆕 08-25 老板拍板 修法5B 实测: 系统级带按钮 Dialog (SYSTEM_ALERT_WINDOW + 确认按钮)
      *
-     * 实战反证金标准:
+     * 实测:
      *   - 千机端在前台时, ZBB 内置 showCenteredDialog 被千机覆盖看不见
      *   - 用 SYSTEM_ALERT_WINDOW overlay 权限 + LinearLayout (TextView + Button)
      *   - 用户点"我知道了" → dismiss overlay + JS promise.resolve(true)
@@ -1736,8 +1736,8 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
                 // LinearLayout 垂直 (TextView + Button)
                 val container = LinearLayout(context)
                 container.orientation = LinearLayout.VERTICAL
-                // 🆕 08-25 老板拍板 修法5B 实战反证金标准: 蓝色底框 (V2.x 颜色标准)
-                //   实战反证金标准: 红色=危险, 蓝色=提醒, 千机端千机流程问题用蓝色
+                // 🆕 08-25 老板拍板 修法5B 实测: 蓝色底框 (V2.x 颜色标准)
+                //   实测: 红色=危险, 蓝色=提醒, 千机端千机流程问题用蓝色
                 // 蓝色 argb(240, 50, 100, 200) ≈ #3264C8
                 container.setBackgroundColor(android.graphics.Color.argb(240, 50, 100, 200))
                 container.setPadding(80, 60, 80, 60)
@@ -2501,12 +2501,12 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
             }
         }.start()
     }
-// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实战反证金标准) ====================
-// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实战反证金标准) ====================
+// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实测) ====================
+// ==================== 环境变量读取 (08-24 老板拍板 a=方案A + 08-25 getConstants 实测) ====================
 
     /**
      * 读取 build-time 注入的 env.json (JS bundle 通过此方法拿 APP_ENV, 跟 BuildConfig 同步)
-     * 实战反证金标准 (08-24): gradle.properties + BuildConfig 改了, JS 也必须跟
+     * 实测 (08-24): gradle.properties + BuildConfig 改了, JS 也必须跟
      *
      * @param promise JS resolve({appEnv, qianjiPackage, qianjiMainActivity})
      */
@@ -2526,9 +2526,9 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     }
 
     /**
-     * 🆕 08-25 老板拍板 修法1 (V2.x 实战反证金标准): getConstants() 暴露 BuildConfig
+     * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
      *
-     * 实战反证金标准: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
+     * 实测: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
      */
     override fun getConstants(): MutableMap<String, Any> {
         val constants = mutableMapOf<String, Any>()

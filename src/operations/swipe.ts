@@ -1,7 +1,7 @@
 /**
  * V4.x 单指上下滑 operation (08-25 老板拍板 B 方案: 文档步骤2a + 步骤3a)
  *
- * 文档实战反证金标准:
+ * 文档实测:
  *   - 千机端步骤2a: "下滑1次 (调用'下滑'方法) 刷新"
  *   - 千机端步骤3a: "上滑1次 (调用'上滑'方法)"
  *
@@ -54,7 +54,7 @@ export async function swipeDown(distancePx: number = DEFAULT_DISTANCE_PX, durati
  * 上滑 N dp (跨机型适配, nova 1dp=3px / vivo 1dp=2px)
  */
 export async function swipeUpByDp(dp: number = 200, durationMs: number = DEFAULT_DURATION_MS): Promise<boolean> {
-  // 老板实战反证金标准 08-23 V4.x 跨机型 dp 适配
+  // 老板实测 08-23 V4.x 跨机型 dp 适配
   const { px } = await import('../utils/DpUtil');
   return swipeUp(px(dp), durationMs);
 }

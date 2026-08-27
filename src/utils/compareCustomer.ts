@@ -1,13 +1,13 @@
 /**
  * V4.x 客户信息对比工具 (08-25 老板拍板 A+B 方案)
  *
- * 实战反证金标准 (08-25 实战反证金标准):
+ * 实测 (08-25 实测):
  *   - varA 解析: 3 字段 (项目名/姓名/电话)  ← 轻量,只用于对比
  *   - varB 解析: 10 字段 (完整客户信息)      ← 用于写库
  *   - 对比 = 只比 3 字段 (项目/姓名/电话)
  *   - 对比成功 → 直接用 varB 写库 (不合并 A+B)
  *
- * mock 千机实战反证金标准 (08-25):
+ * mock 千机实测 (08-25):
  *   - A.phone = "联系方式 192****7209" (带前缀+空格, 首页拼装结果)
  *   - B.phone = "192****7209" (纯号码, 转发页拼装结果)
  *   → 必须归一化后再比 (去前缀"联系方式" + 去空格 + 统一 * 数量)
@@ -26,7 +26,7 @@ export interface CompareResult {
 type CompareInput = Pick<CustomerInfo, 'projectName' | 'customerName' | 'phone'>;
 
 /**
- * 🆕 08-25 实战反证金标准: 只比 A 跟 B 都有的核心字段
+ * 🆕 08-25 实测: 只比 A 跟 B 都有的核心字段
  *   - projectName (项目)
  *   - customerName (姓名)
  *   - phone (电话)
@@ -40,7 +40,7 @@ const COMPARE_FIELDS: (keyof CompareInput)[] = [
 ];
 
 /**
- * 归一化字段值用于对比 (08-25 实战反证金标准: phone 残留前缀问题)
+ * 归一化字段值用于对比 (08-25 实测: phone 残留前缀问题)
  *
  * 修法:
  *   - phone: 去"联系方式"前缀 + 去空格 + 保留数字+星号
@@ -49,7 +49,7 @@ const COMPARE_FIELDS: (keyof CompareInput)[] = [
 function normalize(field: keyof CompareInput, value: string): string {
   let v = value.trim();
   if (field === 'phone') {
-    // 实战反证金标准: mock 千机首页 a11y 是 "联系方式 192****7209"
+    // 实测: mock 千机首页 a11y 是 "联系方式 192****7209"
     // → 去"联系方式"前缀 + 去所有空白字符
     v = v.replace(/联系方式/g, '').replace(/\s+/g, '');
   }

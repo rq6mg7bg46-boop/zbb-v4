@@ -1,12 +1,12 @@
 /**
  * V4.x 环境变量模块 (08-24 老板拍板 a=方案A)
  *
- * 实战反证金标准 (08-24):
+ * 实测 (08-24):
  *   - 老板 nova 实测 v14: 点开始干活 → 弹 "流程失败: qianji_failed"
  *   - 根因: qianji.ts:24 hardcoded 'com.qianji.client', 真千机是 com.lianjia.anchang
  *   - 老板拍板 a=方案A: 编译时切换 + gradle.properties + JS 读 native resource
  *
- * 实战反证金标准 (08-22 ~ 08-23):
+ * 实测 (08-22 ~ 08-23):
  *   - V2.x 早就有 BuildConfig.QIANJI_PACKAGE 机制 (gradle.properties 集中管理)
  *   - V4 v14 抄代码时漏抄, 错把包名写成 'com.qianji.client' (V2.x mock test 残留)
  *   - V4 修正: native 端已有 BuildConfig (NotificationMonitorService.kt:28)
@@ -31,10 +31,10 @@
 import { NativeModules } from 'react-native';
 
 /**
- * APP 包名常量 (08-24 实战反证金标准)
+ * APP 包名常量 (08-24 实测)
  *
- * 实战反证金标准:
- *   - production: 真千机, V2.x V22.x 实战反证 (线上)
+ * 实测:
+ *   - production: 真千机, V2.x V22.x 实测 (线上)
  *   - mock:       com.zbb.qianji.mock, 测试用
  *
  * 用法: launchApp(APP_PACKAGES.QIANJI.PACKAGE)
@@ -53,7 +53,7 @@ export const APP_PACKAGES = {
 /**
  * 当前 APP_ENV (08-24 老板拍板 a=方案A)
  *
- * 实战反证金标准: 启动时从 native BuildConfig 读, 保证 JS/native 同步
+ * 实测: 启动时从 native BuildConfig 读, 保证 JS/native 同步
  */
 export type AppEnv = 'production' | 'mock';
 
@@ -62,7 +62,7 @@ let _qianjiPackageCache: string | null = null;
 let _qianjiMainActivityCache: string | null = null;
 
 /**
- * 从 native BuildConfig 读当前环境 (08-24 实战反证金标准)
+ * 从 native BuildConfig 读当前环境 (08-24 实测)
  *
  * 流程:
  *   1. JS 调 AutomationModule.readBuildEnv()
@@ -90,13 +90,13 @@ export async function loadAppEnv(): Promise<{
   };
 
   try {
-    // 🆕 08-25 老板拍板 修法1 (V2.x 实战反证金标准): 改用 getConstants() 同步字段
+    // 🆕 08-25 老板拍板 修法1 (V2.x 实测): 改用 getConstants() 同步字段
     //   之前: readBuildEnv() Promise 异步方法 — 实测老板 RN bridge 不暴露 (native keys 列表里没有)
     //   改后: NativeModules.ZBBAutomation.APP_ENV (同步字段, RN 启动时自动读)
     const native = NativeModules.ZBBAutomation as any;
     if (native) {
       console.log('[env] native module keys count:', Object.keys(native).length);
-      // 直接读同步常量 (V2.x 实战反证金标准 getConstants)
+      // 直接读同步常量 (V2.x 实测 getConstants)
       const syncAppEnv = native.APP_ENV;
       if (syncAppEnv === 'production' || syncAppEnv === 'mock') {
         result = {

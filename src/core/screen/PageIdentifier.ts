@@ -1,7 +1,7 @@
 /**
- * V4 PageIdentifier - 实战反证金标准 08-24
+ * V4 PageIdentifier - 实测 08-24
  *
- * 实战反证:
+ * 实测:
  * - 千机端 (com.lianjia.anchang) 80% 节点 text="" 必须看 contentDesc
  * - 复用 V2.x v3.0 PageIdentifier 架构 (chromeTexts / required / anyOf / notAny)
  * - 新增 chromeContents 字段给千机端
@@ -15,10 +15,10 @@ const CHROME_TOP_Y_MAX = 150;
 // ========== 页面 ID 枚举 ==========
 
 export type QianjiPageId =
-  | 'qianji_home'              // 实战反证金标准 001 首页 (待审核/报备量)
-  | 'qianji_customer_detail'   // 实战反证金标准 002 客户详情 (王女士/赵主献, 全 content-desc)
-  | 'qianji_share_dialog'      // 实战反证金标准 003 分享弹层 (微信/短信/取消)
-  | 'qianji_invalid_reason'    // 实战反证金标准 004 无效原因 (请选择无效原因 + 7 checkbox + 提交)
+  | 'qianji_home'              // 实测 001 首页 (待审核/报备量)
+  | 'qianji_customer_detail'   // 实测 002 客户详情 (王女士/赵主献, 全 content-desc)
+  | 'qianji_share_dialog'      // 实测 003 分享弹层 (微信/短信/取消)
+  | 'qianji_invalid_reason'    // 实测 004 无效原因 (请选择无效原因 + 7 checkbox + 提交)
   | 'qianji_other'             // 千机兜底
   | 'zbb_home'                 // ZBB 主页 (开始干活)
   | 'desktop_home'             // Android 桌面
@@ -32,28 +32,28 @@ interface PageSignature {
   anyOf?: string[];
   notAny?: string[];
   chromeTexts?: string[];    // 顶部 chrome text (40<=cy<=150)
-  chromeContents?: string[]; // 🆕 08-24 实战反证金标准: content-desc 锚点 (千机端必备)
+  chromeContents?: string[]; // 🆕 08-24 实测: content-desc 锚点 (千机端必备)
 }
 
-// 实战反证金标准 (08-24): 千机端 4 个签名 (基于老板 C:\Users\lt-ceo\Desktop\qianji\ 截图)
+// 实测 (08-24): 千机端 4 个签名 (基于老板 C:\Users\lt-ceo\Desktop\qianji\ 截图)
 const QIANJI_SIGNATURES: Record<QianjiPageId, PageSignature> = {
   qianji_home: {
-    // 实战反证金标准 001: 首页独有 (报备数据)
+    // 实测 001: 首页独有 (报备数据)
     required: ['以下是您的待处理任务', '报备待审核', '今日报备量'],
     anyOf: ['今日带看量', '您好'], // 兜底 (用户名"您好,XXX")
   },
   qianji_customer_detail: {
-    // 实战反证金标准 002: 关键! 千机端 text="" 全在 content-desc
+    // 实测 002: 关键! 千机端 text="" 全在 content-desc
     required: [],
     chromeContents: ['客户姓名', '客户联系方式', '报备项目', '经纪人姓名'],
     notAny: ['分享至'], // 排除 003 分享弹层
   },
   qianji_share_dialog: {
-    // 实战反证金标准 003: 分享弹层 content-desc
+    // 实测 003: 分享弹层 content-desc
     chromeContents: ['分享至', '微信', '短信', '取消', '复制'],
   },
   qianji_invalid_reason: {
-    // 实战反证金标准 004: 无效原因 +提交按钮
+    // 实测 004: 无效原因 +提交按钮
     required: ['请选择无效原因'],
     anyOf: ['已被其他经纪人报备带看', '隐号撞号需要补全号', '客户在开发商系统已存在'],
     chromeContents: ['提交'],
@@ -61,7 +61,7 @@ const QIANJI_SIGNATURES: Record<QianjiPageId, PageSignature> = {
   qianji_other: { required: [] },
   zbb_home: {
     required: ['Action Surrogate', '开始干活'],
-    chromeTexts: ['Action Surrogate'], // V4 debug bar 实战反证金标准
+    chromeTexts: ['Action Surrogate'], // V4 debug bar 实测
   },
   desktop_home: {
     chromeTexts: [], // 桌面无固定 chrome,靠 packageName 判断
@@ -72,7 +72,7 @@ const QIANJI_SIGNATURES: Record<QianjiPageId, PageSignature> = {
   unknown: { required: [] },
 };
 
-// ========== 实战反证金标准 getCurrentAllNodes ==========
+// ========== 实测 getCurrentAllNodes ==========
 
 interface NodeInfo {
   text: string;
@@ -84,7 +84,7 @@ interface NodeInfo {
 
 /**
  * 获取当前界面所有节点 (含 content-desc)
- * 🆕 08-24 实战反证金标准: 用 contentDesc 字段 (千机端 80% 节点 text="")
+ * 🆕 08-24 实测: 用 contentDesc 字段 (千机端 80% 节点 text="")
  */
 async function getCurrentAllNodes(): Promise<{ nodes: NodeInfo[]; texts: string[]; contents: string[]; chromeTexts: string[]; chromeContents: string[]; foregroundPkg: string }> {
   const nodesResult = await ZBBAutomation.getAllTextNodes().catch(() => []);
@@ -132,7 +132,7 @@ async function getCurrentAllNodes(): Promise<{ nodes: NodeInfo[]; texts: string[
   return { nodes, texts, contents, chromeTexts, chromeContents, foregroundPkg };
 }
 
-// ========== 实战反证金标准 scorePage ==========
+// ========== 实测 scorePage ==========
 
 function scorePage(
   sig: PageSignature,
@@ -143,7 +143,7 @@ function scorePage(
 ): number {
   let score = 0;
 
-  // chromeTexts 实战反证金标准: 优先级最高 (+300)
+  // chromeTexts 实测: 优先级最高 (+300)
   if (sig.chromeTexts && sig.chromeTexts.length > 0) {
     let hit = false;
     for (const ct of sig.chromeTexts) {
@@ -153,7 +153,7 @@ function scorePage(
     score += 300;
   }
 
-  // chromeContents 实战反证金标准 08-24: 千机端 +250
+  // chromeContents 实测 08-24: 千机端 +250
   if (sig.chromeContents && sig.chromeContents.length > 0) {
     let hit = false;
     for (const cc of sig.chromeContents) {
@@ -163,7 +163,7 @@ function scorePage(
     score += 250;
   }
 
-  // required 实战反证金标准: 全命中 (+100 each)
+  // required 实测: 全命中 (+100 each)
   if (sig.required && sig.required.length > 0) {
     for (const req of sig.required) {
       if (!allTexts.includes(req)) return 0;
@@ -171,14 +171,14 @@ function scorePage(
     }
   }
 
-  // notAny 实战反证金标准: 任一命中返 0
+  // notAny 实测: 任一命中返 0
   if (sig.notAny && sig.notAny.length > 0) {
     for (const nt of sig.notAny) {
       if (allTexts.includes(nt) || allContents.includes(nt)) return 0;
     }
   }
 
-  // anyOf 实战反证金标准: 命中加分 (+1 each)
+  // anyOf 实测: 命中加分 (+1 each)
   if (sig.anyOf && sig.anyOf.length > 0) {
     for (const opt of sig.anyOf) {
       if (allTexts.includes(opt) || allContents.includes(opt)) score += 1;
@@ -188,18 +188,18 @@ function scorePage(
   return score;
 }
 
-// ========== 实战反证金标准 classifyCurrentPage ==========
+// ========== 实测 classifyCurrentPage ==========
 
 export async function classifyCurrentPage(): Promise<{ page: QianjiPageId; score: number }> {
   const { texts, contents, chromeTexts, chromeContents, foregroundPkg } = await getCurrentAllNodes();
   const allTexts = texts.join('|');
   const allContents = contents.join('|');
 
-  // 实战反证金标准: 前台包名粗筛 (千机/ZBB/桌面)
+  // 实测: 前台包名粗筛 (千机/ZBB/桌面)
   const isQianji = foregroundPkg === 'com.lianjia.anchang' || foregroundPkg.includes('qianji');
   const isZbb = foregroundPkg === 'com.zbb.automation.v4';
 
-  // 只对相关端评分 (实战反证金标准: 减少无意义匹配)
+  // 只对相关端评分 (实测: 减少无意义匹配)
   const candidates: QianjiPageId[] = [];
   if (isQianji) {
     candidates.push('qianji_home', 'qianji_customer_detail', 'qianji_share_dialog', 'qianji_invalid_reason', 'qianji_other');
@@ -226,7 +226,7 @@ export async function classifyCurrentPage(): Promise<{ page: QianjiPageId; score
   return { page: bestPage, score: bestScore };
 }
 
-// ========== 实战反证金标准 classifyScreenKind ==========
+// ========== 实测 classifyScreenKind ==========
 
 /**
  * 入口判断: 老板要的 3 种情况

@@ -1,5 +1,5 @@
 /**
- * V4.x 保利流程 (老板实战反证金标准 08-22, 08-23 重排)
+ * V4.x 保利流程 (老板实测 08-22, 08-23 重排)
  *
  * 实战经验铁证 (V4.x 保利连续编号 13 步骤, 老板 08-23 拍板简化):
  * - 步骤 1: 打开企业微信 (Intent)
@@ -34,7 +34,7 @@ const APP_PACKAGES = {
   BAOLI_MINIAPP: '云和家经纪云',
 };
 
-// 保利项目名 (V2.x BaoliService 实战反证金标准)
+// 保利项目名 (V2.x BaoliService 实测)
 const PROJECT_NAME_ROUND_1 = '郑州市三村杓袁7号地项目-保利缦城和颂【郑州保利和颂】';
 const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和颂【郑州保利山水和颂】';
 
@@ -236,7 +236,7 @@ async function step5ClickReportButton(): Promise<boolean> {
 
 // ============================================================
 // 步骤 6: 找"粘贴完整客户信息..."节点 + 长按输入框 + 粘贴
-// (V2.x 步骤 7, 实战反证金标准: 长按 3000ms + 等 1500ms + tap 粘贴)
+// (V2.x 步骤 7, 实测: 长按 3000ms + 等 1500ms + tap 粘贴)
 // ============================================================
 async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> {
   console.log('[保利:步骤6] 长按输入框 + 粘贴客户信息...');
@@ -253,7 +253,7 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
     return false;
   }
 
-  // 长按输入框 3000ms (老板实战反证金标准)
+  // 长按输入框 3000ms (老板实测)
   const inputNode = await a11y.findByViewId('input') || pasteNode;
   await longPress.byNode(inputNode, 3000);
   await ZBBAutomation.delay(1500);
@@ -357,7 +357,7 @@ async function step12WaitResult(): Promise<boolean> {
 
 // ============================================================
 // 步骤 13: 检测报备结果 (V2.x 步骤 15)
-// 实战反证金标准: 情况 1=重号 → 老板介入, 情况 2=成功 → 上滑 + 上传附件 + 等截图
+// 实测: 情况 1=重号 → 老板介入, 情况 2=成功 → 上滑 + 上传附件 + 等截图
 // ============================================================
 async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   console.log(`[保利:步骤13] 检测报备结果 (第 ${round} 轮)...`);

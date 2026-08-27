@@ -1,5 +1,5 @@
 /**
- * ZBBAutomation Native Wrapper (V4.x 实战反证金标准)
+ * ZBBAutomation Native Wrapper (V4.x 实测)
  *
  * 实战经验铁证: V4.x 不重写 native, 直接调用 V2.x 26 kt 已暴露的 60+ method
  * 这个文件 = NativeModules.ZBBAutomation 的 wrapper, 提供类型安全 + 错误处理

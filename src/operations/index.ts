@@ -1,5 +1,5 @@
 /**
- * V4.x Operations 统一入口 (老板实战反证金标准 08-22)
+ * V4.x Operations 统一入口 (老板实测 08-22)
  *
  * 业务流程 = 只调 operations, 不写底层
  *   import { click, longPress, threeFingerSwipe, pressKey, a11y, judge, rollback } from '@/operations';

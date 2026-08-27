@@ -1,5 +1,5 @@
 /**
- * V4.x State Machine States (老板实战反证金标准 08-22)
+ * V4.x State Machine States (老板实测 08-22)
  *
  * 6 态定义 (08-27 老板拍板: 删 Cooldown, 正常结束直接 Idle):
  * - Idle              空闲 (流程正常结束) → 老板点 / 千机监听 / 反息屏触发 都能立刻启动

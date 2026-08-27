@@ -1,17 +1,17 @@
 /**
- * V4.x flow barrel export (老板实战反证金标准 08-23, 08-24 重构 + 08-27 删冷却)
+ * V4.x flow barrel export (老板实测 08-23, 08-24 重构 + 08-27 删冷却)
  * 把 qianji / baoli 流程的入口函数集中再导出, 让 HomeScreen 一行 import 即可
  *
- * 老板实战反证金标准 08-27:
+ * 老板实测 08-27:
  *   - 流程正常结束 (YUEXIU_COMPLETE / QIANJI_NO_REPORT) → 直 → Idle, 不再绕 Cooldown
  *   - Idle 状态下, 老板点 / 千机监听 / 反息屏 都能立刻启动 runZbbWorkflow (并发守卫仍生效)
  *   - 流程异常结束 → UserIntervention, 只有老板点"开始干活"才能恢复
  *
- * 老板实战反证金标准 08-24:
+ * 老板实测 08-24:
  *   - HomeScreen.handleStart 内部逻辑抽到 runZbbWorkflow()
  *   - 5min 反息屏触发器 (services/index.ts) 也调 runZbbWorkflow()
  *   - 千机监听入口 (services/index.ts) 也调 runZbbWorkflow()
- *   - 三者 100% 复用同一套流程, 避免抢跑 bug (历史 V2.x 实战反证)
+ *   - 三者 100% 复用同一套流程, 避免抢跑 bug (历史 V2.x 实测)
  */
 
 import { runQianjiFlow } from './qianji';
@@ -48,7 +48,7 @@ export type WorkflowResult = {
 };
 
 /**
- * V4.x 完整业务工作流 (老板实战反证金标准 08-24 + 08-27)
+ * V4.x 完整业务工作流 (老板实测 08-24 + 08-27)
  *
  * 流程结束状态分流:
  *   1. 千机端 raiseAlert → customer=null → send('QIANJI_INTERVENE') → UserIntervention → 等老板
@@ -104,7 +104,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
     if (customer.projectType === 'baoli') {
       const ok = await runBaoliFlow(customer);
       if (!ok) {
-        // 保理失败 → Error (实战反证 08-25: 保理异常不算用户介入)
+        // 保理失败 → Error (实测 08-25: 保理异常不算用户介入)
         console.warn('[runZbbWorkflow] 保理端失败 → 进 Error');
         orchestrator.send('BAOLI_FAILED');
         return { ok: false, skipped: false, reason: 'baoli_failed' };
@@ -121,7 +121,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       return { ok: true, skipped: false, reason: 'success', customerName: customer.customerName, projectType: customer.projectType };
     }
 
-    // 越秀端待 S2.4 实现 → 当作需要老板介入 (实战反证 08-25)
+    // 越秀端待 S2.4 实现 → 当作需要老板介入 (实测 08-25)
     console.warn(`[runZbbWorkflow] 越秀端待实现 (${customer.customerName}) → 进 UserIntervention`);
     orchestrator.send('YUEXIU_INTERVENE');
     return { ok: false, skipped: false, reason: 'unknown_project' };
@@ -133,7 +133,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
   }
 }
 
-// 🆕 08-24 实战反证金标准: 注册给 handleStart 用 (避免循环依赖)
+// 🆕 08-24 实测: 注册给 handleStart 用 (避免循环依赖)
 setZbbWorkflowRunner(async () => {
   await runZbbWorkflow();
 });

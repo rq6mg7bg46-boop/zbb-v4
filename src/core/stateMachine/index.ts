@@ -1,5 +1,5 @@
 /**
- * V4.x State Machine 统一入口 (老板实战反证金标准 08-22 + 08-27)
+ * V4.x State Machine 统一入口 (老板实测 08-22 + 08-27)
  *
  * 业务流程 = 用 orchestrator 调度状态, 不用手写转移
  *   import { orchestrator } from '@/core/stateMachine';

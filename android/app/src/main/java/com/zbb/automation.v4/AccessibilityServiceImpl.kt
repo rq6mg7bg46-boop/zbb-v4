@@ -2944,11 +2944,11 @@ class AccessibilityServiceImpl : AccessibilityService() {
             ))
         }
 
-        // 添加 contentDescription (🆕 08-24 实战反证金标准: 千机端 80% 节点 text="", 必须保留 contentDesc 原始字段)
+        // 添加 contentDescription (🆕 08-24 实测: 千机端 80% 节点 text="", 必须保留 contentDesc 原始字段)
         if (!contentDesc.isNullOrBlank() && contentDesc.length <= 100 && contentDesc != text) {
             result.add(mapOf(
                 "text" to contentDesc,
-                "contentDesc" to contentDesc,  // 🆕 实战反证金标准: 独立字段给 PageIdentifier 用
+                "contentDesc" to contentDesc,  // 🆕 实测: 独立字段给 PageIdentifier 用
                 "centerX" to centerX,
                 "centerY" to centerY,
                 "type" to "desc"

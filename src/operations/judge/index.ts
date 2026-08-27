@@ -1,5 +1,5 @@
 /**
- * V4.x judge module (老板实战反证金标准 08-22)
+ * V4.x judge module (老板实测 08-22)
  *
  * 界面判断:
  * - isScreenText(text)         当前屏幕是否含文字

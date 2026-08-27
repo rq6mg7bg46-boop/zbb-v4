@@ -2,11 +2,11 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-// 实战反证金标准 08-24: import services/index.ts 注册 5min 触发器监听
+// 实测 08-24: import services/index.ts 注册 5min 触发器监听
 import '@/services';
 
 /**
- * ZBB v4 RootLayout (老板实战反证金标准 08-22)
+ * ZBB v4 RootLayout (老板实测 08-22)
  *
  * 简化版 - 只支持单屏 (HomeScreen)
  * 不引入 V2.x 的 ColorSchemeProvider / baoliService / yuexiuService

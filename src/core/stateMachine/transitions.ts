@@ -1,5 +1,5 @@
 /**
- * V4.x State Machine Transitions (老板实战反证金标准 08-22 + 08-27)
+ * V4.x State Machine Transitions (老板实测 08-22 + 08-27)
  *
  * 6 态转移图定义 + guard 函数
  *

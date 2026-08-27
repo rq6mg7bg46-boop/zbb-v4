@@ -1,5 +1,5 @@
 /**
- * V4.x a11y module (老板实战反证金标准 08-22)
+ * V4.x a11y module (老板实测 08-22)
  *
  * A11y (无障碍服务) 操作封装:
  * - findByText(text)         按文字找节点
