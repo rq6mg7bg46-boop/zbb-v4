@@ -261,6 +261,49 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
+    // 🆕 08-27 v32.19 老板拍板: native setTimeout 持久化 timer (跨 RN reload 不失效)
+    //   - JS setTimeout 在 RN reload 时模块级变量丢失 → timer 失效
+    //   - 用 native Handler.postDelayed 持久化 → reload 后仍生效
+    //   - 用于 Cooldown 60s 自动 COOLDOWN_DONE
+    private val nativeTimers = mutableMapOf<String, Runnable>()
+
+    @ReactMethod
+    fun setNativeTimeout(timerId: String, delayMs: Number, promise: Promise) {
+        try {
+            // 清旧 timer
+            clearNativeTimeoutInternal(timerId)
+            val runnable = Runnable {
+                nativeTimers.remove(timerId)
+                Log.d(TAG, "[nativeTimer] $timerId 到期 → 触发 onNativeTimeout")
+                sendEvent("onNativeTimeout", timerId)
+            }
+            nativeTimers[timerId] = runnable
+            mainHandler.postDelayed(runnable, delayMs.toLong())
+            Log.d(TAG, "[nativeTimer] $timerId 设置 ${delayMs}ms 后触发 (共 ${nativeTimers.size} 个活跃)")
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "[nativeTimer] setNativeTimeout 失败: ${e.message}", e)
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun clearNativeTimeout(timerId: String, promise: Promise) {
+        try {
+            val removed = clearNativeTimeoutInternal(timerId)
+            Log.d(TAG, "[nativeTimer] $timerId 清除 (removed=$removed, 共 ${nativeTimers.size} 个活跃)")
+            promise.resolve(removed)
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    private fun clearNativeTimeoutInternal(timerId: String): Boolean {
+        val runnable = nativeTimers.remove(timerId) ?: return false
+        mainHandler.removeCallbacks(runnable)
+        return true
+    }
+
     @ReactMethod
     fun launchApp(packageName: String, promise: Promise) {
         try {

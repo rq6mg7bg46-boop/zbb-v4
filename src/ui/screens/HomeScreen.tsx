@@ -16,8 +16,8 @@
  *                只用 V4.x 精简 native module + ZBBAutomation basic methods
  */
 
-// 🆕 08-26 老板拍板 v32.18: 模块级 cooldownTimer (不被 useEffect 依赖变化清理)
-let cooldownTimer: ReturnType<typeof setTimeout> | null = null;
+// 🆕 08-27 v32.19: cooldownTimer 用 native Handler.postDelayed, 不需 JS 模块级变量
+// (Handler 是 Android native, 跨 RN reload 不失效)
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { runZbbWorkflow } from '@/flow';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
+import { setNativeTimer, clearNativeTimer } from '@/services/nativeTimer';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实战反证金标准: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
@@ -142,43 +143,30 @@ export default function HomeScreen() {
     let overlayTimer: ReturnType<typeof setInterval> | null = null;
     // 🆕 08-26 v32.18: cooldownTimer 改为模块级, 不在这里声明
 
-    // 🆕 08-25: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
+    // 🆕 08-26 老板拍板: 监听状态机, Cooldown 进入时记录时间戳 + UserIntervention 时弹 1 次 Toast
     const unsub = orchestrator.onChange((newState, prevState) => {
       if (newState === OrchState.Cooldown) {
         const enterTime = Date.now();
         setCooldownEnterTime(enterTime);
-        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳, 60s 后自动 COOLDOWN_DONE');
-        // 🆕 08-26 老板拍板修法: Cooldown 60s 后自动发 COOLDOWN_DONE → Idle
-        //   - 之前没自动 trigger → 一直 stuck Cooldown
-        //   - 用 setTimeout, 重复进入 Cooldown 时清旧 timer
-        if (cooldownTimer) {
-          clearTimeout(cooldownTimer);
-          cooldownTimer = null;
-        }
-        cooldownTimer = setTimeout(() => {
-          cooldownTimer = null;
-          // 二次校验: 状态仍是 Cooldown 才发 (避免被 RESET/USER_CONFIRM 抢先)
+        console.log('[HomeScreen] 进入 Cooldown, 记录时间戳, 60s 后 native timer 自动 COOLDOWN_DONE');
+        // 🆕 08-27 v32.19: 用 native timer (Handler.postDelayed 持久化, 跨 RN reload 不失效)
+        //   - 之前 v32.18 JS setTimeout 模块级变量 reload 后丢失 → stuck Cooldown
+        setNativeTimer('COOLDOWN_DONE', 60_000, () => {
           if (orchestrator.getState() === OrchState.Cooldown) {
-            console.log('[HomeScreen] Cooldown 60s 到期 → 发 COOLDOWN_DONE → Idle');
+            console.log('[HomeScreen] native Cooldown 60s 到期 → 发 COOLDOWN_DONE → Idle');
             orchestrator.send('COOLDOWN_DONE');
           }
-        }, 60_000);
+        });
       } else if (newState === OrchState.Idle) {
         setCooldownEnterTime(0); // 重置
-        if (cooldownTimer) {
-          clearTimeout(cooldownTimer);
-          cooldownTimer = null;
-        }
+        clearNativeTimer('COOLDOWN_DONE');
       } else if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
         // 🆕 08-26 老板拍板: 状态机切到 UserIntervention 不再弹窗
         //   - 弹窗由 qianji.ts 步骤 4 raiseAlert 统一发 (有按钮 + 震动 30s)
         //   - HomeScreen 只负责监听状态变化
         console.log('[HomeScreen] 进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
-        // 清 Cooldown timer (避免在 UserIntervention 状态误发 COOLDOWN_DONE)
-        if (cooldownTimer) {
-          clearTimeout(cooldownTimer);
-          cooldownTimer = null;
-        }
+        // 清 Cooldown native timer (避免在 UserIntervention 状态误发 COOLDOWN_DONE)
+        clearNativeTimer('COOLDOWN_DONE');
       }
     });
 
