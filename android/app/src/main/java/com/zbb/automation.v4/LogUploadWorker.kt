@@ -440,7 +440,7 @@ class LogUploadWorker(
             val body = JSONObject().apply {
                 put("device_id", getDeviceId())
                 put("user_id", getUserId())
-                put("app_version", "1.6.4.1-fix-ABC-W5")  // 标识 W5 版本
+                put("app_version", BuildConfig.VERSION_TAG)  // 🆕 08-27 23:55: 跟 V32.18 logger.ts + L223/L238 一致, 老板拍板 app_version 跟安装版本走
                 put("timestamp", clientTs)  // F3: 同一 tick 共用 timestamp
                 put("log", chunk)
                 put("source", BuildConfig.VERSION_TAG)
