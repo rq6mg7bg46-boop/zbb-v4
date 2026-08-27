@@ -59,6 +59,9 @@ export interface ZBBAutomationModule {
   isAccessibilityServiceRunning(): Promise<boolean>;
   openAccessibilitySettings(): Promise<boolean>;
 
+  // 🆕 08-27: 用户空闲检测 (供入口 2 千机监听动态 delay 计算)
+  getLastInteractionMs(): Promise<number>;
+
   // 截图
   takeScreenshot(): Promise<string>;
   takeScreenshotAndSave(fileName: string): Promise<string>;

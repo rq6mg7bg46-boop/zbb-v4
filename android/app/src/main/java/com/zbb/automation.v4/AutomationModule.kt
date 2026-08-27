@@ -176,6 +176,23 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
+    /**
+     * 🆕 08-27 老板拍板: 暴露 OperationDetector.getLastInteractionMs() 给 JS
+     *   - 用途: JS 端入口 2 千机监听 → 动态用户空闲检测公式
+     *     delay = max(0, lastInteractionMs + 5000 - nowMs)
+     *   - 调用方: src/services/index.ts subscribeQianjiNewCustomer
+     *   - 返回: 上次操作时间戳 (ms), 0L 表示从未操作
+     */
+    @ReactMethod
+    fun getLastInteractionMs(promise: Promise) {
+        try {
+            val last = com.zbb.automation.v4.OperationDetector.getLastInteractionMs()
+            promise.resolve(last.toDouble())
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
     // ==================== 业务日志 Native 写入 (2026-07-05 v2-fix + A 计划统一入口) ====================
     // v2-fix 修 expose-file-system documentDirectory 静默失败, 改用 Context.filesDir
     // A 计划重构: 把写文件逻辑提到 BusinessLogWriter 静态类, 让 Native 端任何调用点

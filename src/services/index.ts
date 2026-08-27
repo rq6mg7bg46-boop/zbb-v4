@@ -89,26 +89,72 @@ if (nativeEmitter) {
 
 // ================== 入口 2: 千机监听新客户 (🆕 08-27 实装) ==================
 // 🆕 08-27 老板拍板核心语义:
-//   1. 收到 QianjiMessageReceived → 闸门判断
+//   1. 收到 QianjiMessageReceived → 白名单匹配 + 闸门判断
+//      - 白名单: text 必须含"待审核" + 项目名 ∈ TRIGGER_PROJECTS (抄 V2.x)
 //      - isRunning() == true → ZBB 在工作 → 入 pending 队列, 不触发
 //      - isInUserIntervention() == true → ZBB 卡死 → 入 pending 队列, 不触发
-//      - isQuietHour() == true → 静默期 → 入 pending 队列, 不触发
-//      - 闸门全过 → 5s 防抢屏推迟 + 二次闸门 + 调 runZbbWorkflow
+//      - 闸门全过 → **动态用户空闲检测** delay = max(0, lastInteraction + 5000 - now)
+//        例子 A: 用户已 idle 5s+ → delay=0 → 立刻触发
+//        例子 B: 用户 3s 前操作过 → delay=2s → 2s 后再触发
+//        例子 C: 用户一直操作 → 等用户停止操作后 5s 立刻触发
 //   2. 状态机转回 Idle (running → idle / UI → idle / error → idle) → 消费 pending 队列
-//      - 二次闸门 (Running/UI/QuietHour) 通过 → 5s 推迟 + runZbbWorkflow
+//      - 二次闸门 (Running/UI) 通过 → 重新算 delay + runZbbWorkflow
 //      - 不通过 → 保留 pending, 等下次 Idle
 //   3. 同入口 3 一样不打扰 (UserIntervention 不消费队列 = 老板没操作前不自动跑)
+//   4. 🆕 debug log 显示 delay 计算细节 (老板拍板: 方便验证动态空闲检测设计)
 
-const QIANJI_PENDING_DELAY_MS = 5000;  // 5s 防抢屏推迟
+const QIANJI_PENDING_DELAY_MS = 5000;  // 用户空闲阈值 (5s 不操作 = idle)
+// 🆕 08-27 抄 V2.x QianjiService.ts:288 默认值 (实战验证过的项目列表)
+const TRIGGER_PROJECTS = ['保利缦城和颂', '越秀金水云启'];
+const DAI_SHEN_HE_KEYWORD = '待审核';
+
 type QianjiPayload = { package?: string; title?: string; text?: string; subText?: string; bigText?: string; timestamp?: number; source?: string };
 const pendingQianjiEvents: QianjiPayload[] = [];  // pending 队列 (FIFO)
 
 /**
- * 检查闸门 + 推迟触发 runZbbWorkflow
- * @param pendingTimeoutId 用于推迟期间取消 (状态机变了就取消, 事件放回队列头)
+ * 匹配白名单: text 必须含"待审核" + 项目名 ∈ TRIGGER_PROJECTS
+ * 抄 V2.x QianjiService.ts:1413 设计
+ * @returns { matched: boolean, project?: string }
  */
-function scheduleQianjiTrigger(payload: QianjiPayload): void {
-  // 二次闸门 (推迟 5s 后状态可能变了)
+function matchQianjiTrigger(text: string | undefined): { matched: boolean; project?: string } {
+  if (!text) return { matched: false };
+  const hasDaiShenHe = text.includes(DAI_SHEN_HE_KEYWORD);
+  const projectHit = TRIGGER_PROJECTS.find((p) => text.includes(p));
+  if (!projectHit || !hasDaiShenHe) {
+    logger.info('千机监听', `未命中白名单 (${TRIGGER_PROJECTS.join('/')}) + ${DAI_SHEN_HE_KEYWORD}, 跳过 text=${text.slice(0, 60)}`);
+    return { matched: false };
+  }
+  return { matched: true, project: projectHit };
+}
+
+/**
+ * 计算动态 delay (老板拍板核心公式):
+ *   delay = max(0, lastInteractionMs + 5000 - nowMs)
+ *   - 例子 A: 用户已 idle 5s+ → delay=0 → 立刻触发
+ *   - 例子 B: 用户 3s 前操作过 → delay=2s → 2s 后再触发
+ *   - 例子 C: 用户一直操作 → 等用户停止操作后 5s 立刻触发
+ */
+async function calcIdleDelayMs(): Promise<number> {
+  const nowMs = Date.now();
+  let lastInteractionMs = 0;
+  try {
+    lastInteractionMs = await ZBBAutomation.getLastInteractionMs();
+  } catch (e) {
+    logger.warn('千机监听', `getLastInteractionMs 失败, 退避用 5s 固定 delay: ${e}`);
+    return QIANJI_PENDING_DELAY_MS;
+  }
+  // 🆕 debug log (老板拍板: 方便验证设计)
+  const elapsedSinceInteraction = lastInteractionMs === 0 ? Infinity : nowMs - lastInteractionMs;
+  const delay = Math.max(0, lastInteractionMs + QIANJI_PENDING_DELAY_MS - nowMs);
+  logger.info('千机监听', `delay 计算: nowMs-lastInteractionMs=${elapsedSinceInteraction === Infinity ? '∞ (从未操作)' : elapsedSinceInteraction + 'ms'}, delay=${delay}ms`);
+  return delay;
+}
+
+/**
+ * 检查闸门 + 推迟触发 runZbbWorkflow (用动态 delay)
+ */
+async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
+  // 二次闸门 (delay 期间状态可能变了)
   if (orchestrator.isInUserIntervention()) {
     logger.info('千机监听', `推迟后闸门不通过: UserIntervention, 事件保留 pending=${pendingQianjiEvents.length}`);
     return;
@@ -117,9 +163,24 @@ function scheduleQianjiTrigger(payload: QianjiPayload): void {
     logger.info('千机监听', `推迟后闸门不通过: Running, 事件保留 pending=${pendingQianjiEvents.length}`);
     return;
   }
-  // 静默期闸门由 native 端拦截 (见顶部注释), JS 端只查 Running/UI
+  // 静默期闸门由 native 端拦截
 
-  logger.info('千机监听', `✓ 闸门全过, 触发 runZbbWorkflow (pkg=${payload?.package}, source=${payload?.source})`);
+  // 重新算 delay (状态可能变了, 也要重算用户空闲)
+  const delay = await calcIdleDelayMs();
+  if (delay === 0) {
+    // 用户已 idle 5s+ → 立刻触发
+    triggerQianjiRun(payload);
+  } else {
+    logger.info('千机监听', `delay=${delay}ms 推迟后再触发`);
+    setTimeout(() => scheduleQianjiTrigger(payload), delay);
+  }
+}
+
+/**
+ * 真正调 runZbbWorkflow
+ */
+function triggerQianjiRun(payload: QianjiPayload): void {
+  logger.info('千机监听', `✓ 闸门全过, 触发 runZbbWorkflow (pkg=${payload?.package}, project=${payload?.text?.slice(0, 60)})`);
   runZbbWorkflow().then((result) => {
     logger.info('千机监听', `runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
   }).catch((e: any) => {
@@ -130,10 +191,10 @@ function scheduleQianjiTrigger(payload: QianjiPayload): void {
 let qianjiListenerSubscription: { remove: () => void } | null = null;
 
 /**
- * 消费 pending 队列: 弹出最早事件, 走二次闸门 + 5s 推迟 + 触发
+ * 消费 pending 队列: 弹出最早事件, 走二次闸门 + 动态 delay + 触发
  * 闸门不通过 → 放回队列头, 等下次 Idle
  */
-function consumeQianjiPending(): void {
+async function consumeQianjiPending(): Promise<void> {
   if (pendingQianjiEvents.length === 0) {
     return;
   }
@@ -146,8 +207,13 @@ function consumeQianjiPending(): void {
   // 静默期闸门由 native 端拦截
 
   const payload = pendingQianjiEvents.shift()!;
-  logger.info('千机监听', `消费 pending: 弹出事件 (pkg=${payload?.package}), 5s 推迟 (queue 剩 ${pendingQianjiEvents.length} 个)`);
-  setTimeout(() => scheduleQianjiTrigger(payload), QIANJI_PENDING_DELAY_MS);
+  const delay = await calcIdleDelayMs();
+  logger.info('千机监听', `消费 pending: 弹出事件 (pkg=${payload?.package}), delay=${delay}ms (queue 剩 ${pendingQianjiEvents.length} 个)`);
+  if (delay === 0) {
+    triggerQianjiRun(payload);
+  } else {
+    setTimeout(() => scheduleQianjiTrigger(payload), delay);
+  }
 }
 
 /**
@@ -167,8 +233,11 @@ orchestrator.onChange((newState, prevState) => {
  * 监听千机端收到符合要求的新客户, 触发 ZBB
  *
  * 🆕 08-27 老板拍板语义 (入口 2 实装):
- *   - 闸门全过 (Idle + 活跃期 + 解锁) → 5s 防抢屏推迟 + 调 runZbbWorkflow
- *   - ZBB 在工作 / 卡死 / 静默期 / 锁屏 → 入 pending 队列, 状态机转回 Idle 时消费
+ *   - 白名单: 待审核 + 项目名 ∈ TRIGGER_PROJECTS (抄 V2.x)
+ *   - 闸门全过 (Idle + 闸门过滤已通过) → **动态用户空闲检测** delay = max(0, lastInteraction + 5000 - now)
+ *   - ZBB 在工作 (Running) 或卡死 (UserIntervention) → 入 pending 队列, 不立刻触发
+ *   - 静默期闸门由 native 端拦截
+ *   - 状态机转回 Idle 时 → 消费 pending 队列
  *
  * 🆕 08-27 bug fix: 改为模块加载时立即订阅 (跟入口 3 形态一致)
  *   - 旧设计: export function, 需外部调用才会触发
@@ -201,6 +270,13 @@ function subscribeQianjiNewCustomer(
     // 业务层回调 (供业务层打 log / 上报)
     callback?.(payload);
 
+    // 白名单匹配: 待审核 + 项目名 ∈ TRIGGER_PROJECTS
+    const matchResult = matchQianjiTrigger(payload?.text);
+    if (!matchResult.matched) {
+      return;  // matchQianjiTrigger 已 log
+    }
+    logger.info('千机监听', `✓ 命中白名单: 项目=${matchResult.project} + ${DAI_SHEN_HE_KEYWORD}`);
+
     // 闸门 1: ZBB 在工作 (Running)
     if (orchestrator.isRunning()) {
       pendingQianjiEvents.push(payload);
@@ -218,9 +294,8 @@ function subscribeQianjiNewCustomer(
     // 闸门 3: 静默期由 native 端拦截 (见顶部注释), JS 端不查
     // (AccessibilityServiceImpl.handleAccessibilityNotification 已经过滤 21:00-07:00)
 
-    // 闸门全过 → 5s 防抢屏推迟 + 调 runZbbWorkflow
-    logger.info('千机监听', `闸门全过, 5s 推迟后触发 (pkg=${payload?.package})`);
-    setTimeout(() => scheduleQianjiTrigger(payload), QIANJI_PENDING_DELAY_MS);
+    // 闸门全过 → 动态用户空闲检测 delay + runZbbWorkflow
+    scheduleQianjiTrigger(payload);
   });
 
   logger.info('services/index.ts', '入口 2 监听器已注册: QianjiMessageReceived → pending 队列 + Idle 消费');
