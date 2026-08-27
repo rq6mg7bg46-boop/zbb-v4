@@ -20,7 +20,7 @@ import java.util.Locale
  * 调用方:
  *   1. AutomationModule.writeBusinessLog() — RN 端 log 调用
  *   2. AccessibilityServiceImpl.onAccessibilityEvent() — RN 后台也能写
- *   3. NotificationMonitorService.onNotificationReceived() — 千机/保利通知链路
+ *   3. AccessibilityServiceImpl.handleAccessibilityNotification() — 千机通知链路
  *
  * LogUploadWorker.readFromFilesDir() 读这个目录上传 server,
  * 增量游标 (B 计划) 用 byte offset 判断新内容.

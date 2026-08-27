@@ -79,7 +79,7 @@ class AccessibilityServiceImpl : AccessibilityService() {
         @Volatile
         internal var instance: AccessibilityServiceImpl? = null
 
-        // 🆕 v19.38 (07-20 老板拍板)：千机监听方案 2 包名黑名单（D3）
+        // 🆕 v19.38 (07-20 老板拍板)：千机监听包名黑名单（D3）
         //   - ZBB 自己：showToast 在 EMUI/HarmonyOS 触发系统通知，被自己的 a11y 监听器捕获
         //   - launcher：EMUI "已清理至最佳状态" 是系统通知，不是千机消息
         private val BLOCKED_NOTIF_PACKAGES = setOf(
@@ -87,7 +87,7 @@ class AccessibilityServiceImpl : AccessibilityService() {
             "com.huawei.android.launcher",              // EMUI/HarmonyOS 桌面通知
         )
 
-        // 🆕 v19.38 (07-20 老板拍板)：千机监听方案 2 关键词黑名单（D4）
+        // 🆕 v19.38 (07-20 老板拍板)：千机监听关键词黑名单（D4）
         //   这些文本是 ZBB 操作千机/保利之后千机产生的"完成通知"，不是新流程触发
         //   即使 text 含"报备有效"也会被这层先过滤，避免 v19.31 规则被绕过
         private val QIANJI_LISTEN_SKIP_KEYWORDS = listOf(
@@ -231,45 +231,45 @@ class AccessibilityServiceImpl : AccessibilityService() {
         // 周期性 5min 触发 LogUploadWorker，应对 Doze / EMUI 后台杀进程
         ZbbKeepAliveService.start(this)
 
-        // ========== 方案 2（兜底）：把无障碍服务通知事件桥接到 JS 层 ==========
+        // ========== 千机监听：把无障碍服务通知事件桥接到 JS 层 ==========
         // accessibility_service_config.xml 用 typeAllMask，已包含 TYPE_NOTIFICATION_STATE_CHANGED
         // onAccessibilityEvent 内已经处理此事件并调用 onNotificationReceived 回调
         onNotificationReceived = { packageName: String, text: String ->
             handleAccessibilityNotification(packageName, text)
         }
-        Log.d(TAG, "方案 2 通知监听桥接已设置（accessibility）")
+        Log.d(TAG, "千机通知监听桥接已设置")
     }
 
     /**
-     * 处理方案 2 通过无障碍服务收到的通知
-     * 与 NotificationMonitorService（方案 1）发出的事件同源同名 QianjiMessageReceived
+     * 处理千机通知（通过无障碍服务）
+     * 发出 QianjiMessageReceived 事件给 JS 层
      * 标记 source="accessibility" 区分
      */
     private fun handleAccessibilityNotification(packageName: String, text: String) {
         try {
-            // 🆕 v19.61 (07-22) 老板拍板: 千机通知监听闸门 (方案 2 路径)
-            //   跟 NotificationMonitorService.onNotificationPosted 闸门一致
+            // 🆕 v19.61 (07-22) 老板拍板: 千机通知监听闸门
+            //   闸门: 静默期 + 锁屏 (跟 ZbbKeepAliveService.tick 一致)
             //   第一道: 静默期 (21:00-07:00) — 老板原话"不监听千机消息"
             //   第二道: 锁屏 — keyguard 解锁才响应
             if (ZbbTimeGuard.isQuietHour()) {
-                Log.d(TAG, "方案 2 千机通知: 静默期跳过 (21:00-07:00)")
+                Log.d(TAG, "千机通知: 静默期跳过 (21:00-07:00)")
                 return
             }
             val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
             if (keyguardManager?.isKeyguardLocked == true) {
-                Log.d(TAG, "方案 2 千机通知: 锁屏中跳过")
+                Log.d(TAG, "千机通知: 锁屏中跳过")
                 return
             }
 
-            // 🆕 v19.38 (07-20 老板拍板)：千机监听方案 2 双层 filter（在写 log 前先过滤，省 log 噪音）
+            // 🆕 v19.38 (07-20 老板拍板)：千机监听双层 filter（在写 log 前先过滤，省 log噪音）
             //   第 1 层：包名黑名单（ZBB 自己 + 桌面通知）
             if (BLOCKED_NOTIF_PACKAGES.contains(packageName)) {
-                Log.d(TAG, "方案 2 已过滤: pkg=$packageName 在包名黑名单中")
+                Log.d(TAG, "千机监听已过滤: pkg=$packageName 在包名黑名单中")
                 return
             }
             //   第 2 层：关键词黑名单（ZBB 操作后产生的完成通知）
             if (QIANJI_LISTEN_SKIP_KEYWORDS.any { text.contains(it) }) {
-                Log.d(TAG, "方案 2 已过滤: text 含 ZBB 操作完成关键词, pkg=$packageName")
+                Log.d(TAG, "千机监听已过滤: text 含 ZBB 操作完成关键词, pkg=$packageName")
                 return
             }
 
@@ -278,12 +278,12 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 BusinessLogWriter.append(
                     this,
                     "info",
-                    "[千机监听-方案2] pkg=$packageName text=${text.take(120).replace("\n", " | ")}"
+                    "[千机监听] pkg=$packageName text=${text.take(120).replace("\n", " | ")}"
                 )
             } catch (_: Exception) { /* 已在 BusinessLogWriter 内 logcat */ }
 
             val module = AutomationModuleManager.getModule() ?: run {
-                Log.w(TAG, "方案 2: AutomationModule 未注册，跳过事件发送")
+                Log.w(TAG, "千机监听: AutomationModule 未注册，跳过事件发送")
                 return
             }
             val payload = com.facebook.react.bridge.Arguments.createMap().apply {
@@ -296,9 +296,9 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 putString("source", "accessibility")  // 与 notification 区分
             }
             module.sendEventToJS("QianjiMessageReceived", payload)
-            Log.d(TAG, "方案 2 已发送 QianjiMessageReceived: pkg=$packageName, text=$text")
+            Log.d(TAG, "千机监听已发送 QianjiMessageReceived: pkg=$packageName, text=$text")
         } catch (e: Exception) {
-            Log.e(TAG, "方案 2 发送事件失败: ${e.message}", e)
+            Log.e(TAG, "千机监听发送事件失败: ${e.message}", e)
         }
     }
     

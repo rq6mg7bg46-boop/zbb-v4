@@ -78,16 +78,8 @@
         android:exported="false"
         android:foregroundServiceType="mediaProjection"/>
 
-    <!-- 通知监听服务（方案 1：双保险机制 - 主路径） -->
-    <service
-        android:name=".NotificationMonitorService"
-        android:exported="true"
-        android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-      <intent-filter>
-        <action android:name="android.service.notification.NotificationListenerService" />
-      </intent-filter>
-    </service>
-
+    <!-- 千机通知监听: 走 AccessibilityService TYPE_NOTIFICATION_STATE_CHANGED (08-27 老板拍板)
+         删 NotificationListenerService 方案: nova 07-25 实战 0 触发 (没在系统设置授权 = 死代码) -->
     <!-- 调试用 BroadcastReceiver（adb 触发：A 方案调试入口，详见 skill zbb-automation） -->
     <!-- DEBUG_SET_INTERVAL: am broadcast -a com.zbb.automation.DEBUG_SET_INTERVAL -p com.zbb.automation 后接 extra long minutes N -->
     <!-- DEBUG_TRIGGER_NOW:   am broadcast -a com.zbb.automation.DEBUG_TRIGGER_NOW   -p com.zbb.automation -->

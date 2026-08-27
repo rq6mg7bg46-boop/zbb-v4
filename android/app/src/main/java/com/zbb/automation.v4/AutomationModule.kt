@@ -159,7 +159,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
      * 跟 v19.61 业务闸门 4 闸门 (keyguard 闸门) 一致 — 已用于:
      *   - AccessibilityServiceImpl.handleAccessibilityNotification (L258/259)
      *   - IdleTriggerWorker L52/53
-     *   - NotificationMonitorService L58/59
+     *   - (方案 1 已删)
      *   - UserPresentReceiver L54/55
      *   - ZbbKeepAliveService (similar)
      * TS 端 UnifiedFlowOrchestrator.checkKeyguardLocked() 调这个方法
@@ -179,7 +179,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     // ==================== 业务日志 Native 写入 (2026-07-05 v2-fix + A 计划统一入口) ====================
     // v2-fix 修 expose-file-system documentDirectory 静默失败, 改用 Context.filesDir
     // A 计划重构: 把写文件逻辑提到 BusinessLogWriter 静态类, 让 Native 端任何调用点
-    //   (AccessibilityServiceImpl / NotificationMonitorService) 都能直接 append,
+    //   AccessibilityServiceImpl 能直接 append,
     //   不依赖 RN runtime / console hook — 拔线 + app 后台 + RN JS 冻结都能写日志
     //
     // 行为约定:

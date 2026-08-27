@@ -15,8 +15,7 @@ import java.time.ZoneId
  * 🆕 v19.61 闸门位置重构:
  *   - 第一道: ZbbKeepAliveService.tick (业务中心: log upload / idle worker / startIdleWork)
  *   - 第二道: UserPresentReceiver (解锁立即触发, 5min debounce)
- *   - 第三道: NotificationMonitorService.onNotificationPosted (千机通知方案 1)
- *   - 第四道: AccessibilityServiceImpl.handleAccessibilityNotification (千机通知方案 2)
+ *   - 第三道: AccessibilityServiceImpl.handleAccessibilityNotification (千机通知, 08-27 老板拍板统一方案)
  *   - ❌ 不接 LogUploadWorker (log 是基础设施, 24h 上传)
  *   - ❌ 不接 IdleTriggerWorker (闸门在 tick 入口拦了, Worker 不会被触发)
  *
@@ -30,11 +29,10 @@ import java.time.ZoneId
  *   - D1.5 已运行流程不打断 (mutex 已 acquire 的流程让它跑完)
  *   - D1.6 解锁立即触发 (UserPresentReceiver + keyguard 解锁 = 立即 startIdleWork)
  *
- * 接入点 (4 个业务入口):
+ * 接入点 (3 个业务入口):
  *   - ZbbKeepAliveService.tick → 5min 周期兜底
  *   - UserPresentReceiver → 解锁立即触发
- *   - NotificationMonitorService.onNotificationPosted → 千机通知方案 1
- *   - AccessibilityServiceImpl.handleAccessibilityNotification → 千机通知方案 2
+ *   - AccessibilityServiceImpl.handleAccessibilityNotification → 千机通知
  *
  * 验证 (v19.61):
  *   - 21:00-07:00 静默期: 4 个入口全部短路, 仅保活心跳
