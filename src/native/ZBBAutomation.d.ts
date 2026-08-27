@@ -62,6 +62,9 @@ export interface ZBBAutomationModule {
   // 🆕 08-27: 用户空闲检测 (供入口 2 千机监听动态 delay 计算)
   getLastInteractionMs(): Promise<number>;
 
+  // 🆕 08-27 23:50: JS log → business-*.log (写盘 + 上传 server, 生产场景铁律)
+  writeBusinessLog(level: 'info' | 'warn' | 'error', message: string): Promise<boolean>;
+
   // 截图
   takeScreenshot(): Promise<string>;
   takeScreenshotAndSave(fileName: string): Promise<string>;
