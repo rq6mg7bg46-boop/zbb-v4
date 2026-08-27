@@ -9,6 +9,7 @@
 
 import { ZBBAutomation, A11yNode } from '@/native';
 import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
+import { logger } from '@/utils/logger';
 
 const DEFAULT_DURATION_MS = 600;
 
@@ -32,7 +33,7 @@ export async function byText(
 ): Promise<boolean> {
   const node = await ZBBAutomation.findElementByText(text);
   if (!node || node.centerX === undefined || node.centerY === undefined) {
-    console.warn(`[longPress.byText] 没找到: "${text}"`);
+    logger.warn('longPress.byText', `没找到: "${text}"`);
     return false;
   }
   return longPressAt(node.centerX, node.centerY, durationMs, level);
@@ -47,7 +48,7 @@ export async function byNode(
   level: HumanLevel = HumanLevel.PRECISE,
 ): Promise<boolean> {
   if (!node || node.centerX === undefined || node.centerY === undefined) {
-    console.warn(`[longPress.byNode] 节点无效:`, node);
+    logger.warn('longPress.byNode', `节点无效: ${node}`);
     return false;
   }
   return longPressAt(node.centerX, node.centerY, durationMs, level);

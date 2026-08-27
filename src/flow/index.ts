@@ -18,6 +18,7 @@ import { runQianjiFlow } from './qianji';
 import { runBaoliFlow } from './baoli';
 import { orchestrator } from '@/core/stateMachine';
 import { setZbbWorkflowRunner } from './handleStart';
+import { logger } from '@/utils/logger';
 
 export {
   runQianjiFlow,
@@ -61,15 +62,15 @@ export type WorkflowResult = {
  * @returns WorkflowResult.ok=true 表示流程跑成功; skipped=true 表示被守卫跳过
  */
 export async function runZbbWorkflow(): Promise<WorkflowResult> {
-  console.log('[runZbbWorkflow] 启动完整业务流...');
+  logger.info('runZbbWorkflow', '启动完整业务流...');
 
   // 1. 并发守卫: USER_INTERVENTION / already running → 跳过
   if (orchestrator.isInUserIntervention()) {
-    console.warn('[runZbbWorkflow] 跳过: USER_INTERVENTION 中');
+    logger.info('runZbbWorkflow', '跳过: USER_INTERVENTION 中');
     return { ok: false, skipped: true, reason: 'user_intervention' };
   }
   if (orchestrator.isRunning()) {
-    console.warn('[runZbbWorkflow] 跳过: 已在运行中');
+    logger.info('runZbbWorkflow', '跳过: 已在运行中');
     return { ok: false, skipped: true, reason: 'already_running' };
   }
 
@@ -84,7 +85,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       //   - notifyNoReport Toast 已显示
       //   - 状态机: QianjiRefreshing + QIANJI_NO_REPORT → Idle
       //   - 老板点 / 千机监听 / 反息屏 都能在 Idle 上立刻启动
-      console.log('[runZbbWorkflow] 千机端无客户 → 直 → Idle (正常跳过)');
+      logger.info('runZbbWorkflow', '千机端无客户 → 直 → Idle (正常跳过)');
       orchestrator.send('QIANJI_NO_REPORT');
       return { ok: true, skipped: true, reason: 'no_report' };
     }
@@ -92,7 +93,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       // 千机端 raiseAlert / return null = 非正常结束
       //   → 进 UserIntervention, 等老板点"开始干活"才恢复
       //   状态机: QianjiRefreshing + QIANJI_INTERVENE → UserIntervention
-      console.warn('[runZbbWorkflow] 千机端失败 → 进 UserIntervention (等老板)');
+      logger.info('runZbbWorkflow', '千机端失败 → 进 UserIntervention (等老板)');
       orchestrator.send('QIANJI_INTERVENE');
       return { ok: false, skipped: false, reason: 'qianji_failed' };
     }
@@ -105,7 +106,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       const ok = await runBaoliFlow(customer);
       if (!ok) {
         // 保理失败 → Error (实测 08-25: 保理异常不算用户介入)
-        console.warn('[runZbbWorkflow] 保理端失败 → 进 Error');
+        logger.info('runZbbWorkflow', '保理端失败 → 进 Error');
         orchestrator.send('BAOLI_FAILED');
         return { ok: false, skipped: false, reason: 'baoli_failed' };
       }
@@ -117,16 +118,16 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       //   Idle 状态下老板点 / 千机监听 / 反息屏 立刻启动下一次
       //   注: V4.x 暂未实装越秀端, 直接当 YUEXIU_COMPLETE 处理
       orchestrator.send('YUEXIU_COMPLETE');
-      console.log(`[runZbbWorkflow] ✓ 全流程完成: 客户=${customer.customerName} 项目=${customer.projectType} → 直 → Idle`);
+      logger.info('runZbbWorkflow', `✓ 全流程完成: 客户=${customer.customerName} 项目=${customer.projectType} → 直 → Idle`);
       return { ok: true, skipped: false, reason: 'success', customerName: customer.customerName, projectType: customer.projectType };
     }
 
     // 越秀端待 S2.4 实现 → 当作需要老板介入 (实测 08-25)
-    console.warn(`[runZbbWorkflow] 越秀端待实现 (${customer.customerName}) → 进 UserIntervention`);
+    logger.warn('runZbbWorkflow', `越秀端待实现 (${customer.customerName}) → 进 UserIntervention`);
     orchestrator.send('YUEXIU_INTERVENE');
     return { ok: false, skipped: false, reason: 'unknown_project' };
   } catch (e: any) {
-    console.error('[runZbbWorkflow] 异常:', e);
+    logger.error('runZbbWorkflow', `'异常:' ${e}`);
     // 真正异常 → Error (不是 UserIntervention)
     orchestrator.send('QIANJI_FAILED');
     return { ok: false, skipped: false, reason: 'unknown_project' };

@@ -15,6 +15,7 @@
 
 import { ZBBAutomation, A11yNode } from '@/native';
 import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
+import { logger } from '@/utils/logger';
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 200;
@@ -58,7 +59,7 @@ export async function byText(
       timeoutMs,
     );
     if (!result || !result.x || !result.y) {
-      console.warn(`[click.byText] OCR 没找到: "${text}"`);
+      logger.warn('click.byText', `OCR 没找到: "${text}"`);
       return false;
     }
     const { x, y } = applyHumanOffset(result.x, result.y, level);
@@ -74,7 +75,7 @@ export async function byText(
     timeoutMs,
   );
   if (!node || node.centerX === undefined || node.centerY === undefined) {
-    console.warn(`[click.byText] A11y 没找到: "${text}"`);
+    logger.warn('click.byText', `A11y 没找到: "${text}"`);
     return false;
   }
   const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
@@ -86,7 +87,7 @@ export async function byText(
  */
 export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
   if (!node || node.centerX === undefined || node.centerY === undefined) {
-    console.warn(`[click.byNode] 节点无效:`, node);
+    logger.warn('click.byNode', `节点无效: ${node}`);
     return false;
   }
   const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
@@ -99,7 +100,7 @@ export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PREC
 export async function byId(viewId: string, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
   const node = await ZBBAutomation.findElementByViewId(viewId);
   if (!node || node.centerX === undefined || node.centerY === undefined) {
-    console.warn(`[click.byId] 没找到: "${viewId}"`);
+    logger.warn('click.byId', `没找到: "${viewId}"`);
     return false;
   }
   const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);

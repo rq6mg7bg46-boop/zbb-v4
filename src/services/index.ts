@@ -28,12 +28,13 @@ import { NativeEventEmitter, NativeModules } from 'react-native';
 import { runZbbWorkflow } from '@/flow';
 import { orchestrator } from '@/core/stateMachine';
 import { loadAppEnv } from '@/config/env';
+import { logger } from '@/utils/logger';
 
 // 🆕 08-24: 启动时从 native BuildConfig 读 APP_ENV + 千机包名 (实装待补)
 loadAppEnv().then((env) => {
-  console.log(`[services/index.ts] APP_ENV=${env.appEnv}, qianji=${env.qianjiPackage}`);
+  logger.info('services/index.ts', `APP_ENV=${env.appEnv}, qianji=${env.qianjiPackage}`);
 }).catch((e) => {
-  console.error('[services/index.ts] loadAppEnv 失败:', e);
+  logger.error('services/index.ts', `'loadAppEnv 失败:' ${e}`);
 });
 
 // ================== 入口 3: native 反息屏 5min 触发监听 ==================
@@ -45,28 +46,28 @@ const nativeEmitter = ZBBAutomation ? new NativeEventEmitter(ZBBAutomation) : nu
 if (nativeEmitter) {
   nativeEmitter.addListener('zbbIdleWorkTrigger', (payload?: { source?: string; timestamp?: number; reason?: string }) => {
     const reason = payload?.reason ?? 'unknown';
-    console.log(`[zbbIdleWorkTrigger] 收到反息屏事件 source=${payload?.source} reason=${reason}`);
+    logger.info('zbbIdleWorkTrigger', `收到反息屏事件 source=${payload?.source} reason=${reason}`);
 
     // 守卫: UserIntervention / Running → 跳过
     if (orchestrator.isInUserIntervention()) {
-      console.warn('[zbbIdleWorkTrigger] 跳过: UserIntervention 中 (反息屏不打扰异常结束)');
+      logger.info('zbbIdleWorkTrigger', '跳过: UserIntervention 中 (反息屏不打扰异常结束)');
       return;
     }
     if (orchestrator.isRunning()) {
-      console.warn('[zbbIdleWorkTrigger] 跳过: 业务已在运行中 (反息屏不打断 ZBB)');
+      logger.info('zbbIdleWorkTrigger', '跳过: 业务已在运行中 (反息屏不打断 ZBB)');
       return;
     }
 
     // 调 runZbbWorkflow (并发守卫复用)
     runZbbWorkflow().then((result) => {
-      console.log(`[zbbIdleWorkTrigger] runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
+      logger.info('zbbIdleWorkTrigger', `runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
     }).catch((e: any) => {
-      console.error('[zbbIdleWorkTrigger] runZbbWorkflow 异常:', e);
+      logger.error('zbbIdleWorkTrigger', `'runZbbWorkflow 异常:' ${e}`);
     });
   });
-  console.log('[services/index.ts] 入口 3 监听器已注册: zbbIdleWorkTrigger → runZbbWorkflow');
+  logger.info('services/index.ts', '入口 3 监听器已注册: zbbIdleWorkTrigger → runZbbWorkflow');
 } else {
-  console.warn('[services/index.ts] ZBBAutomation native module 不可用, 跳过入口 3 监听器注册');
+  logger.info('services/index.ts', 'ZBBAutomation native module 不可用, 跳过入口 3 监听器注册');
 }
 
 // ================== 入口 2: 千机监听新客户 (08-27 接口预留) ==================
@@ -97,12 +98,12 @@ export function listenForQianjiNewCustomer(
   //   - 候选 1: NotificationMonitorService 监听千机 notification
   //   - 候选 2: 千机界面 a11y 节点扫描 (新增客户字段变化)
   //   - 实装时: 加 5s 防抢屏推迟 → runZbbWorkflow
-  console.warn('[listenForQianjiNewCustomer] 🆕 08-27 接口预留, 实装待老板拍板 (TODO)');
+  logger.info('listenForQianjiNewCustomer', '🆕 08-27 接口预留, 实装待老板拍板 (TODO)');
   // 占位: 返回空 unsubscribe, 不影响现有逻辑
   return () => {
-    console.log('[listenForQianjiNewCustomer] unsubscribe (no-op)');
+    logger.info('listenForQianjiNewCustomer', 'unsubscribe (no-op)');
   };
 }
 
 // ================== 模块加载完成 log ==================
-console.log(`[services/index.ts] 已注册: 入口 3 反息屏监听 (入口 2 千机监听仅接口预留, 未实装)`);
+logger.info('services/index.ts', `已注册: 入口 3 反息屏监听 (入口 2 千机监听仅接口预留, 未实装)`);

@@ -27,6 +27,7 @@ import { click, longPress, a11y, judge, pressKey } from '@/operations';
 import { ZBBAutomation } from '@/native';
 import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
+import { logger } from '@/utils/logger';
 import { px } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23)
 
 const APP_PACKAGES = {
@@ -42,7 +43,7 @@ const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和
 // 保利流程主入口
 // ============================================================
 export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
-  console.log(`========== 保利流程开始 (客户=${customer.customerName}) ==========`);
+  logger.info('app', `========== 保利流程开始 (客户=${customer.customerName}) ==========`);
 
   orchestrator.send('QIANJI_READY'); // QianjiRefreshing → BaoliRunning
 
@@ -50,7 +51,7 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
     // 第一轮报备
     const round1Ok = await runBaoliRound(customer, 1);
     if (!round1Ok) {
-      console.warn('[保利] 第一轮报备失败');
+      logger.info('保利', '第一轮报备失败');
       orchestrator.send('BAOLI_FAILED');
       return false;
     }
@@ -58,16 +59,16 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
     // 第二轮报备
     const round2Ok = await runBaoliRound(customer, 2);
     if (!round2Ok) {
-      console.warn('[保利] 第二轮报备失败');
+      logger.info('保利', '第二轮报备失败');
       orchestrator.send('BAOLI_FAILED');
       return false;
     }
 
     orchestrator.send('BAOLI_COMPLETE'); // BaoliRunning → YuexiuRunning
-    console.log('========== 保利流程完成 ==========');
+    logger.info('app', '========== 保利流程完成 ==========');
     return true;
   } catch (error) {
-    console.error('[保利] 流程失败:', error);
+    logger.error('保利', `'流程失败:' ${error}`);
     orchestrator.send('BAOLI_FAILED');
     return false;
   }
@@ -77,7 +78,7 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
 // 保利单轮 (第一轮 + 第二轮 都调这个, round 区分)
 // ============================================================
 async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<boolean> {
-  console.log(`========== 保利第 ${round} 轮开始 ==========`);
+  logger.info('app', `========== 保利第 ${round} 轮开始 ==========`);
 
   // 步骤 1: 打开企业微信
   const step1 = await step1OpenWechat();
@@ -132,7 +133,7 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
   const step13 = await step13DetectResult(round);
   if (!step13) return false;
 
-  console.log(`========== 保利第 ${round} 轮完成 ==========`);
+  logger.info('app', `========== 保利第 ${round} 轮完成 ==========`);
   return true;
 }
 
@@ -140,14 +141,14 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
 // 步骤 1: 打开企业微信
 // ============================================================
 async function step1OpenWechat(): Promise<boolean> {
-  console.log('[保利:步骤1] 打开企业微信...');
+  logger.info('保利:步骤1', '打开企业微信...');
   const ok = await ZBBAutomation.launchApp(APP_PACKAGES.WECHAT_WORK);
   if (!ok) {
-    console.warn('[保利:步骤1] 启动失败');
+    logger.info('保利:步骤1', '启动失败');
     return false;
   }
   await ZBBAutomation.delay(3000);
-  console.log('[保利:步骤1] ✓ 企业微信已打开');
+  logger.info('保利:步骤1', '✓ 企业微信已打开');
   return true;
 }
 
@@ -155,14 +156,14 @@ async function step1OpenWechat(): Promise<boolean> {
 // 步骤 2: 点击工作台
 // ============================================================
 async function step2ClickWorkbench(): Promise<boolean> {
-  console.log('[保利:步骤2] 点击工作台...');
+  logger.info('保利:步骤2', '点击工作台...');
   const ok = await click.byText('工作台');
   if (!ok) {
-    console.warn('[保利:步骤2] 找不到工作台');
+    logger.info('保利:步骤2', '找不到工作台');
     return false;
   }
   await ZBBAutomation.delay(2000);
-  console.log('[保利:步骤2] ✓ 已点工作台');
+  logger.info('保利:步骤2', '✓ 已点工作台');
   return true;
 }
 
@@ -170,14 +171,14 @@ async function step2ClickWorkbench(): Promise<boolean> {
 // 步骤 3: 上滑查找"云和家经纪云" (跨机型 dp 适配)
 // ============================================================
 async function step3FindMiniApp(): Promise<boolean> {
-  console.log('[保利:步骤3] 上滑查找云和家经纪云...');
+  logger.info('保利:步骤3', '上滑查找云和家经纪云...');
 
   // V2.x 实战经验铁证: 步骤 3 上滑"云和家经纪云"专用 - 跨机型适配
   // nova 480dpi 1dp=3px vs vivo 320dpi 1dp=2px
   for (let attempt = 0; attempt < 5; attempt++) {
     const found = await judge.isScreenText('云和家经纪云');
     if (found) {
-      console.log(`[保利:步骤3] ✓ 第 ${attempt + 1} 次找到云和家经纪云`);
+      logger.info('保利:步骤3', `✓ 第 ${attempt + 1} 次找到云和家经纪云`);
       const ok = await click.byText('云和家经纪云');
       if (ok) {
         await ZBBAutomation.delay(3000);
@@ -190,7 +191,7 @@ async function step3FindMiniApp(): Promise<boolean> {
     await ZBBAutomation.delay(1500);
   }
 
-  console.warn('[保利:步骤3] 5 次上滑都没找到');
+  logger.info('保利:步骤3', '5 次上滑都没找到');
   return false;
 }
 
@@ -198,7 +199,7 @@ async function step3FindMiniApp(): Promise<boolean> {
 // 步骤 4: 找报备项目名
 // ============================================================
 async function step4FindProject(projectName: string): Promise<boolean> {
-  console.log(`[保利:步骤4] 找"${projectName}"...`);
+  logger.info('保利:步骤4', `找"${projectName}"...`);
 
   const verifyResult = await verifyAndRecover(projectName, {
     timeoutMs: 8000,
@@ -206,7 +207,7 @@ async function step4FindProject(projectName: string): Promise<boolean> {
   });
 
   if (!verifyResult.ok) {
-    console.warn(`[保利:步骤4] 找不到 ${projectName}`);
+    logger.warn('保利:步骤4', `找不到 ${projectName}`);
     orchestrator.send('BAOLI_INTERVENE'); // 老板介入
     return false;
   }
@@ -215,7 +216,7 @@ async function step4FindProject(projectName: string): Promise<boolean> {
   if (!ok) return false;
 
   await ZBBAutomation.delay(2000);
-  console.log(`[保利:步骤4] ✓ 已点 ${projectName}`);
+  logger.info('保利:步骤4', `✓ 已点 ${projectName}`);
   return true;
 }
 
@@ -223,14 +224,14 @@ async function step4FindProject(projectName: string): Promise<boolean> {
 // 步骤 5: 点底部"报备"按钮 (V2.x 步骤 4.5, v22.00.1 修复: v19.x 漏步骤)
 // ============================================================
 async function step5ClickReportButton(): Promise<boolean> {
-  console.log('[保利:步骤5] 点底部"报备"按钮...');
+  logger.info('保利:步骤5', '点底部"报备"按钮...');
   const ok = await click.byText('报备');
   if (!ok) {
-    console.warn('[保利:步骤5] 找不到报备按钮');
+    logger.info('保利:步骤5', '找不到报备按钮');
     return false;
   }
   await ZBBAutomation.delay(2000);
-  console.log('[保利:步骤5] ✓ 已点报备按钮');
+  logger.info('保利:步骤5', '✓ 已点报备按钮');
   return true;
 }
 
@@ -239,7 +240,7 @@ async function step5ClickReportButton(): Promise<boolean> {
 // (V2.x 步骤 7, 实测: 长按 3000ms + 等 1500ms + tap 粘贴)
 // ============================================================
 async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> {
-  console.log('[保利:步骤6] 长按输入框 + 粘贴客户信息...');
+  logger.info('保利:步骤6', '长按输入框 + 粘贴客户信息...');
 
   // 写剪贴板
   await ZBBAutomation.setClipboardText(
@@ -249,7 +250,7 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   // 找"粘贴完整客户信息..."节点
   const pasteNode = await a11y.findByText('粘贴');
   if (!pasteNode) {
-    console.warn('[保利:步骤6] 找不到粘贴节点');
+    logger.info('保利:步骤6', '找不到粘贴节点');
     return false;
   }
 
@@ -261,13 +262,13 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   // tap 粘贴
   const pasteOk = await click.byText('粘贴');
   if (!pasteOk) {
-    console.warn('[保利:步骤6] tap 粘贴失败');
+    logger.info('保利:步骤6', 'tap 粘贴失败');
     return false;
   }
 
   // 等粘贴菜单 (500ms 动画)
   await ZBBAutomation.delay(500);
-  console.log('[保利:步骤6] ✓ 客户信息已粘贴');
+  logger.info('保利:步骤6', '✓ 客户信息已粘贴');
   return true;
 }
 
@@ -275,14 +276,14 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
 // 步骤 7: 点"请选择分期" (V2.x 步骤 9)
 // ============================================================
 async function step7SelectInstallment(): Promise<boolean> {
-  console.log('[保利:步骤7] 点请选择分期...');
+  logger.info('保利:步骤7', '点请选择分期...');
   const ok = await click.byText('请选择分期');
   if (!ok) {
-    console.warn('[保利:步骤7] 找不到分期选项');
+    logger.info('保利:步骤7', '找不到分期选项');
     return false;
   }
   await ZBBAutomation.delay(1500);
-  console.log('[保利:步骤7] ✓ 已点分期');
+  logger.info('保利:步骤7', '✓ 已点分期');
   return true;
 }
 
@@ -290,11 +291,11 @@ async function step7SelectInstallment(): Promise<boolean> {
 // 步骤 8: 选择报备项目 (V2.x 步骤 10, 再确认一次)
 // ============================================================
 async function step8SelectProject(projectName: string): Promise<boolean> {
-  console.log(`[保利:步骤8] 选择报备项目: ${projectName}...`);
+  logger.info('保利:步骤8', `选择报备项目: ${projectName}...`);
   const ok = await click.byText(projectName);
   if (!ok) return false;
   await ZBBAutomation.delay(1500);
-  console.log('[保利:步骤8] ✓ 已选项目');
+  logger.info('保利:步骤8', '✓ 已选项目');
   return true;
 }
 
@@ -302,11 +303,11 @@ async function step8SelectProject(projectName: string): Promise<boolean> {
 // 步骤 9: 点确认 (V2.x 步骤 11)
 // ============================================================
 async function step9ClickConfirm(): Promise<boolean> {
-  console.log('[保利:步骤9] 点确认...');
+  logger.info('保利:步骤9', '点确认...');
   const ok = await click.byText('确认');
   if (!ok) return false;
   await ZBBAutomation.delay(1500);
-  console.log('[保利:步骤9] ✓ 已点确认');
+  logger.info('保利:步骤9', '✓ 已点确认');
   return true;
 }
 
@@ -314,14 +315,14 @@ async function step9ClickConfirm(): Promise<boolean> {
 // 步骤 10: 点智能识别 (V2.x 步骤 12)
 // ============================================================
 async function step10SmartRecognition(): Promise<boolean> {
-  console.log('[保利:步骤10] 点智能识别...');
+  logger.info('保利:步骤10', '点智能识别...');
   const ok = await click.byText('智能识别');
   if (!ok) {
-    console.warn('[保利:步骤10] 找不到智能识别');
+    logger.info('保利:步骤10', '找不到智能识别');
     return false;
   }
   await ZBBAutomation.delay(3000); // 等 OCR 跑完
-  console.log('[保利:步骤10] ✓ 已点智能识别');
+  logger.info('保利:步骤10', '✓ 已点智能识别');
   return true;
 }
 
@@ -329,11 +330,11 @@ async function step10SmartRecognition(): Promise<boolean> {
 // 步骤 11: 点报备 (V2.x 步骤 13)
 // ============================================================
 async function step11ClickReport(): Promise<boolean> {
-  console.log('[保利:步骤11] 点报备...');
+  logger.info('保利:步骤11', '点报备...');
   const ok = await click.byText('报备');
   if (!ok) return false;
   await ZBBAutomation.delay(2000);
-  console.log('[保利:步骤11] ✓ 已点报备');
+  logger.info('保利:步骤11', '✓ 已点报备');
   return true;
 }
 
@@ -341,7 +342,7 @@ async function step11ClickReport(): Promise<boolean> {
 // 步骤 12: 等待报备结果 (V2.x 步骤 14)
 // ============================================================
 async function step12WaitResult(): Promise<boolean> {
-  console.log('[保利:步骤12] 等待报备结果...');
+  logger.info('保利:步骤12', '等待报备结果...');
 
   // 等"报备成功"或"重号"出现
   const start = Date.now();
@@ -351,7 +352,7 @@ async function step12WaitResult(): Promise<boolean> {
     await ZBBAutomation.delay(500);
   }
 
-  console.warn('[保利:步骤12] 超时 15s');
+  logger.info('保利:步骤12', '超时 15s');
   return false;
 }
 
@@ -360,18 +361,18 @@ async function step12WaitResult(): Promise<boolean> {
 // 实测: 情况 1=重号 → 老板介入, 情况 2=成功 → 上滑 + 上传附件 + 等截图
 // ============================================================
 async function step13DetectResult(round: 1 | 2): Promise<boolean> {
-  console.log(`[保利:步骤13] 检测报备结果 (第 ${round} 轮)...`);
+  logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮)...`);
 
   // 情况 1: 重号
   if (await judge.isScreenText('重号')) {
-    console.log('[保利:步骤13-情况1] 疑似重号, 启动震动+弹窗');
+    logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
     orchestrator.send('BAOLI_INTERVENE'); // 老板介入
     return false;
   }
 
   // 情况 2: 成功
   if (await judge.isScreenText('报备成功')) {
-    console.log('[保利:步骤13-情况2] 报备成功, 上滑 + 等截图');
+    logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
 
     // 情况 2-1: 上滑屏幕 (跨机型 dp 适配, 老板 08-23 拍板)
     await ZBBAutomation.swipe(px(180), px(500), px(180), px(267), 1000);
@@ -383,7 +384,7 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     }
 
     // 情况 2-3: 等待老板截图
-    console.log('[保利:步骤13-情况2-3] 等待老板截图...');
+    logger.info('保利:步骤13-情况2-3', '等待老板截图...');
     await ZBBAutomation.delay(5000);
 
     // tap 返回键
@@ -392,6 +393,6 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     return true;
   }
 
-  console.warn('[保利:步骤13] 未知状态');
+  logger.info('保利:步骤13', '未知状态');
   return false;
 }

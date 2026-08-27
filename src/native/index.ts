@@ -7,15 +7,13 @@
 
 import { NativeModules } from 'react-native';
 import type { ZBBAutomationModule } from './ZBBAutomation';
+import { logger } from '@/utils/logger';
 export type { ZBBAutomationModule, A11yNode, OcrResult, FindTextResult, ExtractContentResult } from './ZBBAutomation';
 
 const Native = NativeModules.ZBBAutomation as ZBBAutomationModule | undefined;
 
 if (!Native) {
-  console.warn(
-    '[ZBBAutomation] Native module not found. ' +
-    'Make sure ZBBAutomationModule.kt is registered in AutomationPackage.kt',
-  );
+  logger.info('ZBBAutomation', 'Native module not found.');
 }
 
 /**
@@ -37,13 +35,13 @@ async function safeCall<T>(
   try {
     const fn = (Native as any)[method];
     if (typeof fn !== 'function') {
-      console.warn(`[ZBBAutomation] ${String(method)} is not a function`);
+      logger.warn('ZBBAutomation', `${String(method)} is not a function`);
       return defaultValue;
     }
     const result = await fn.apply(Native, args);
     return result === undefined ? defaultValue : result;
   } catch (e: any) {
-    console.error(`[ZBBAutomation] ${String(method)} failed:`, e?.message ?? e);
+    logger.error('ZBBAutomation', `${String(method)} failed: ${e?.message ?? e}`);
     return defaultValue;
   }
 }

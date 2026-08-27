@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { runZbbWorkflow } from '@/flow';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
+import { logger } from '@/utils/logger';
 
 // ================== V4.x 精简 Native Bridge ==================
 // 实测: V4.x 用 ZBBAutomation native module (V2.x 26 kt 已支持)
@@ -115,10 +116,10 @@ export default function HomeScreen() {
   const checkA11yOnce = useCallback(async (): Promise<boolean> => {
     try {
       const ok = await ZBBAutomation.isAccessibilityServiceRunning();
-      console.log(`[pollA11y] ${new Date().toISOString().slice(11, 19)} → ${ok}`);
+      logger.info('pollA11y', `→ ${ok}`);
       return ok;
     } catch (e) {
-      console.error('[pollA11y] error:', e);
+      logger.error('pollA11y', `error: ${e}`);
       return false;
     }
   }, []);
@@ -126,10 +127,10 @@ export default function HomeScreen() {
   const checkOverlayOnce = useCallback(async (): Promise<boolean> => {
     try {
       const ok = await ZBBAutomation.isOverlayPermissionGranted();
-      console.log(`[pollOverlay] ${new Date().toISOString().slice(11, 19)} → ${ok}`);
+      logger.info('pollOverlay', `→ ${ok}`);
       return ok;
     } catch (e) {
-      console.error('[pollOverlay] error:', e);
+      logger.error('pollOverlay', `error: ${e}`);
       return false;
     }
   }, []);
@@ -144,7 +145,7 @@ export default function HomeScreen() {
     //   - HomeScreen 只负责监听状态变化
     const unsub = orchestrator.onChange((newState, prevState) => {
       if (newState === OrchState.UserIntervention && prevState !== OrchState.UserIntervention) {
-        console.log('[HomeScreen] 进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
+        logger.info('HomeScreen', '进入 UserIntervention, 弹窗已由 qianji.ts 步骤 4 触发');
       }
     });
 
@@ -159,7 +160,7 @@ export default function HomeScreen() {
           if (o && a11yTimer) {
             clearInterval(a11yTimer);
             a11yTimer = null;
-            console.log('[pollA11y] 检测到已开启, 停止轮询');
+            logger.info('pollA11y', '检测到已开启, 停止轮询');
           }
         }, 1000);
       });
@@ -176,7 +177,7 @@ export default function HomeScreen() {
           if (o && overlayTimer) {
             clearInterval(overlayTimer);
             overlayTimer = null;
-            console.log('[pollOverlay] 检测到已开启, 停止轮询');
+            logger.info('pollOverlay', '检测到已开启, 停止轮询');
           }
         }, 1000);
       });
@@ -230,31 +231,31 @@ export default function HomeScreen() {
     // 🆕 08-25 老板拍板: UserIntervention 状态 → 先发 USER_CONFIRM 回 Idle, 再走流程
     const currentState = orchestrator.getState();
     if (currentState === OrchState.UserIntervention) {
-      console.log('[开始干活] UserIntervention 状态 → 发 USER_CONFIRM → Idle → 再跑流程');
+      logger.info('开始干活', 'UserIntervention 状态 → 发 USER_CONFIRM → Idle → 再跑流程');
       orchestrator.send('USER_CONFIRM');
       // fallthrough 继续跑流程 (USER_CONFIRM → Idle → START → QianjiRefreshing)
     } else if (orchestrator.isRunning()) {
       // 🆕 08-25 老板拍板: Running 中 → Toast 提示已在跑, 不响应
-      console.warn('[开始干活] Running 中 (千机/保利/越秀在跑), 跳过本次点击');
+      logger.info('开始干活', 'Running 中 (千机/保利/越秀在跑), 跳过本次点击');
       await showSystemToast('小主,我已经在努力干活中!', 3000);
       return;
     }
 
     setIsRunning(true);
-    console.log('[开始干活] 启动业务流程 (handleStart → runZbbWorkflow)...');
+    logger.info('开始干活', '启动业务流程 (handleStart → runZbbWorkflow)...');
     try {
       const result = await runZbbWorkflow();
       if (result.skipped) {
-        console.warn(`[开始干活] 流程跳过: ${result.reason}`);
+        logger.warn('开始干活', `流程跳过: ${result.reason}`);
         Alert.alert('提示', `流程跳过: ${result.reason}`);
       } else if (result.ok) {
-        console.log(`[开始干活] 流程完成: ${result.customerName}`);
+        logger.info('开始干活', `流程完成: ${result.customerName}`);
       } else {
-        console.warn(`[开始干活] 流程失败: ${result.reason} → UserIntervention`);
+        logger.warn('开始干活', `流程失败: ${result.reason} → UserIntervention`);
         // 失败已转 UserIntervention, 等老板点"开始干活"才恢复
       }
     } catch (e: any) {
-      console.error('[开始干活] 流程异常:', e);
+      logger.error('开始干活', `'流程异常:' ${e}`);
       Alert.alert('启动失败', String(e?.message ?? e));
     } finally {
       setIsRunning(false);

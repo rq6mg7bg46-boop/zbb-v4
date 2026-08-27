@@ -18,6 +18,7 @@
  */
 
 import { ZBBAutomation } from '@/native';
+import { logger } from '@/utils/logger';
 
 const DEFAULT_DISTANCE_PX = 600;
 const DEFAULT_DURATION_MS = 300;
@@ -34,7 +35,7 @@ export async function swipeUp(distancePx: number = DEFAULT_DISTANCE_PX, duration
   const startY = 1500; // nova 屏幕中部偏下
   const endY = Math.max(100, startY - distancePx);
 
-  console.log(`[swipe] swipeUp: (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
+  logger.info('swipe', `swipeUp: (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
   return ZBBAutomation.swipe(startX, startY, startX, endY, durationMs);
 }
 
@@ -46,7 +47,7 @@ export async function swipeDown(distancePx: number = DEFAULT_DISTANCE_PX, durati
   const startY = 500; // nova 屏幕中部偏上
   const endY = Math.min(2200, startY + distancePx);
 
-  console.log(`[swipe] swipeDown: (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
+  logger.info('swipe', `swipeDown: (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
   return ZBBAutomation.swipe(startX, startY, startX, endY, durationMs);
 }
 

@@ -21,6 +21,7 @@ import {
   TRANSITIONS,
 } from './transitions';
 import { stateBus } from './eventBus';
+import { logger } from '@/utils/logger';
 
 type StateChangeListener = (newState: OrchState, oldState: OrchState, event: TransitionEvent) => void;
 
@@ -92,7 +93,7 @@ class Orchestrator {
     const oldState = this.currentState;
 
     if (!canTransition(oldState, event)) {
-      console.warn(`[Orchestrator] 非法转移: ${oldState} + ${event}`);
+      logger.warn('Orchestrator', `非法转移: ${oldState} + ${event}`);
       return oldState;
     }
 
@@ -125,11 +126,11 @@ class Orchestrator {
       try {
         fn(newState, oldState, event);
       } catch (e) {
-        console.error('[Orchestrator] listener error:', e);
+        logger.error('Orchestrator', `'listener error:' ${e}`);
       }
     }
 
-    console.log(`[Orchestrator] ${oldState} --[${event}]--> ${newState}`);
+    logger.info('Orchestrator', `${oldState} --[${event}]--> ${newState}`);
     return newState;
   }
 

@@ -29,6 +29,7 @@
  */
 
 import { NativeModules } from 'react-native';
+import { logger } from '@/utils/logger';
 
 /**
  * APP 包名常量 (08-24 实测)
@@ -95,7 +96,7 @@ export async function loadAppEnv(): Promise<{
     //   改后: NativeModules.ZBBAutomation.APP_ENV (同步字段, RN 启动时自动读)
     const native = NativeModules.ZBBAutomation as any;
     if (native) {
-      console.log('[env] native module keys count:', Object.keys(native).length);
+      logger.info('env', `'native module keys count:' ${Object.keys(native).length}`);
       // 直接读同步常量 (V2.x 实测 getConstants)
       const syncAppEnv = native.APP_ENV;
       if (syncAppEnv === 'production' || syncAppEnv === 'mock') {
@@ -104,15 +105,15 @@ export async function loadAppEnv(): Promise<{
           qianjiPackage: native.QIANJI_PACKAGE || result.qianjiPackage,
           qianjiMainActivity: native.QIANJI_MAIN_ACTIVITY || result.qianjiMainActivity,
         };
-        console.log('[env] native BuildConfig (via getConstants):', result);
+        logger.info('env', `'native BuildConfig (via getConstants):' ${result}`);
       } else {
-        console.warn('[env] native.APP_ENV 不存在或值无效, fallback 默认值 production');
+        logger.info('env', 'native.APP_ENV 不存在或值无效, fallback 默认值 production');
       }
     } else {
-      console.warn('[env] NativeModules.ZBBAutomation = undefined (module 未注册到 bridge)');
+      logger.info('env', 'NativeModules.ZBBAutomation = undefined (module 未注册到 bridge)');
     }
   } catch (e) {
-    console.error('[env] 读取失败, fallback 默认值:', e);
+    logger.error('env', `'读取失败, fallback 默认值:' ${e}`);
   }
 
   _appEnvCache = result.appEnv;

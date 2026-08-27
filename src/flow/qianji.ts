@@ -22,6 +22,7 @@ import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
 import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
+import { logger } from '@/utils/logger';
 
 // ============================================================
 // 常量 (08-24)
@@ -61,13 +62,13 @@ export interface CustomerInfo {
 // 千机端步骤 1: 打开千机 (🆕 08-24 老板拍板: 用 launchAppWithAmStart)
 // ============================================================
 export async function stepOpenQianji(): Promise<void> {
-  console.log('[千机:步骤1] 正在打开千机...');
+  logger.info('千机:步骤1', '正在打开千机...');
 
   // 🆕 08-24: 包名 + MainActivity 都从 env 模块读 (跟 BuildConfig 同步)
   // 实测 (V2.x AutomationModule.kt:936): 必须启动 .MainActivity, 不是 .APlusIconActivity
   const qianjiPkg = qianjiPackage();
   const qianjiAct = qianjiMainActivity();
-  console.log(`[千机:步骤1] package=${qianjiPkg}, mainActivity=${qianjiAct}`);
+  logger.info('千机:步骤1', `package=${qianjiPkg}, mainActivity=${qianjiAct}`);
 
   // 🆕 08-24 (老板拍板: 用 launchAppWithAmStart):
   //   V4 旧 launchApp() 只走 getLaunchIntentForPackage (返回 launcher 图标 APlusIconActivity)
@@ -81,13 +82,13 @@ export async function stepOpenQianji(): Promise<void> {
     launched = await launchWithAm(qianjiPkg, qianjiAct);
 
     if (launched) {
-      console.log('[千机:步骤1] 千机已启动, 等待界面加载...');
+      logger.info('千机:步骤1', '千机已启动, 等待界面加载...');
       await ZBBAutomation.delay(3000);
     } else {
       throw new Error('千机启动失败');
     }
   } catch (error) {
-    console.warn(`[千机:步骤1] 启动失败, 准备重试: ${error}`);
+    logger.warn('千机:步骤1', `启动失败, 准备重试: ${error}`);
     // 重试 1 次 (V2.x v22.02.32 实测: force-stop 后重试)
     await ZBBAutomation.delay(1000);
     launched = await launchWithAm(qianjiPkg, qianjiAct);
@@ -95,18 +96,18 @@ export async function stepOpenQianji(): Promise<void> {
     await ZBBAutomation.delay(3000);
   }
 
-  console.log('[千机:步骤1] ✓ 千机已打开');
+  logger.info('千机:步骤1', '✓ 千机已打开');
 }
 
 // ============================================================
 // 千机端步骤 2: 识别当前界面 (用 A11y getAllTextNodes)
 // ============================================================
 export async function stepRecognizeInterface(): Promise<A11yNode[]> {
-  console.log('[千机:步骤2] 正在识别当前界面...');
+  logger.info('千机:步骤2', '正在识别当前界面...');
   await ZBBAutomation.delay(2500);
 
   const textNodes = await ZBBAutomation.getAllTextNodes();
-  console.log(`[千机:步骤2] 界面文本节点 (共 ${textNodes.length} 个)`);
+  logger.info('千机:步骤2', `界面文本节点 (共 ${textNodes.length} 个)`);
 
   // 过滤业务关键节点
   const businessNodes = textNodes.filter(node =>
@@ -114,10 +115,10 @@ export async function stepRecognizeInterface(): Promise<A11yNode[]> {
   );
 
   businessNodes.forEach((node) => {
-    console.log(`[千机:步骤2] "${node.text}" at (${Math.round(node.centerX ?? 0)}, ${Math.round(node.centerY ?? 0)})`);
+    logger.info('千机:步骤2', `"${node.text}" at (${Math.round(node.centerX ?? 0)}, ${Math.round(node.centerY ?? 0)})`);
   });
 
-  console.log(`[千机:步骤2] ✓ 界面识别完成 (${businessNodes.length} 个有效节点)`);
+  logger.info('千机:步骤2', `✓ 界面识别完成 (${businessNodes.length} 个有效节点)`);
   return businessNodes;
 }
 
@@ -125,7 +126,7 @@ export async function stepRecognizeInterface(): Promise<A11yNode[]> {
 // 千机端步骤 3: 找"报备审核"并点击
 // ============================================================
 export async function stepFindReportReview(): Promise<void> {
-  console.log('[千机:步骤3] 找"报备审核"...');
+  logger.info('千机:步骤3', '找"报备审核"...');
 
   const verifyResult = await verifyAndRecover('报备审核', {
     timeoutMs: 8000,
@@ -142,7 +143,7 @@ export async function stepFindReportReview(): Promise<void> {
   }
 
   await ZBBAutomation.delay(2000);
-  console.log('[千机:步骤3] ✓ 已点"报备审核"');
+  logger.info('千机:步骤3', '✓ 已点"报备审核"');
 }
 
 // ============================================================
@@ -152,11 +153,11 @@ export async function stepFindReportReview(): Promise<void> {
 export async function stepParseCustomerInfo(
   textNodes: A11yNode[],
 ): Promise<CustomerInfo> {
-  console.log('[千机:步骤4] 解析客户信息 (用 A11y 树节点, 不用 OCR)...');
+  logger.info('千机:步骤4', '解析客户信息 (用 A11y 树节点, 不用 OCR)...');
 
   // 拼装 key-value 行 (匹配 Y 坐标)
   const lines = assembleKeyValueLines(textNodes);
-  console.log(`[千机:步骤4] 拼装后行数: ${lines.length}`);
+  logger.info('千机:步骤4', `拼装后行数: ${lines.length}`);
 
   // 🆕 08-25 老板拍板 B 方案: 保利 10 字段全填 (公司/物业/备注 + phone 三段拆 + projectName)
   const phoneRaw = extractValue(lines, '客户联系方式') || extractValue(lines, '联系方式') || '';
@@ -197,7 +198,7 @@ export async function stepParseCustomerInfo(
     city: extractValue(lines, '城市') || '',
   };
 
-  console.log(`[千机:步骤4] 解析结果: 客户=${customerInfo.customerName} 电话=${customerInfo.phone} phoneLast4=${customerInfo.phoneLast4} 项目=${customerInfo.projectType} 性别=${customerInfo.customerGender}`);
+  logger.info('千机:步骤4', `解析结果: 客户=${customerInfo.customerName} 电话=${customerInfo.phone} phoneLast4=${customerInfo.phoneLast4} 项目=${customerInfo.projectType} 性别=${customerInfo.customerGender}`);
 
   // 验证 phoneLast4 必须是 4 位数字
   if (!/^\d{4}$/.test(customerInfo.phoneLast4)) {
@@ -214,7 +215,7 @@ export async function stepParseCustomerInfo(
 //   - 越秀/招商/其他 单写 1 条
 // ============================================================
 export async function stepWriteToReports(customer: CustomerInfo): Promise<number | number[]> {
-  console.log(`[千机:步骤4] 写入 reports 表 (${customer.projectType}): 客户=${customer.customerName}`);
+  logger.info('千机:步骤4', `写入 reports 表 (${customer.projectType}): 客户=${customer.customerName}`);
 
   if (customer.projectType === 'baoli') {
     // 保利双写 (08-25 老板拍板: 缦城 + 山水, 其他信息一致)
@@ -233,7 +234,7 @@ export async function stepWriteToReports(customer: CustomerInfo): Promise<number
 //              保利端不复制 (用 customerInfo.phone), 越秀端要复制 (点 * 触发)
 // ============================================================
 export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void> {
-  console.log('[千机:步骤6] 点 * 复制脱敏号码...');
+  logger.info('千机:步骤6', '点 * 复制脱敏号码...');
 
   if (customer.projectType === 'yuexiu') {
     // 越秀端: 点 * 触发复制
@@ -241,11 +242,11 @@ export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void>
     if (copyOk) {
       // 等待"已复制到剪贴板"通知
       await waitForScreenWithRollback('已复制到剪贴板', 5000);
-      console.log('[千机:步骤6] ✓ 已复制脱敏号码');
+      logger.info('千机:步骤6', '✓ 已复制脱敏号码');
     }
   } else {
     // 保利端: 不复制 (老板实测: 保利端不复制脱敏号码, 用 customerInfo.phone)
-    console.log('[千机:步骤6] 保利端跳过复制 (用 customerInfo.phone)');
+    logger.info('千机:步骤6', '保利端跳过复制 (用 customerInfo.phone)');
   }
 }
 
@@ -274,14 +275,14 @@ const MISMATCH_MAX_RETRIES = 3;
 export async function runQianjiFlow(): Promise<CustomerInfo | null | 'no_report'> {
   return withFlowRetry('千机端', runQianjiFlowInner, async () => {
     // 整条重试前的恢复动作: 返回 + 等动画
-    console.log('[千机端] 整条重试前 → 返回键 + 等 1s');
+    logger.info('千机端', '整条重试前 → 返回键 + 等 1s');
     await pressKey.back();
     await ZBBAutomation.delay(1000);
   });
 }
 
 async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> {
-  console.log('========== 千机端流程开始 (7 步骤) ==========');
+  logger.info('app', '========== 千机端流程开始 (7 步骤) ==========');
 
   try {
     // ============ 步骤 1: 打开千机 (有界面变化, 1-2s 首轮 + 重试) ============
@@ -291,7 +292,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       async () => await judge.isScreenText('报备待审核')
     );
     if (!step1Ok) {
-      console.warn('[千机:步骤1] 未找到"报备待审核", 1 轮退出操作 (home+多功能+垃圾箱) 重新进入');
+      logger.info('千机:步骤1', '未找到"报备待审核", 1 轮退出操作 (home+多功能+垃圾箱) 重新进入');
       await pressKey.home();
       await ZBBAutomation.delay(500);
       await pressKey.recent();
@@ -312,30 +313,30 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     // 类型 A: 无界面变化 (复用步骤 1 的节点缓存, 直接读)
     const step2Nodes = await ZBBAutomation.getAllTextNodes();
     const step2ReportCount = readReportCountFromNodes(step2Nodes);
-    console.log(`[千机:步骤2] 报备数量=${step2ReportCount}`);
+    logger.info('千机:步骤2', `报备数量=${step2ReportCount}`);
 
     if (step2ReportCount === 0) {
-      console.log('[千机:步骤2] 报备数量=0, 下滑刷新');
+      logger.info('千机:步骤2', '报备数量=0, 下滑刷新');
       await swipe.down();
       await ZBBAutomation.delay(1500);
       const refreshedNodes = await ZBBAutomation.getAllTextNodes();
       const refreshedCount = readReportCountFromNodes(refreshedNodes);
-      console.log(`[千机:步骤2] 刷新后报备数量=${refreshedCount}`);
+      logger.info('千机:步骤2', `刷新后报备数量=${refreshedCount}`);
       if (refreshedCount === 0) {
         // 🆕 08-26 老板拍板: 无客户 = 正常业务状态 (非异常), 不打扰老板
         //   - 用 notifyNoReport (Toast, 不弹 Dialog)
         //   - 返回特殊值 'no_report' 让 runZbbWorkflow → QIANJI_NO_REPORT → Idle (08-27 拍板直 Idle, 不绕 Cooldown)
-        console.log('[千机:步骤2] 刷新后仍=0, 无客户 → 直 Idle (不打扰老板)');
+        logger.info('千机:步骤2', '刷新后仍=0, 无客户 → 直 Idle (不打扰老板)');
         await notifyNoReport();
         return 'no_report' as any; // 特殊标识: 无客户 → 直 Idle
       }
     }
 
     const varA = parseVariableAFromNodes(step2Nodes);
-    console.log(`[千机:步骤2] 变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
+    logger.info('千机:步骤2', `变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
 
     // ============ 步骤 3: A11y 找"转发" (有界面变化, findWithRecovery + 上滑恢复) ============
-    console.log('[千机:步骤3] A11y 找"转发"...');
+    logger.info('千机:步骤3', 'A11y 找"转发"...');
     const step3Ok = await findWithRecovery(
       '千机:步骤3:转发',
       async () => !!(await a11y.findByText('转发')),
@@ -347,7 +348,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     if (!step3Ok) {
       throw new RetryFlowError('步骤3: 上滑3次仍未找到"转发"');
     }
-    console.log(`[千机:步骤3] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
+    logger.info('千机:步骤3', `找到"转发", 点击 (中等偏移 NORMAL 档)`);
     await click.byText('转发', { level: HumanLevel.NORMAL });
     await ZBBAutomation.delay(1800);
 
@@ -372,12 +373,12 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       { projectName: varA.projectName, customerName: varA.customerName, phone: varA.phone },
       { projectName: varB.projectName, customerName: varB.customerName, phone: varB.phone },
     );
-    console.log(`[千机:步骤4] A vs B 对比: ${formatCompareResult(compareResult)}`);
+    logger.info('千机:步骤4', `A vs B 对比: ${formatCompareResult(compareResult)}`);
 
     if (!compareResult.isMatch) {
       _mismatchRetryCount++;
       const diffMsg = compareResult.diffs.map(d => `${d.field}: A="${d.aValue}" vs B="${d.bValue}"`).join('; ');
-      console.warn(`[千机:步骤4] 不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES}): ${diffMsg}`);
+      logger.warn('千机:步骤4', `不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES}): ${diffMsg}`);
       await pressKey.back();
       await ZBBAutomation.delay(1000);
 
@@ -386,8 +387,8 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
         //   - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!
         //   - 按钮: 我知道了 (raiseAlert 已自带, 点后弹窗消失 + 停震动 + 流程结束)
         const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!';
-        console.error(`[千机:步骤4] ${dialogMessage}`);
-        console.error(`[千机:步骤4] 差异详情: ${diffMsg}`);
+        logger.error('千机:步骤4', `${dialogMessage}`);
+        logger.error('千机:步骤4', `差异详情: ${diffMsg}`);
         await raiseAlert(dialogMessage);
         _mismatchRetryCount = 0;
         return null;
@@ -399,19 +400,19 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
 
     // 对比成功 → 重置计数 + 直接用 varB 写库
     _mismatchRetryCount = 0;
-    console.log(`[千机:步骤4] ✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
+    logger.info('千机:步骤4', `✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
     // 写库 (缺口2: 保利双写 / 其他单写)
     const writeResult = await stepWriteToReports(varB);
     if (Array.isArray(writeResult)) {
-      console.log(`[千机:步骤4] 保利双写: ID=${writeResult.join(',')}`);
+      logger.info('千机:步骤4', `保利双写: ID=${writeResult.join(',')}`);
     } else {
-      console.log(`[千机:步骤4] 单写: ID=${writeResult}`);
+      logger.info('千机:步骤4', `单写: ID=${writeResult}`);
     }
 
     // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID DESC)
     try {
       const recentReports = await getRecentReports(3);
-      console.log(`[千机:步骤4] 📋 数据库最近 ${recentReports.length} 组客户:`);
+      logger.info('千机:步骤4', `📋 数据库最近 ${recentReports.length} 组客户:`);
       recentReports.forEach((r: any, idx: number) => {
         // 🆕 08-26 老板实战要求: 用 camelCase 读字段 (snake_case fallback)
         const id = r.id;
@@ -423,15 +424,15 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
         const phonePart1 = r.phonePart1 ?? r.phone_part1 ?? '';
         const phonePart2 = r.phonePart2 ?? r.phone_part2 ?? '';
         const phoneLast4 = r.phoneLast4 ?? r.phone_last4 ?? '';
-        console.log(`[千机:步骤4]   [${idx + 1}] ID=${id} 客户=${customerName} 项目=${projectName} 类型=${projectType}`);
-        console.log(`[千机:步骤4]        电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后4=${phoneLast4})`);
+        logger.info('千机:步骤4', `[${idx + 1}] ID=${id} 客户=${customerName} 项目=${projectName} 类型=${projectType}`);
+        logger.info('千机:步骤4', `电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后4=${phoneLast4})`);
       });
     } catch (e: any) {
-      console.warn(`[千机:步骤4] 读取数据库失败: ${e.message}`);
+      logger.warn('千机:步骤4', `读取数据库失败: ${e.message}`);
     }
 
     // ============ 步骤 5: A11y 找"转发" + 点转发 (有界面变化) ============
-    console.log('[千机:步骤5] A11y 找"转发" (第二次, 进对象选择页)...');
+    logger.info('千机:步骤5', 'A11y 找"转发" (第二次, 进对象选择页)...');
     const step5Ok = await findWithRecovery(
       '千机:步骤5:转发',
       async () => {
@@ -460,7 +461,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       }
     );
     if (step5Ok) {
-      console.log(`[千机:步骤5] 找到"转发", 点击 (中等偏移 NORMAL 档)`);
+      logger.info('千机:步骤5', `找到"转发", 点击 (中等偏移 NORMAL 档)`);
       await click.byText('转发', { level: HumanLevel.NORMAL });
     } else {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
@@ -468,7 +469,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       if (fallback) {
         const dp = fallback.forwardBtn;
         const px = dpToPx(dp);
-        console.log(`[千机:步骤5] A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
+        logger.info('千机:步骤5', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
         await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
@@ -477,7 +478,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     await ZBBAutomation.delay(1800);
 
     // ============ 步骤 6: A11y 找"复制" + 点复制 (有界面变化) ============
-    console.log('[千机:步骤6] A11y 找"复制"...');
+    logger.info('千机:步骤6', 'A11y 找"复制"...');
     const step6Ok = await findWithRecovery(
       '千机:步骤6:复制',
       async () => {
@@ -501,7 +502,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       }
     );
     if (step6Ok) {
-      console.log(`[千机:步骤6] 找到"复制", 点击 (中等偏移 NORMAL 档)`);
+      logger.info('千机:步骤6', `找到"复制", 点击 (中等偏移 NORMAL 档)`);
       await click.byText('复制', { level: HumanLevel.NORMAL });
     } else {
       // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
@@ -509,7 +510,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       if (fallback) {
         const dp = fallback.copyBtn;
         const px = dpToPx(dp);
-        console.log(`[千机:步骤6] A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
+        logger.info('千机:步骤6', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
         await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
@@ -518,11 +519,11 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     await ZBBAutomation.delay(1800);
 
     // ============ 步骤 7: 拉起企业微信 (后续保利端两轮报备从这里接手) ============
-    console.log('[千机:步骤7] 拉起企业微信 (后续保利端接力)');
+    logger.info('千机:步骤7', '拉起企业微信 (后续保利端接力)');
     await ZBBAutomation.launchApp(APP_PACKAGES.WECHAT_WORK);
     await ZBBAutomation.delay(2000);
 
-    console.log('========== 千机端流程完成 ==========');
+    logger.info('app', '========== 千机端流程完成 ==========');
     return varB;
   } catch (error) {
     // RetryFlowError 抛出, 让 withFlowRetry 处理 (返回 + 重进 + 重试整条)
@@ -530,7 +531,7 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       throw error;
     }
     // 真异常 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
-    console.error('[千机端] 流程失败:', error);
+    logger.error('千机端', `'流程失败:' ${error}`);
     return null;
   }
 }

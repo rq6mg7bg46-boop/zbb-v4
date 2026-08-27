@@ -15,6 +15,7 @@
  */
 
 import { ZBBAutomation } from '@/native';
+import { logger } from '@/utils/logger';
 
 /**
  * 类型 A: 无界面变化的快速检测
@@ -28,7 +29,7 @@ export async function quickCheck(
 ): Promise<boolean> {
   for (let i = 1; i <= maxRetries; i++) {
     if (await finder()) return true;
-    console.log(`[${label}] 第 ${i}/${maxRetries} 次未找到`);
+    logger.info('${label}', `第 ${i}/${maxRetries} 次未找到`);
     if (i < maxRetries) {
       await ZBBAutomation.delay(500 + Math.random() * 500); // 0.5-1s
     }
@@ -49,7 +50,7 @@ export async function waitForScreenChange(
   await ZBBAutomation.delay(1000 + Math.random() * 1000); // 首轮 1-2s
   for (let i = 1; i <= maxRetries; i++) {
     if (await finder()) return true;
-    console.log(`[${label}] 第 ${i}/${maxRetries} 次未找到`);
+    logger.info('${label}', `第 ${i}/${maxRetries} 次未找到`);
     if (i < maxRetries) {
       await ZBBAutomation.delay(1000 + Math.random() * 500); // 重试 1-1.5s
     }
@@ -73,7 +74,7 @@ export async function findWithRecovery(
 
   // 2. 调恢复动作 (如上滑/下滑)
   if (recoverAction) {
-    console.log(`[${label}] 短检测失败, 调恢复动作`);
+    logger.info('${label}', `短检测失败, 调恢复动作`);
     await recoverAction();
     await ZBBAutomation.delay(1000);
     if (await quickCheck(`${label} (恢复后)`, finder, 2)) return true;
@@ -117,15 +118,15 @@ export async function withFlowRetry<T>(
   recoverAction?: () => Promise<void>  // 整条重试前调一次 (如 pressKey.back)
 ): Promise<T | null> {
   for (let attempt = 1; attempt <= MAX_FLOW_RETRIES; attempt++) {
-    console.log(`[${flowName}] 流程启动 (第 ${attempt}/${MAX_FLOW_RETRIES} 次)`);
+    logger.info('${flowName}', `流程启动 (第 ${attempt}/${MAX_FLOW_RETRIES} 次)`);
     try {
       const result = await fn();
       if (result !== null) return result;
       // 返回 null 也算失败, 触发整条重试
-      console.warn(`[${flowName}] 返回 null (attempt ${attempt})`);
+      logger.warn('${flowName}', `返回 null (attempt ${attempt})`);
     } catch (e: any) {
       if (e instanceof RetryFlowError) {
-        console.warn(`[${flowName}] 抛 RetryFlowError: ${e.message}`);
+        logger.warn('${flowName}', `抛 RetryFlowError: ${e.message}`);
         if (attempt < MAX_FLOW_RETRIES) {
           if (recoverAction) {
             await recoverAction();
@@ -134,12 +135,12 @@ export async function withFlowRetry<T>(
         }
       } else {
         // 真异常 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
-        console.error(`[${flowName}] 真异常:`, e);
+        logger.error('${flowName}', `真异常: ${e}`);
         return null;
       }
     }
   }
   // 重试上限 → return null (不 raiseAlert, 让 HomeScreen 统一弹窗)
-  console.error(`[${flowName}] 重试 ${MAX_FLOW_RETRIES} 次都失败`);
+  logger.error('${flowName}', `重试 ${MAX_FLOW_RETRIES} 次都失败`);
   return null;
 }

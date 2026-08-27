@@ -1,3 +1,4 @@
+import { logger } from '@/utils/logger';
 /**
  * 拟人化坐标偏移 (老板实测 08-23 拍板)
  *
@@ -46,6 +47,6 @@ export function applyHumanOffset(
   const dx = Math.round((Math.random() * 2 - 1) * range.xMax);
   const dy = Math.round((Math.random() * 2 - 1) * range.yMax);
   // 老板实测 08-24: logcat 打印偏移量, 老板 nova 实测能看到
-  console.log(`[humanOffset] level=${level} (${x},${y}) → (${x + dx},${y + dy}) dx=${dx} dy=${dy}`);
+  logger.info('humanOffset', `level=${level} (${x},${y}) → (${x + dx},${y + dy}) dx=${dx} dy=${dy}`);
   return { x: Math.round(x + dx), y: Math.round(y + dy) };
 }

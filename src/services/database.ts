@@ -18,6 +18,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import type { CustomerInfo } from '@/flow/qianji';
+import { logger } from '@/utils/logger';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 let _initialized = false;
@@ -54,7 +55,7 @@ async function ensureDb(): Promise<SQLite.SQLiteDatabase> {
     );
   `);
   _initialized = true;
-  console.log('[database] expo-sqlite reports 表已初始化');
+  logger.info('database', 'expo-sqlite reports 表已初始化');
   return _db;
 }
 
@@ -91,7 +92,7 @@ export async function writeReport(
     customer.agentNote,
     customer.city,
   );
-  console.log(`[database] 写入 reports ID=${result.lastInsertRowId}, 客户=${customer.customerName}, 项目=${projectName}`);
+  logger.info('database', `写入 reports ID=${result.lastInsertRowId}, 客户=${customer.customerName}, 项目=${projectName}`);
   return result.lastInsertRowId ?? 0;
 }
 
@@ -111,13 +112,13 @@ export async function writeBaoliDouble(
   project2Name = '保利山水和颂',
 ): Promise<[number, number]> {
   if (customer.projectType !== 'baoli') {
-    console.warn(`[database] writeBaoliDouble 调用但 projectType=${customer.projectType}, 走单写`);
+    logger.warn('database', `writeBaoliDouble 调用但 projectType=${customer.projectType}, 走单写`);
     const id = await writeReport(customer);
     return [id, 0];
   }
   const id1 = await writeReport(customer, project1Name);
   const id2 = await writeReport(customer, project2Name);
-  console.log(`[database] 保利双写完成: ID1=${id1}(${project1Name}) + ID2=${id2}(${project2Name})`);
+  logger.info('database', `保利双写完成: ID1=${id1}(${project1Name}) + ID2=${id2}(${project2Name})`);
   return [id1, id2];
 }
 

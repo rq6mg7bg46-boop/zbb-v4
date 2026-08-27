@@ -17,6 +17,7 @@
  */
 import { loadAppEnv } from '@/config/env';
 import { PixelRatio } from 'react-native';
+import { logger } from '@/utils/logger';
 
 export interface DeviceFallbackCoords {
   forwardBtn: { x: number; y: number };      // "转发" 按钮 (dp)
@@ -54,21 +55,21 @@ export async function getDeviceFallbackCoords(): Promise<DeviceFallbackCoords | 
     const env = await loadAppEnv();
     appEnv = env.appEnv;
   } catch (e) {
-    console.warn(`[deviceFallback] loadAppEnv 失败, 用 production:`, e);
+    logger.warn('deviceFallback', `loadAppEnv 失败, 用 production: ${e}`);
     appEnv = 'production';
   }
 
   const entry = FALLBACK_TABLE_DP[appEnv];
   if (!entry) {
-    console.warn(`[deviceFallback] appEnv=${appEnv} 无 fallback 坐标表`);
+    logger.warn('deviceFallback', `appEnv=${appEnv} 无 fallback 坐标表`);
     return null;
   }
 
   // 显示 px 换算 (老板需要看到实际 px 值)
   const scale = PixelRatio.get();
   const dpi = Math.round(160 * scale);
-  console.log(`[deviceFallback] appEnv=${appEnv} density=${dpi} scale=${scale.toFixed(2)}: ${entry.desc}`);
-  console.log(`[deviceFallback] 转发按钮 fallback 坐标 dp=(${entry.forwardBtn.x}, ${entry.forwardBtn.y}) → px=(${Math.round(entry.forwardBtn.x * scale)}, ${Math.round(entry.forwardBtn.y * scale)})`);
+  logger.info('deviceFallback', `appEnv=${appEnv} density=${dpi} scale=${scale.toFixed(2)}: ${entry.desc}`);
+  logger.info('deviceFallback', `转发按钮 fallback 坐标 dp=(${entry.forwardBtn.x}, ${entry.forwardBtn.y}) → px=(${Math.round(entry.forwardBtn.x * scale)}, ${Math.round(entry.forwardBtn.y * scale)})`);
 
   return {
     forwardBtn: entry.forwardBtn,

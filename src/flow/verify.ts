@@ -7,6 +7,7 @@
 
 import { judge, rollback } from '@/operations';
 import { ZBBAutomation } from '@/native';
+import { logger } from '@/utils/logger';
 
 export interface VerifyResult {
   ok: boolean;
@@ -28,7 +29,7 @@ export async function waitForScreenWithRollback(
     return { ok: true, durationMs: Date.now() - start };
   }
   // 失败: 回滚
-  console.warn(`[verify.waitForScreenWithRollback] 没等到 "${text}", 回滚`);
+  logger.warn('verify.waitForScreenWithRollback', `没等到 "${text}", 回滚`);
   await rollback.byPolicy(rollbackPolicy);
   return {
     ok: false,

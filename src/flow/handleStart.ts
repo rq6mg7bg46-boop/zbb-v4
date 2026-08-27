@@ -14,6 +14,7 @@ import { Alert } from 'react-native';
 import { ZBBAutomation } from '@/native';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
 import { classifyScreenKind } from '@/core/screen/PageIdentifier';
+import { logger } from '@/utils/logger';
 
 // 实测: 跑完整业务流 (千机→保利→越秀, 导入在文件末尾避免循环依赖)
 let runZbbWorkflowRef: (() => Promise<void>) | null = null;
@@ -28,15 +29,15 @@ const MAX_RETRY = 3; // 老板拍板: 3 次重试后弹 Alert
  */
 export async function handleStart(): Promise<void> {
   for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
-    console.log(`[handleStart] 第 ${attempt}/${MAX_RETRY} 次入口判断`);
+    logger.info('handleStart', `第 ${attempt}/${MAX_RETRY} 次入口判断`);
 
     const kind = await classifyScreenKind();
-    console.log(`[handleStart] 当前界面类型: ${kind}`);
+    logger.info('handleStart', `当前界面类型: ${kind}`);
 
     switch (kind) {
       case 'qianji_inside': {
         // 老板情况 1: 已在千机 → 下滑刷新, 不重新打开
-        console.log('[handleStart] 已在千机内, 下滑刷新保证数据最新');
+        logger.info('handleStart', '已在千机内, 下滑刷新保证数据最新');
         // 实测 (V2.x qianjiFlow.refresh): swipe 540,1800 → 540,600, 800ms
         await ZBBAutomation.swipe(540, 1800, 540, 600, 800);
         await ZBBAutomation.delay(1500); // 等刷新加载
@@ -46,14 +47,14 @@ export async function handleStart(): Promise<void> {
       case 'zbb_home':
       case 'desktop_home': {
         // 老板情况 2: ZBB 或桌面 → 拉起千机,继续下一步
-        console.log('[handleStart] 当前在 ZBB/桌面, 拉起千机业务页');
+        logger.info('handleStart', '当前在 ZBB/桌面, 拉起千机业务页');
         const qianjiPkg = qianjiPackage();
         const qianjiAct = qianjiMainActivity();
         const launchWithAm = (ZBBAutomation as any).launchAppWithAmStart
           ?? (ZBBAutomation as any).launchApp;
         const launched = await launchWithAm(qianjiPkg, qianjiAct);
         if (!launched) {
-          console.warn('[handleStart] 千机启动失败, 重试');
+          logger.info('handleStart', '千机启动失败, 重试');
           break; // 重试
         }
         await ZBBAutomation.delay(3000); // 等千机启动完成
@@ -63,7 +64,7 @@ export async function handleStart(): Promise<void> {
       case 'other':
       default: {
         // 老板情况 3: 其他 APP → 1 轮大退出 (老板拍板 A: 实测 1 轮已足够)
-        console.warn('[handleStart] 当前在其他 APP, 执行 1 轮大退出 (home + 多功能 + 垃圾箱)');
+        logger.info('handleStart', '当前在其他 APP, 执行 1 轮大退出 (home + 多功能 + 垃圾箱)');
         await hardRollback();
         await ZBBAutomation.delay(1000);
         // 继续 loop 重试 (第 2 次 attempt 重新走入口判断)
@@ -72,7 +73,7 @@ export async function handleStart(): Promise<void> {
   }
 
   // 老板拍板: 3 次重试后弹 Alert 让人工介入
-  console.error(`[handleStart] ${MAX_RETRY} 次重试后仍无法进入千机, 弹 Alert`);
+  logger.error('handleStart', `${MAX_RETRY} 次重试后仍无法进入千机, 弹 Alert`);
   await new Promise<void>((resolve) => {
     Alert.alert(
       '界面识别失败',
@@ -106,7 +107,7 @@ async function hardRollback(): Promise<void> {
       return;
     }
   } catch (e) {
-    console.warn(`[hardRollback] 复用失败, 用 nova 坐标 tap: ${e}`);
+    logger.warn('hardRollback', `复用失败, 用 nova 坐标 tap: ${e}`);
   }
   // nova 7 5G 1 轮大退出 (老板实测 08-24)
   await ZBBAutomation.click(555, 2350); // HOME
@@ -119,7 +120,7 @@ async function hardRollback(): Promise<void> {
 
 async function runZbbWorkflow(): Promise<void> {
   if (!runZbbWorkflowRef) {
-    console.error('[handleStart] runZbbWorkflow 未注册, 请在 flow/index.ts 调 setZbbWorkflowRunner');
+    logger.info('handleStart', 'runZbbWorkflow 未注册, 请在 flow/index.ts 调 setZbbWorkflowRunner');
     return;
   }
   await runZbbWorkflowRef();

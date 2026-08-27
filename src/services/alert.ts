@@ -14,6 +14,7 @@
  */
 
 import { ZBBAutomation } from '@/native';
+import { logger } from '@/utils/logger';
 
 /**
  * 异常通知: 系统弹窗 + 30s 脉冲震动 (V2.x v22.02.35 实测)
@@ -27,13 +28,13 @@ import { ZBBAutomation } from '@/native';
  * @param vibrateMs 震动时长 (默认 30000ms = 30s)
  */
 export async function raiseAlert(message: string, vibrateMs = 30000): Promise<void> {
-  console.error(`[alert] 异常通知: ${message} (震动 ${vibrateMs}ms)`);
+  logger.error('alert', `异常通知: ${message} (震动 ${vibrateMs}ms)`);
 
   // 1. 启动脉冲震动 (V2.x 实测: 30s 自动停)
   try {
     await ZBBAutomation.startPulseVibration();
   } catch (e) {
-    console.warn(`[alert] startPulseVibration 失败 (忽略): ${e}`);
+    logger.warn('alert', `startPulseVibration 失败 (忽略): ${e}`);
   }
 
   // 2. 系统级 Dialog 带"我知道了"按钮 (修法5B 实测)
@@ -44,17 +45,17 @@ export async function raiseAlert(message: string, vibrateMs = 30000): Promise<vo
   try {
     userClicked = await ZBBAutomation.showSystemDialog(message, '我知道了', vibrateMs);
   } catch (e) {
-    console.warn(`[alert] showSystemDialog 失败 (忽略): ${e}`);
+    logger.warn('alert', `showSystemDialog 失败 (忽略): ${e}`);
   }
 
   // 3. 用户点按钮 OR 超时 → 停震动
   try {
     await ZBBAutomation.stopVibration();
   } catch (e) {
-    console.warn(`[alert] stopVibration 失败 (忽略): ${e}`);
+    logger.warn('alert', `stopVibration 失败 (忽略): ${e}`);
   }
 
-  console.log(`[alert] 异常通知结束 (用户点击=${userClicked})`);
+  logger.info('alert', `异常通知结束 (用户点击=${userClicked})`);
 }
 
 /**
@@ -64,7 +65,7 @@ export async function showSystemToast(message: string, durationMs = 5000): Promi
   try {
     await ZBBAutomation.showSystemToast(message, durationMs);
   } catch (e) {
-    console.warn(`[alert] showSystemToast 失败: ${e}`);
+    logger.warn('alert', `showSystemToast 失败: ${e}`);
   }
 }
 
@@ -77,7 +78,7 @@ export async function showSystemDialog(message: string, buttonText = '我知道�
   try {
     return await ZBBAutomation.showSystemDialog(message, buttonText, autoDismissMs);
   } catch (e) {
-    console.warn(`[alert] showSystemDialog 失败: ${e}`);
+    logger.warn('alert', `showSystemDialog 失败: ${e}`);
     return false;
   }
 }
@@ -89,7 +90,7 @@ export async function showToast(message: string): Promise<void> {
   try {
     await ZBBAutomation.showToast(message);
   } catch (e) {
-    console.warn(`[alert] showToast 失败: ${e}`);
+    logger.warn('alert', `showToast 失败: ${e}`);
   }
 }
 
@@ -100,7 +101,7 @@ export async function showConfirmDialog(message: string, confirmText = '我知�
   try {
     return await ZBBAutomation.showCenteredDialog(message, confirmText);
   } catch (e) {
-    console.warn(`[alert] showConfirmDialog 失败: ${e}`);
+    logger.warn('alert', `showConfirmDialog 失败: ${e}`);
     return false;
   }
 }
@@ -111,6 +112,6 @@ export async function showConfirmDialog(message: string, confirmText = '我知�
  * 改用系统 Toast (千机端在前台时也能看见)
  */
 export async function notifyNoReport(): Promise<void> {
-  console.log('[alert] 当前无报备客户,提示用户');
+  logger.info('alert', '当前无报备客户,提示用户');
   await showSystemToast('小主,当前无报备客户', 5000);
 }

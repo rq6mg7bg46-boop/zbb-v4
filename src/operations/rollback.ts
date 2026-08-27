@@ -13,6 +13,7 @@
 
 import { ZBBAutomation } from '@/native';
 import { pressKey } from './pressKey';
+import { logger } from '@/utils/logger';
 
 export type RollbackPolicy = 'back' | 'home' | 'trash' | 'doubleBack';
 
@@ -65,14 +66,14 @@ export async function withRetry<T>(
       return await fn();
     } catch (e) {
       lastError = e;
-      console.warn(`[rollback.withRetry] Attempt ${i + 1} failed:`, e);
+      logger.warn('rollback.withRetry', `Attempt ${i + 1} failed: ${e}`);
       if (i < maxRetries) {
         await byPolicy(rollbackPolicy);
         await ZBBAutomation.delay(delayMs);
       }
     }
   }
-  console.error(`[rollback.withRetry] All ${maxRetries + 1} attempts failed:`, lastError);
+  logger.error('rollback.withRetry', `All ${maxRetries + 1} attempts failed: ${lastError}`);
   return null;
 }
 
