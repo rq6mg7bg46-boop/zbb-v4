@@ -65,10 +65,22 @@ const safeStringify = (o: unknown): string => {
 const appendToBusinessLog = (level: 'info' | 'warn' | 'error', line: string): void => {
   const ZBBAutomation = (globalThis as any).NativeModules?.ZBBAutomation;
   if (!ZBBAutomation?.writeBusinessLog) {
+    // 🆕 08-28 09:31 老板反馈 server log 没 JS 端 log, 加一行诊断
+    if (!(globalThis as any).__zbbLogBridgeMissingLogged) {
+      (globalThis as any).__zbbLogBridgeMissingLogged = true;
+      // eslint-disable-next-line no-console
+      console.warn('[zbb-logger] ⚠️ ZBBAutomation.writeBusinessLog 不可用, JS log 只走 console 不写盘 (native module 未注册或 native 不可用)');
+    }
     return;  // native 不可用, 静默 (console 已打)
   }
   // 异步, 不 catch error (静默失败)
-  ZBBAutomation.writeBusinessLog(level, line).catch(() => {});
+  ZBBAutomation.writeBusinessLog(level, line).catch((e: any) => {
+    if (!(globalThis as any).__zbbLogBridgeErrorLogged) {
+      (globalThis as any).__zbbLogBridgeErrorLogged = true;
+      // eslint-disable-next-line no-console
+      console.warn('[zbb-logger] ⚠️ writeBusinessLog 调用失败:', e?.message ?? e);
+    }
+  });
 };
 
 /**
