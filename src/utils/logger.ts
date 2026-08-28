@@ -33,21 +33,13 @@
  */
 
 /**
- * 取北京时间 HH:MM:SS (秒级)
- * 用 toLocaleString 显式指定 timeZone, 避免宿主时区差异
- */
-const getBjTime = (): string => {
-  return new Date().toLocaleTimeString('zh-CN', {
-    hour12: false,
-    timeZone: 'Asia/Shanghai',
-  });
-};
-
-/**
- * 格式化日志行: [HH:MM:SS] [tag] message
+ * 格式化日志行: [tag] message (不带头部时间戳, 由 native 端统一加)
+ * 🆕 V32.30 commit: 去掉 [HH:MM:SS] 前缀, 避免双时间戳
+ *   - metro log 自带 adb logcat 时间戳 (adb logcat -v time)
+ *   - native 端 BusinessLogWriter.append 加 yyyy/MM/dd HH:mm:ss
  */
 const format = (tag: string, msg: string): string => {
-  return `[${getBjTime()}] [${tag}] ${msg}`;
+  return `[${tag}] ${msg}`;
 };
 
 /**
