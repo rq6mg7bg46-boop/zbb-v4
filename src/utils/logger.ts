@@ -1,5 +1,5 @@
 /**
- * V4.x 统一 log 工具 (08-27 老板拍板加时间戳 + 🆕 V32.27 native bridge + 🆕 V32.28 console hook)
+ * V4.x 统一 log 工具 (08-27 老板拍板加时间戳 + 🆕 V32.30 emitNative 修正)
  *
  * 格式: [HH:MM:SS] [tag] message
  * 时区: Asia/Shanghai (北京时间)
@@ -10,10 +10,17 @@
  *   - writeBusinessLog 走 BusinessLogWriter.append → business-YYYY-MM-DD.log → LogUploadWorker → Tailscale Funnel → Win11 server
  *   - 异步不 await (不阻塞 UI), 静默失败兜底 (native 不可用时 console.log 还能给 metro 看到)
  *
- * 🆕 08-27 23:55 老板拍板 (console hook):
- *   - 业务代码直接调 console.log('[P+ humanTap] ...') 也要写盘 (V2.x AutomationLogger 全局 hook 设计)
- *   - 修法: installConsoleHook() 替换 console.log/warn/error/info/debug, 全部 fan-out 到 appendToBusinessLog
- *   - V32.18 commit 漏接 console hook, V32.27 commit 修了 logger.* 但漏了直接 console.* 的业务代码
+ * 🆕 08-28 09:50 V32.30 commit (回滚 V32.28 console hook):
+ *   - 老板反证: V32.28 console hook 在 Hermes release 下失效 (V2.x 实战也没写过 JS log)
+ *   - 真因: Hermes/Metro 在 release 包里替换了 console 对象, hook 装的是 React Native 给我们的版本,
+ *     业务代码调的是被 Hermes 重写过的版本, hook 拦截不到
+ *   - 修法: 不依赖 console hook, logger.info/warn/error 内手动 emit native bridge
+ *     (V32.27 commit 设计是对的, V32.28 改成 hook 是错的, 现在回滚)
+ *
+ * 已知未覆盖场景 (后续 task):
+ *   - 业务代码直接调 console.log('[P+ humanTap] ...') 不会写盘
+ *   - 26 kt native 端 Log.d/Log.i 直接 logcat, 不会被 logger 拦截
+ *   - 修法: 全仓 grep console.* 替换成 logger.* (V32.18 commit 已批量替换 189 处)
  *
  * 格式: HH:MM:SS 秒级
  * 时区: 北京时间
@@ -44,28 +51,16 @@ const format = (tag: string, msg: string): string => {
 };
 
 /**
- * 安全 stringify (避免循环引用)
- * 抄 V2.x AutomationLogger.ts L62-72
- */
-const safeStringify = (o: unknown): string => {
-  if (typeof o === 'string') return o;
-  if (o === null) return 'null';
-  if (o === undefined) return 'undefined';
-  try {
-    return JSON.stringify(o);
-  } catch {
-    return String(o);
-  }
-};
-
-/**
- * 🆕 08-27 23:50 异步 emit 到 native bridge (BusinessLogWriter.append → LogUploadWorker 上传)
+ * 🆕 V32.30 emit 到 native bridge (BusinessLogWriter.append → LogUploadWorker 上传)
  * 不 await (业务 log 不阻塞 UI), 静默失败 (native 不可用时 console.log 兜底)
+ *
+ * 不再依赖 console hook (V32.28 commit 验证 hook 在 Hermes release 失效)
+ * logger.info/warn/error 直接调本函数
  */
-const appendToBusinessLog = (level: 'info' | 'warn' | 'error', line: string): void => {
+const emitToNative = (level: 'info' | 'warn' | 'error', line: string): void => {
   const ZBBAutomation = (globalThis as any).NativeModules?.ZBBAutomation;
   if (!ZBBAutomation?.writeBusinessLog) {
-    // 🆕 08-28 09:31 老板反馈 server log 没 JS 端 log, 加一行诊断
+    // 🆕 08-28 09:31 诊断: native 不可用时 warn 一次 (后续静默, 避免刷屏)
     if (!(globalThis as any).__zbbLogBridgeMissingLogged) {
       (globalThis as any).__zbbLogBridgeMissingLogged = true;
       // eslint-disable-next-line no-console
@@ -73,7 +68,7 @@ const appendToBusinessLog = (level: 'info' | 'warn' | 'error', line: string): vo
     }
     return;  // native 不可用, 静默 (console 已打)
   }
-  // 异步, 不 catch error (静默失败)
+  // 异步 fire-and-forget, 失败 warn 一次
   ZBBAutomation.writeBusinessLog(level, line).catch((e: any) => {
     if (!(globalThis as any).__zbbLogBridgeErrorLogged) {
       (globalThis as any).__zbbLogBridgeErrorLogged = true;
@@ -83,62 +78,21 @@ const appendToBusinessLog = (level: 'info' | 'warn' | 'error', line: string): vo
   });
 };
 
-/**
- * 🆕 08-27 23:55 console 全局 hook
- * 抄 V2.x AutomationLogger.ts installConsoleHook (L80-118)
- * 业务代码直接调 console.log('[P+ humanTap] ...') 也能写盘
- */
-const originalLog = console.log.bind(console);
-const originalWarn = console.warn.bind(console);
-const originalError = console.error.bind(console);
-const originalInfo = console.info.bind(console);
-const originalDebug = console.debug.bind(console);
-
-const installConsoleHook = (): void => {
-  // 只装一次 (避免 HMR / module reload 重复)
-  if ((globalThis as any).__zbbConsoleHooked) return;
-  (globalThis as any).__zbbConsoleHooked = true;
-
-  console.log = (...args: unknown[]): void => {
-    originalLog(...args);
-    appendToBusinessLog('info', args.map(safeStringify).join(' '));
-  };
-  console.warn = (...args: unknown[]): void => {
-    originalWarn(...args);
-    appendToBusinessLog('warn', args.map(safeStringify).join(' '));
-  };
-  console.error = (...args: unknown[]): void => {
-    originalError(...args);
-    appendToBusinessLog('error', args.map(safeStringify).join(' '));
-  };
-  console.info = (...args: unknown[]): void => {
-    originalInfo(...args);
-    appendToBusinessLog('info', args.map(safeStringify).join(' '));
-  };
-  console.debug = (...args: unknown[]): void => {
-    originalDebug(...args);
-    appendToBusinessLog('info', args.map(safeStringify).join(' '));
-  };
-};
-
-installConsoleHook();
-
 export const logger = {
   info: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.log(line);
-    // 注意: console.log 已经被 hook 拦截, 会自动写盘
-    // 不需要再调一次 appendToBusinessLog
+    console.log(line);         // 1. metro (R 键 reload 临时可见)
+    emitToNative('info', line); // 2. native bridge 写盘 (server 持久化)
   },
   warn: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.warn(line);
-    // 同上, console.warn hook 已写盘
+    console.warn(line);         // 1. metro
+    emitToNative('warn', line); // 2. native bridge 写盘
   },
   error: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.error(line);
-    // 同上, console.error hook 已写盘
+    console.error(line);         // 1. metro
+    emitToNative('error', line); // 2. native bridge 写盘
   },
 };
 
