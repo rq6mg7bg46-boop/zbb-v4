@@ -123,7 +123,7 @@ export async function writeBaoliDouble(
 }
 
 /**
- * 按 ID 查询 report (用于后续保理/越秀端读取)
+ * 按 ID 查询 report (用于后续保利/越秀端读取)
  */
 export async function getReportById(id: number): Promise<any | null> {
   const db = await ensureDb();

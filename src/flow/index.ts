@@ -55,10 +55,10 @@ export type WorkflowResult = {
  * 流程结束状态分流:
  *   1. 千机端 raiseAlert → customer=null → send('QIANJI_INTERVENE') → UserIntervention → 等老板
  *   2. 千机端真正异常 → send('QIANJI_FAILED') → Error
- *   3. 保理端失败 → send('BAOLI_FAILED') → Error
+ *   3. 保利端失败 → send('BAOLI_FAILED') → Error
  *   4. 越秀端未实装 → send('YUEXIU_INTERVENE') → UserIntervention
  *   5. 业务流程跑完 (千机无客户) → send('QIANJI_NO_REPORT') → Idle (08-27 拍板: 直 Idle)
- *   6. 业务流程跑完 (保理完成 + 越秀完成) → send('YUEXIU_COMPLETE') → Idle (08-27 拍板: 直 Idle)
+ *   6. 业务流程跑完 (保利完成 + 越秀完成) → send('YUEXIU_COMPLETE') → Idle (08-27 拍板: 直 Idle)
  *
  * @returns WorkflowResult.ok=true 表示流程跑成功; skipped=true 表示被守卫跳过
  */
@@ -124,7 +124,7 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       baoli: 'QIANJI_READY_BAOLI',
       yuexiu: 'QIANJI_READY_YUEXIU',
       zhaoshang: 'QIANJI_READY_ZHAOSHANG',
-      other: 'QIANJI_READY_BAOLI',  // 兜底走保理 (兼容旧版)
+      other: 'QIANJI_READY_BAOLI',  // 兜底走保利 (兼容旧版)
     };
     orchestrator.send(readyEventMap[customer.projectType as ProjectType]);
 

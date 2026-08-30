@@ -523,8 +523,8 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     //   - 返回 varB (CustomerInfo 含 projectType) 给 runZbbWorkflow
     //   - runZbbWorkflow 按 FLOW_REGISTRY[customer.projectType] 路由到对应端
     //   - 每个端自主 launchApp (baoli.ts step1 launchApp 企业微信, zhaoshang.ts launchApp 飞书等)
-    //   - 历史 (V32.33 及之前): 千机端步骤7 写死 launchApp(企业微信) + delay(2000), 保理端步骤1 重复 launchApp
-    //   - 修法: 删除千机端 launchApp, 千机端只返回 varB, 保理端自己 launchApp
+    //   - 历史 (V32.33 及之前): 千机端步骤7 写死 launchApp(企业微信) + delay(2000), 保利端步骤1 重复 launchApp
+    //   - 修法: 删除千机端 launchApp, 千机端只返回 varB, 保利端自己 launchApp
     //   - 优势: 千机端零 APP 耦合, 加新端只改 registry + 端文件, 千机端零改动
     logger.info('千机:步骤7', `千机端完成, 返回客户=${varB.customerName}, 项目=${varB.projectType} (后续端流程自主 launchApp)`);
     // 不 launchApp, 不 delay (接力留给端流程)

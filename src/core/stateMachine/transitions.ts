@@ -5,7 +5,7 @@
  *
  * 转移表:
  * Idle              -> QianjiRefreshing (老板点 / 千机监听 / 反息屏 入口)
- * QianjiRefreshing  -> BaoliRunning (千机数据 ready, 保理端) 兼容旧版 QIANJI_READY
+ * QianjiRefreshing  -> BaoliRunning (千机数据 ready, 保利端) 兼容旧版 QIANJI_READY
  * QianjiRefreshing  -> YuexiuRunning (千机数据 ready, 越秀端) 08-30 端路由
  * QianjiRefreshing  -> ZhaoshangRunning (千机数据 ready, 招商端) 08-30 端路由
  * QianjiRefreshing  -> UserIntervention (千机 raiseAlert)
@@ -32,8 +32,8 @@ import { OrchState } from './states';
  */
 export type TransitionEvent =
   | 'START'                   // 老板点开始 / 千机监听 / 反息屏 触发的入口
-  | 'QIANJI_READY'            // 千机数据 ready → BaoliRunning (兼容旧版, 默认走保理)
-  | 'QIANJI_READY_BAOLI'      // 🆕 08-30 端路由: 千机 ready → 保理
+  | 'QIANJI_READY'            // 千机数据 ready → BaoliRunning (兼容旧版, 默认走保利)
+  | 'QIANJI_READY_BAOLI'      // 🆕 08-30 端路由: 千机 ready → 保利
   | 'QIANJI_READY_YUEXIU'     // 🆕 08-30 端路由: 千机 ready → 越秀
   | 'QIANJI_READY_ZHAOSHANG'  // 🆕 08-30 端路由: 千机 ready → 招商
   | 'QIANJI_FAILED'           // 千机真正失败 → Error
@@ -70,7 +70,7 @@ export const TRANSITIONS: Transition[] = [
 
   // 千机 → 端 (兼容旧版 + 08-30 端路由)
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_READY', to: OrchState.BaoliRunning, description: '千机 ready -> 保利 (兼容旧版)' },
-  { from: OrchState.QianjiRefreshing, event: 'QIANJI_READY_BAOLI', to: OrchState.BaoliRunning, description: '千机 ready -> 保理 (端路由)' },
+  { from: OrchState.QianjiRefreshing, event: 'QIANJI_READY_BAOLI', to: OrchState.BaoliRunning, description: '千机 ready -> 保利 (端路由)' },
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_READY_YUEXIU', to: OrchState.YuexiuRunning, description: '千机 ready -> 越秀 (端路由)' },
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_READY_ZHAOSHANG', to: OrchState.ZhaoshangRunning, description: '千机 ready -> 招商 (端路由)' },
   { from: OrchState.QianjiRefreshing, event: 'QIANJI_FAILED', to: OrchState.Error, description: '千机真正失败 -> 错误' },
