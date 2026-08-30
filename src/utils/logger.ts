@@ -45,8 +45,11 @@ const format = (tag: string, msg: string): string => {
 };
 
 /**
- * V32.30 emit 到 native bridge (BusinessLogWriter.append → LogUploadWorker 上传)
- * 不 await (业务 log 不阻塞 UI), 静默失败兜底
+ * V32.33 emit 到 native bridge (BusinessLogWriter.append → LogUploadWorker 上传)
+ * 🆕 08-28 老板拍板: 不 await, 不 catch (native writeBusinessLog 现在是 void fire-and-forget)
+ *   - 旧版 V32.30 logger 用 .catch() 接 Promise reject, 但 V32.33 native 不返回 Promise
+ *   - 改为直接调用, 不接 Promise
+ *   - silent fail: native 不可用时, 不打 warning (metro 调试用 console.log 已打)
  */
 const emitToNative = (level: 'info' | 'warn' | 'error', line: string): void => {
   const ZBBAutomation = (globalThis as any).NativeModules?.ZBBAutomation;
@@ -58,20 +61,17 @@ const emitToNative = (level: 'info' | 'warn' | 'error', line: string): void => {
     }
     return;
   }
-  ZBBAutomation.writeBusinessLog(level, line).then((ok: boolean) => {
-    // 🆕 V32.32 诊断: native 端 resolve 后打成功标记, 但不在 metro log 里刷屏
-    if (ok && !(globalThis as any).__zbbLogBridgeOkLogged) {
-      (globalThis as any).__zbbLogBridgeOkLogged = true;
-      // eslint-disable-next-line no-console
-      console.warn('[zbb-logger] ✓ writeBusinessLog resolve=true (native 写盘成功)');
-    }
-  }).catch((e: any) => {
+  // V32.33: native writeBusinessLog 是 void fire-and-forget, 不返回 Promise
+  // 直接调用即可, 不需要 catch
+  try {
+    ZBBAutomation.writeBusinessLog(level, line);
+  } catch (e) {
     if (!(globalThis as any).__zbbLogBridgeErrorLogged) {
       (globalThis as any).__zbbLogBridgeErrorLogged = true;
       // eslint-disable-next-line no-console
-      console.warn('[zbb-logger] ⚠️ writeBusinessLog 调用失败:', e?.message ?? e);
+      console.warn('[zbb-logger] ⚠️ writeBusinessLog 调用失败:', e);
     }
-  });
+  }
 };
 
 export const logger = {

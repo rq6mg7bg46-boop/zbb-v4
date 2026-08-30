@@ -204,11 +204,19 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     //   - 写失败时: 上报 logcat [ZbbNativeLog] tag (即使是 release 也保留, 便于排查) + reject promise
     //     → JS 端拿 reject 还能 fallback 走 sendToServer
     //   - 并发安全: 全部移到 BusinessLogWriter.synchronized 锁池
+    // 🆕 V32.33 老板拍板修法: 去掉 Promise 参数, fire-and-forget 同步返回
+    //   - 旧 bug: @ReactMethod 带 Promise 参数, RN Legacy Architecture 不暴露到 NativeModules.X.writeBusinessLog
+    //   - 真因: 老板 env.ts:95 经验 "readBuildEnv() Promise 异步方法 — 实测老板 RN bridge 不暴露 (native keys 列表里没有)"
+    //   - JS 端永远 ZBBAutomation.writeBusinessLog === undefined, 永远走 fallback 不写盘
+    //   - 修法: 去掉 Promise 参数, 直接 void 返回. JS 端 native.writeBusinessLog() fire-and-forget
+    //   - 失败时 logcat [ZbbNativeLog] tag (release 也保留) + silent fail
     @ReactMethod
-    fun writeBusinessLog(level: String, message: String, promise: Promise) {
-        val ok = BusinessLogWriter.append(mReactContext.applicationContext, level, message)
-        if (ok) promise.resolve(true)
-        else promise.reject("WRITE_FAILED", "BusinessLogWriter.append failed (see logcat [ZbbNativeLog] tag)")
+    fun writeBusinessLog(level: String, message: String) {
+        try {
+            BusinessLogWriter.append(mReactContext.applicationContext, level, message)
+        } catch (e: Exception) {
+            Log.e("ZbbNativeLog", "writeBusinessLog failed: level=$level msg_len=${message.length} err=${e.message}", e)
+        }
     }
 
     // ==================== 业务日志 上传强制触发 (测试用) ====================
