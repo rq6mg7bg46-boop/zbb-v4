@@ -86,19 +86,55 @@ function sendToServer(level: LogLevel, message: string): void {
 }
 
 function sendToServerDirect(level: LogLevel | string, message: string): void {
-  const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
+  // 🆕 V32.34 B方案修复: 跟 native LogUploadWorker 一致走 /log endpoint
+  //  - V2.x AutomationLogger 写 /api/v1/logs (V2.x 仓 server 端是这个 endpoint)
+  //  - V4 server 端 zbb_log_receiver.py 是 /log endpoint (跟 native LogUploadWorker 一致)
+  //  - V4 logger sendToServer 必须走 /log, 否则 404
+  const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'https://desktop-hi4ajgj.taildab2db.ts.net';
 
-  fetch(`${baseUrl}/api/v1/logs`, {
+  // 🆕 V32.34 B方案修复: server 端 /log 期望的字段格式 (跟 LogUploadWorker 一致)
+  //  - device_id: 设备 serial
+  //  - timestamp: ms
+  //  - log: 完整 log 文本 (不是 message)
+  //  - source: log source (qianji/yuexiu/baoli/orchestrator/business/js-direct)
+  //  - app_version: 应用版本
+  //  - user_id: 用户 ID (双层目录用)
+  //  - heartbeat: 心跳 meta (JS 端不带)
+  //  - seq/total_seq/terminal: 分片累积 (单 chunk default 0/1/True)
+  const deviceId = 'QMF4C20528002273'; // V4 nova serial, hardcoded for now
+  const userId = 'nova';
+  const appVersion = '1.0.0';
+
+  // 把 level + message 拼成 server 期望的 "log" 字段 (跟 native LogUploadWorker + BusinessLogWriter 格式一致)
+  //  native BusinessLogWriter 格式: "2026/08/30 10:30:00 [INFO   ] message\n"
+  //  - DATE_FMT_LINE = "yyyy/MM/dd HH:mm:ss" (Locale.CHINA)
+  //  - levelShort = level.uppercase().padEnd(7) (e.g. "INFO   ", "WARN   ", "ERROR  ")
+  const now = new Date();
+  const ts =
+    `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ` +
+    `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  const levelShort = level.toUpperCase().padEnd(7);
+  // 单行清洗: 把 \r\n 替换成转义字符 (跟 native 一致, 防一行变多行破坏 incremental upload)
+  const safeMsg = message.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+  const logText = `${ts} [${levelShort}] ${safeMsg}\n`;
+
+  fetch(`${baseUrl}/log`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      level,
-      message,
-      timestamp: new Date().toISOString(),
-      source: 'ZBB-V4-Logger',
+      device_id: deviceId,
+      user_id: userId,
+      app_version: appVersion,
+      source: 'js-direct',
+      timestamp: Date.now(),
+      seq: 0,
+      total_seq: 1,
+      terminal: true,
+      is_new_data: true,
+      log: logText,
     }),
   }).catch(() => {
-    // 静默失败, 不影响主流程
+    // 静默失败, 不影响主流程 (V2.x 设计)
   });
 }
 
