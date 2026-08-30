@@ -32,7 +32,12 @@ object BusinessLogWriter {
     private const val FILE_EXT = ".log"
 
     private val DATE_FMT_FILE = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    private val DATE_FMT_LINE = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.CHINA)
+    // 🆕 V32.34.2 (08-30 老板拍板): 业务 log 只显示日期, 不显示时间
+    //  - 原: "yyyy/MM/dd HH:mm:ss" → server log 业务 log 段重复时间 (2 个时分秒)
+    //  - 现: "yyyy/MM/dd" → 期望格式: "2026/08/30 [INFO   ] [HH:MM:SS] [tag] msg"
+    //  - 日期 server 端 log 文件 mtime 自带时间, 业务 log 段不重复
+    //  - 时间由 JS logger.info 的 format() 拼 [HH:MM:SS] (V32.32 老板拍板的诊断标记)
+    private val DATE_FMT_LINE = SimpleDateFormat("yyyy/MM/dd", Locale.CHINA)
     // 同步锁池 — 每个 file 一个锁, 避免多线程争夺同一个 file
     private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
