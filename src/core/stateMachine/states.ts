@@ -20,6 +20,7 @@ export enum OrchState {
   QianjiRefreshing = 'QianjiRefreshing',
   BaoliRunning = 'BaoliRunning',
   YuexiuRunning = 'YuexiuRunning',
+  ZhaoshangRunning = 'ZhaoshangRunning',  // 🆕 08-30 老板拍板端路由: 招商端流程态
   UserIntervention = 'UserIntervention',
   Error = 'Error',
 }
@@ -32,6 +33,7 @@ export const ALL_STATES: OrchState[] = [
   OrchState.QianjiRefreshing,
   OrchState.BaoliRunning,
   OrchState.YuexiuRunning,
+  OrchState.ZhaoshangRunning,  // 🆕 08-30 老板拍板端路由
   OrchState.UserIntervention,
   OrchState.Error,
 ];
@@ -68,6 +70,13 @@ export const STATE_INFO: Record<OrchState, {
     icon: '🏃',
     color: '#3B82F6',
     description: '越秀流程正在跑',
+  },
+  // 🆕 08-30 老板拍板端路由: 招商端流程态
+  [OrchState.ZhaoshangRunning]: {
+    label: '招商执行中',
+    icon: '🏃',
+    color: '#8B5CF6',
+    description: '招商流程正在跑 (端路由)',
   },
   [OrchState.UserIntervention]: {
     label: '需要老板介入',

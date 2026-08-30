@@ -19,6 +19,7 @@ import { runBaoliFlow } from './baoli';
 import { orchestrator } from '@/core/stateMachine';
 import { setZbbWorkflowRunner } from './handleStart';
 import { logger } from '@/utils/logger';
+import type { ProjectType } from './types';
 
 export {
   runQianjiFlow,
@@ -98,34 +99,59 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
       return { ok: false, skipped: false, reason: 'qianji_failed' };
     }
 
-    // 千机 ready → 保理
-    orchestrator.send('QIANJI_READY');
+    // 千机 ready → 端路由 (08-30 老板拍板端路由设计)
+    //   - 千机端零 APP 知识, 不知道是微信 / 飞书 / 丁丁
+    //   - FLOW_REGISTRY 集中管理所有端 (baoli / yuexiu / zhaoshang / other)
+    //   - 每个端自主 launchApp + 自主流程
+    //   - 加新端只改 registry + 加端文件, 千机端零改动
+    //   - 状态机转换按 customer.projectType 发 QIANJI_READY_* 路由到对应端状态
+    const { FLOW_REGISTRY } = await import('./registry');
+    // TS strict 兼容: customer.projectType 是 string, cast 为 ProjectType
+    const config = FLOW_REGISTRY[customer.projectType as ProjectType];
 
-    // 4. 按项目类型分派
-    if (customer.projectType === 'baoli') {
-      const ok = await runBaoliFlow(customer);
-      if (!ok) {
-        // 保理失败 → Error (实测 08-25: 保理异常不算用户介入)
-        logger.info('runZbbWorkflow', '保理端失败 → 进 Error');
-        orchestrator.send('BAOLI_FAILED');
-        return { ok: false, skipped: false, reason: 'baoli_failed' };
-      }
-      // 保理完成 → 越秀 (V4.x 暂未实装, 直接当成功)
-      orchestrator.send('BAOLI_COMPLETE');
-
-      // 🆕 08-27 老板拍板: 正常结束 → 直 → Idle (不再绕 Cooldown)
-      //   状态机: YuexiuRunning + YUEXIU_COMPLETE → Idle
-      //   Idle 状态下老板点 / 千机监听 / 反息屏 立刻启动下一次
-      //   注: V4.x 暂未实装越秀端, 直接当 YUEXIU_COMPLETE 处理
-      orchestrator.send('YUEXIU_COMPLETE');
-      logger.info('runZbbWorkflow', `✓ 全流程完成: 客户=${customer.customerName} 项目=${customer.projectType} → 直 → Idle`);
-      return { ok: true, skipped: false, reason: 'success', customerName: customer.customerName, projectType: customer.projectType };
+    if (!config) {
+      // 未知端类型 → UserIntervention
+      logger.warn('runZbbWorkflow', `未知端类型: ${customer.projectType} → 进 UserIntervention`);
+      orchestrator.send('YUEXIU_INTERVENE');
+      return { ok: false, skipped: false, reason: 'unknown_project' };
     }
 
-    // 越秀端待 S2.4 实现 → 当作需要老板介入 (实测 08-25)
-    logger.warn('runZbbWorkflow', `越秀端待实现 (${customer.customerName}) → 进 UserIntervention`);
-    orchestrator.send('YUEXIU_INTERVENE');
-    return { ok: false, skipped: false, reason: 'unknown_project' };
+    // 状态机转换: 千机 → 对应端状态
+    //   - baoli → QIANJI_READY_BAOLI → BaoliRunning
+    //   - yuexiu → QIANJI_READY_YUEXIU → YuexiuRunning
+    //   - zhaoshang → QIANJI_READY_ZHAOSHANG → ZhaoshangRunning
+    const readyEventMap: Record<ProjectType, 'QIANJI_READY_BAOLI' | 'QIANJI_READY_YUEXIU' | 'QIANJI_READY_ZHAOSHANG'> = {
+      baoli: 'QIANJI_READY_BAOLI',
+      yuexiu: 'QIANJI_READY_YUEXIU',
+      zhaoshang: 'QIANJI_READY_ZHAOSHANG',
+      other: 'QIANJI_READY_BAOLI',  // 兜底走保理 (兼容旧版)
+    };
+    orchestrator.send(readyEventMap[customer.projectType as ProjectType]);
+
+    try {
+      // 调用端流程 (每个端自主 launchApp + 完整流程)
+      const ok = await config.run(customer);
+      if (!ok) {
+        logger.info('runZbbWorkflow', `${config.logTag}端失败 → 进 Error`);
+        orchestrator.send(config.onFailed);
+        return { ok: false, skipped: false, reason: 'baoli_failed' };
+      }
+
+      orchestrator.send(config.onComplete);
+      logger.info('runZbbWorkflow', `✓ 全流程完成: 客户=${customer.customerName} 项目=${customer.projectType} (${config.logTag}端) → 直 → Idle`);
+      return {
+        ok: true,
+        skipped: false,
+        reason: 'success',
+        customerName: customer.customerName,
+        projectType: customer.projectType,
+      };
+    } catch (e: any) {
+      // 端流程异常 (例如越秀端抛 '待实装') → Error
+      logger.error('runZbbWorkflow', `${config.logTag}端异常: ${e}`);
+      orchestrator.send(config.onFailed);
+      return { ok: false, skipped: false, reason: 'unknown_project' };
+    }
   } catch (e: any) {
     logger.error('runZbbWorkflow', `'异常:' ${e}`);
     // 真正异常 → Error (不是 UserIntervention)

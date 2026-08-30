@@ -518,12 +518,16 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     }
     await ZBBAutomation.delay(1800);
 
-    // ============ 步骤 7: 拉起企业微信 (后续保利端两轮报备从这里接手) ============
-    logger.info('千机:步骤7', '拉起企业微信 (后续保利端接力)');
-    await ZBBAutomation.launchApp(APP_PACKAGES.WECHAT_WORK);
-    await ZBBAutomation.delay(2000);
-
-    logger.info('app', '========== 千机端流程完成 ==========');
+    // ============ 步骤 7: 千机端完成 (🆕 08-30 老板拍板端路由设计: 千机端零 APP 知识) ============
+    //   - 千机端 = 纯识别 + 路由, 不负责 launchApp
+    //   - 返回 varB (CustomerInfo 含 projectType) 给 runZbbWorkflow
+    //   - runZbbWorkflow 按 FLOW_REGISTRY[customer.projectType] 路由到对应端
+    //   - 每个端自主 launchApp (baoli.ts step1 launchApp 企业微信, zhaoshang.ts launchApp 飞书等)
+    //   - 历史 (V32.33 及之前): 千机端步骤7 写死 launchApp(企业微信) + delay(2000), 保理端步骤1 重复 launchApp
+    //   - 修法: 删除千机端 launchApp, 千机端只返回 varB, 保理端自己 launchApp
+    //   - 优势: 千机端零 APP 耦合, 加新端只改 registry + 端文件, 千机端零改动
+    logger.info('千机:步骤7', `千机端完成, 返回客户=${varB.customerName}, 项目=${varB.projectType} (后续端流程自主 launchApp)`);
+    // 不 launchApp, 不 delay (接力留给端流程)
     return varB;
   } catch (error) {
     // RetryFlowError 抛出, 让 withFlowRetry 处理 (返回 + 重进 + 重试整条)

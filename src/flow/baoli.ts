@@ -45,7 +45,12 @@ const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和
 export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
   logger.info('app', `========== 保利流程开始 (客户=${customer.customerName}) ==========`);
 
-  orchestrator.send('QIANJI_READY'); // QianjiRefreshing → BaoliRunning
+  // 🆕 08-30 老板拍板端路由: QIANJI_READY_BAOLI 状态转换在 runZbbWorkflow 已发
+  //   - 历史 (V32.33 及之前): baoli.ts 内部发 QIANJI_READY
+  //   - 端路由: 千机端步骤7完成后, runZbbWorkflow 按 customer.projectType 发对应 QIANJI_READY_*
+  //   - baoli.ts 不再负责状态转换, 只负责流程本身 (launchApp + step1-step9 + 2 轮)
+  //   - 优势: 状态机转换统一在 runZbbWorkflow, baoli.ts 纯端逻辑
+  // orchestrator.send 已删除 (08-30 端路由设计)
 
   try {
     // 第一轮报备
