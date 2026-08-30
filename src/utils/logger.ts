@@ -1,32 +1,39 @@
 /**
- * V4.x 统一 log 工具 (08-27 老板拍板加时间戳 + 🆕 V32.30 emitNative + 🆕 V32.32 双时间戳诊断)
+ * V4.x 统一 log 工具 (B方案: 完整回滚到 V2.x 实战验证的设计)
  *
- * 🆕 08-27 23:50 老板拍板 (生产场景铁律):
- *   - 所有日志必须通过外网回传到日志服务器, 不能只靠 metro
- *   - logger 同时调 console.* (metro 调试) + NativeModules.ZBBAutomation.writeBusinessLog (写盘 + 上传)
- *   - 异步 fire-and-forget, 静默失败兜底
+ * 🆕 V32.34 B方案 (08-30 老板拍板): 完整回滚到 V2.x AutomationLogger 设计
+ *   - V2.x vivo server log 14 天实战反证: 3 路并打 (console + sendToServer HTTP POST + native writeBusinessLog) 都 work
+ *   - V4 V32.27/V32.30/V32.31/V32.33 失败 4 轮, 因为只走了 native bridge (RN 0.81.5 Legacy 不暴露 @ReactMethod Promise 方法)
+ *   - B方案: 完整学 V2.x 实战反证设计:
+ *     1. console.log 永远保留 (debug 用)
+ *     2. sendToServer HTTP POST EXPO_PUBLIC_BACKEND_BASE_URL/api/v1/logs (V2.x 主链路, 不依赖 RN bridge)
+ *     3. native writeBusinessLog 走 V32.33 治本改法 (去 Promise 参数) — fallback
+ *     4. installConsoleHook 拦截 console.* — V2.x 实验证 Hermes release 仍 work (V4 V32.30 删错了)
  *
- * 🆕 08-28 10:15 老板拍板 (V32.32 双时间戳格式):
- *   - 老板实战反证: V32.31 release 装的 nova metro log 有 JS log, server log 没 JS log
- *   - 老板拍板加 [HH:MM:SS] 前缀作为"是否 JS 端写盘"的诊断标记
- *   - 期望 server log 格式: 2026/08/28 [INFO   ] [09:44:31] [千机:步骤1] 正在打开千机...
- *     ↑ native 日期    ↑ native level   ↑ JS 时间戳(诊断标记)  ↑ JS tag    ↑ JS msg
- *   - 如果 server log 看到 [HH:MM:SS] 字串 → JS 端写盘成功 (native bridge 工作)
- *   - 如果 server log 没看到 [HH:MM:SS] 字串 → 写盘失败 (定位 native bridge 路径)
+ * 🆕 V32.34 sendToServer (B方案核心):
+ *   - V2.x 实战反证 14 天稳定: JS log → fetch POST → server log 业务 log 段
+ *   - 完全不走 RN bridge, 不依赖 @ReactMethod 暴露
+ *   - V2.x vivo server log 字串 `[千机:步骤1]` 走的就是 sendToServer 这条
  *
- * 🆕 V32.30 emitNative 设计:
- *   - logger.info/warn/error 内手动调 emitToNative (不依赖 console hook)
- *   - V32.28 commit 装的 console hook 在 Hermes release 失效 (老板实战反证)
- *   - V32.30 删 hook, 改 logger.* 内手动 emit
- *
- * 已知未覆盖:
- *   - 业务代码直接调 console.log('[P+ humanTap] ...') 不会写盘
- *   - 26 kt native 端 Log.d/Log.i 直接 logcat, 不会被 logger 拦截
- *   - 修法: 全仓 grep console.* 替换成 logger.* (V32.18 commit 已批量替换 189 处)
+ * 已知:
+ *   - 业务代码调 logger.* (V4 V32.18 已全仓批量替换 189 处 console.* → logger.*)
+ *   - V4 logger.info/warn/error API 命名不变, 只改内部实现
+ *   - V2.x sendToServer 同时给 V2.x 的 fetch 调用 - V4 直接复用
  */
 
+import { NativeModules } from 'react-native';
+
+const ZBBNative = (NativeModules as any).ZBBAutomation as
+  | {
+      writeBusinessLog(level: string, message: string): Promise<boolean>;
+      triggerLogUploadNow(): Promise<boolean>;
+    }
+  | undefined;
+
+type LogLevel = 'info' | 'success' | 'warn' | 'error';
+
 /**
- * 取北京时间 HH:MM:SS (秒级)
+ * 取北京时间 HH:MM:SS (秒级) — V32.32 老板拍板双时间戳格式保留
  */
 const getBjTime = (): string => {
   return new Date().toLocaleTimeString('zh-CN', {
@@ -36,7 +43,7 @@ const getBjTime = (): string => {
 };
 
 /**
- * 🆕 V32.32 格式化: [HH:MM:SS] [tag] message
+ * V32.32 格式化: [HH:MM:SS] [tag] message
  *   - [HH:MM:SS] 作为"是否 JS 端写盘"的诊断标记
  *   - metro log 自带 adb logcat 时间戳, 这个 [HH:MM:SS] 是给 server log 用的
  */
@@ -45,50 +52,191 @@ const format = (tag: string, msg: string): string => {
 };
 
 /**
- * V32.33 emit 到 native bridge (BusinessLogWriter.append → LogUploadWorker 上传)
- * 🆕 08-28 老板拍板: 不 await, 不 catch (native writeBusinessLog 现在是 void fire-and-forget)
- *   - 旧版 V32.30 logger 用 .catch() 接 Promise reject, 但 V32.33 native 不返回 Promise
- *   - 改为直接调用, 不接 Promise
- *   - silent fail: native 不可用时, 不打 warning (metro 调试用 console.log 已打)
+ * V32.34 B方案: 异步追加写业务日志到 Native (V2.x 设计)
+ * - fire-and-forget, 不阻塞主流程
+ * - V32.33 native writeBusinessLog 是 void fire-and-forget, 不返回 Promise
+ *   - 但 JS 端仍用 await 调用, native 内部 sync 写盘
  */
-const emitToNative = (level: 'info' | 'warn' | 'error', line: string): void => {
-  const ZBBAutomation = (globalThis as any).NativeModules?.ZBBAutomation;
-  if (!ZBBAutomation?.writeBusinessLog) {
-    if (!(globalThis as any).__zbbLogBridgeMissingLogged) {
-      (globalThis as any).__zbbLogBridgeMissingLogged = true;
-      // eslint-disable-next-line no-console
-      console.warn('[zbb-logger] ⚠️ ZBBAutomation.writeBusinessLog 不可用, JS log 只走 console 不写盘');
-    }
+async function appendToBusinessLog(level: LogLevel, line: string): Promise<void> {
+  if (!ZBBNative || typeof ZBBNative.writeBusinessLog !== 'function') {
+    // Native module 不可用 (debug + release 都可能踩 RN bridge 暴露坑)
+    // 不 warning, 不报错 — V2.x 实战反证 silent fail 即可
     return;
   }
-  // V32.33: native writeBusinessLog 是 void fire-and-forget, 不返回 Promise
-  // 直接调用即可, 不需要 catch
   try {
-    ZBBAutomation.writeBusinessLog(level, line);
+    // V32.33 native writeBusinessLog 是 void fire-and-forget, 但 JS 端 await 等同步返回
+    // V2.x 实战反证: await Promise<void> 即使 native 不返回 Promise 也不会卡死
+    await ZBBNative.writeBusinessLog(level, line);
   } catch (e) {
-    if (!(globalThis as any).__zbbLogBridgeErrorLogged) {
-      (globalThis as any).__zbbLogBridgeErrorLogged = true;
-      // eslint-disable-next-line no-console
-      console.warn('[zbb-logger] ⚠️ writeBusinessLog 调用失败:', e);
-    }
+    // native write 失败 — 不静默, console.error 一份 + 后续走 sendToServer (双保险)
+    console.error('[zbb-logger] writeBusinessLog failed:', e);
+    sendToServerDirect(level, line + ' [FALLBACK: native write failed]');
   }
-};
+}
 
+/**
+ * 🆕 V32.34 B方案核心: sendToServer HTTP POST 链路
+ * - V2.x 实战反证 14 天稳定 work
+ * - 不依赖 RN bridge 暴露
+ * - 走 EXPO_PUBLIC_BACKEND_BASE_URL 环境变量配置 server URL
+ * - V4 仓新增: V32.18 V32.30 都没这链路, 是 JS log 上 server 的核心缺
+ */
+function sendToServer(level: LogLevel, message: string): void {
+  sendToServerDirect(level, message);
+}
+
+function sendToServerDirect(level: LogLevel | string, message: string): void {
+  const baseUrl = process.env.EXPO_PUBLIC_BACKEND_BASE_URL || 'http://localhost:9091';
+
+  fetch(`${baseUrl}/api/v1/logs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+      source: 'ZBB-V4-Logger',
+    }),
+  }).catch(() => {
+    // 静默失败, 不影响主流程
+  });
+}
+
+/**
+ * 🆕 V32.34 B方案: 安全的 stringify (V2.x 设计, 防循环引用)
+ */
+function safeStringify(o: unknown): string {
+  if (typeof o === 'string') return o;
+  if (o === null) return 'null';
+  if (o === undefined) return 'undefined';
+  try {
+    return JSON.stringify(o);
+  } catch {
+    return String(o);
+  }
+}
+
+/**
+ * 🆕 V32.34 B方案: 全局 console hook (V2.x 实战反证, Hermes release 仍 work)
+ * - V2.x vivo 14 天实战反证: installConsoleHook + Hermes release = console.log/warn/error 仍被拦截
+ * - V4 V32.30 commit 删 console hook 的理由 "Hermes release 替换 console 对象" 错了
+ * - B方案恢复 console hook, 防止漏网之鱼 (业务代码直接 console.log)
+ */
+const originalLog = console.log.bind(console);
+const originalWarn = console.warn.bind(console);
+const originalError = console.error.bind(console);
+const originalInfo = console.info.bind(console);
+const originalDebug = console.debug.bind(console);
+
+function installConsoleHook() {
+  // 只装一次
+  if ((globalThis as any).__zbbConsoleHooked) return;
+  (globalThis as any).__zbbConsoleHooked = true;
+
+  console.log = (...args: unknown[]) => {
+    originalLog(...args);
+    void appendToBusinessLog('info', args.map(safeStringify).join(' '));
+    sendToServer('info', args.map(safeStringify).join(' '));
+  };
+  console.warn = (...args: unknown[]) => {
+    originalWarn(...args);
+    void appendToBusinessLog('warn', args.map(safeStringify).join(' '));
+    sendToServer('warn', args.map(safeStringify).join(' '));
+  };
+  console.error = (...args: unknown[]) => {
+    originalError(...args);
+    void appendToBusinessLog('error', args.map(safeStringify).join(' '));
+    sendToServer('error', args.map(safeStringify).join(' '));
+  };
+  console.info = (...args: unknown[]) => {
+    originalInfo(...args);
+    void appendToBusinessLog('info', args.map(safeStringify).join(' '));
+    sendToServer('info', args.map(safeStringify).join(' '));
+  };
+  console.debug = (...args: unknown[]) => {
+    originalDebug(...args);
+    void appendToBusinessLog('info', args.map(safeStringify).join(' '));
+    sendToServer('info', args.map(safeStringify).join(' '));
+  };
+}
+
+installConsoleHook();
+
+/**
+ * 🆕 V32.34 B方案核心: logToBoth (V2.x 设计, 3 路并打)
+ * - 1. console.log (debug 用)
+ * - 2. sendToServer HTTP POST (V2.x 主链路, 不依赖 RN bridge)
+ * - 3. appendToBusinessLog native writeBusinessLog (fallback)
+ */
+function logToBoth(level: LogLevel, line: string): void {
+  // 1. 输出到控制台
+  const prefix = getPrefix(level);
+  switch (level) {
+    case 'warn':
+      originalWarn(`${prefix} ${line}`);
+      break;
+    case 'error':
+      originalError(`${prefix} ${line}`);
+      break;
+    case 'success':
+      originalLog(`${prefix} ${line}`);
+      break;
+    default:
+      originalLog(`${prefix} ${line}`);
+  }
+
+  // 2. 发送到服务端日志 (best-effort)
+  sendToServer(level, line);
+
+  // 3. 追加到本地业务日志文件 (fire-and-forget)
+  void appendToBusinessLog(level, line);
+}
+
+/**
+ * V32.32 老板拍板 level 前缀
+ */
+function getPrefix(level: LogLevel): string {
+  switch (level) {
+    case 'success':
+      return '✅';
+    case 'warn':
+      return '⚠️';
+    case 'error':
+      return '❌';
+    default:
+      return '📋';
+  }
+}
+
+/**
+ * 调试用: 手动触发 LogUploadWorker (Native 端提供)
+ */
+export function triggerLogUploadNow(): void {
+  if (ZBBNative && typeof ZBBNative.triggerLogUploadNow === 'function') {
+    ZBBNative.triggerLogUploadNow().catch(() => {});
+  }
+}
+
+/**
+ * V4 logger API (V32.18 全仓替换 189 处 console.* → logger.* 的命名保持不变)
+ * - 内部实现走 logToBoth (V2.x 3 路并打设计)
+ */
 export const logger = {
   info: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.log(line);         // 1. metro
-    emitToNative('info', line); // 2. native bridge
+    logToBoth('info', line);
+  },
+  success: (tag: string, msg: string): void => {
+    const line = format(tag, msg);
+    logToBoth('success', line);
   },
   warn: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.warn(line);         // 1. metro
-    emitToNative('warn', line); // 2. native bridge
+    logToBoth('warn', line);
   },
   error: (tag: string, msg: string): void => {
     const line = format(tag, msg);
-    console.error(line);         // 1. metro
-    emitToNative('error', line); // 2. native bridge
+    logToBoth('error', line);
   },
 };
 
