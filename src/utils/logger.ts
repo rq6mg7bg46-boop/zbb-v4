@@ -107,16 +107,22 @@ function sendToServerDirect(level: LogLevel | string, message: string): void {
 
   // 把 level + message 拼成 server 期望的 "log" 字段 (跟 native LogUploadWorker + BusinessLogWriter 格式一致)
   //  native BusinessLogWriter 格式: "2026/08/30 10:30:00 [INFO   ] message\n"
-  //  - DATE_FMT_LINE = "yyyy/MM/dd HH:mm:ss" (Locale.CHINA)
+  //  - DATE_FMT_FILE = "yyyy-MM-dd" (用于文件名)
+  //  - DATE_FMT_LINE = "yyyy/MM/dd HH:mm:ss" (用于行)
   //  - levelShort = level.uppercase().padEnd(7) (e.g. "INFO   ", "WARN   ", "ERROR  ")
+  //
+  // 🆕 V32.34.2 (08-30 老板拍板): server log 不显示时间, 只显示日期
+  //  - 期望格式: "2026/08/30 [INFO   ] [HH:MM:SS] [tag] msg"
+  //  - native 写日期 + level (不加时间, server 端 log 文件 mtime 自带时间)
+  //  - JS 写 [HH:MM:SS] (V32.32 老板拍板的诊断标记)
+  //  - levelShort = level.uppercase().padEnd(7)
   const now = new Date();
-  const ts =
-    `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')} ` +
-    `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+  const date =
+    `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
   const levelShort = level.toUpperCase().padEnd(7);
   // 单行清洗: 把 \r\n 替换成转义字符 (跟 native 一致, 防一行变多行破坏 incremental upload)
   const safeMsg = message.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
-  const logText = `${ts} [${levelShort}] ${safeMsg}\n`;
+  const logText = `${date} [${levelShort}] ${safeMsg}\n`;
 
   fetch(`${baseUrl}/log`, {
     method: 'POST',
