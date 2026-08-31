@@ -183,6 +183,40 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
      *   - 调用方: src/services/index.ts subscribeQianjiNewCustomer
      *   - 返回: 上次操作时间戳 (ms), 0L 表示从未操作
      */
+    /**
+     * 🆕 V32.36.0 拆 user/zbb: 千机监听只算 user, 5min 静默只算 zbb
+     *
+     * 老板 08-31 装机验证 V32.35.0 发现:
+     *   - 千机监听 delay 用 getLastInteractionMs() 包含 ZBB 操作
+     *   - ZBB pollA11y/pollOverlay 不刷 lastZbbInteractionMs (但 ZBB tap/swipe/input 会刷)
+     *   - 因此 delay 永 > 0 直到用户停操作 5s
+     *
+     * V32.36.0 修法:
+     *   - 千机监听改用 getLastUserInteractionMs() 只算用户触摸/滑动
+     *   - 5min 静默期 (Worker) 改用 getLastZbbInteractionMs() 只算 ZBB 自身操作
+     *   - 两者完全独立, 互不干扰
+     */
+    @ReactMethod
+    fun getLastUserInteractionMs(promise: Promise) {
+        try {
+            val last = com.zbb.automation.v4.OperationDetector.getLastUserInteractionMs()
+            promise.resolve(last.toDouble())
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getLastZbbInteractionMs(promise: Promise) {
+        try {
+            val last = com.zbb.automation.v4.OperationDetector.getLastZbbInteractionMs()
+            promise.resolve(last.toDouble())
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    // 保留旧接口 (5min Worker 还在用, V32.36.1 删)
     @ReactMethod
     fun getLastInteractionMs(promise: Promise) {
         try {

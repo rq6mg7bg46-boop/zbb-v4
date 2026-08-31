@@ -138,42 +138,93 @@ async function calcIdleDelayMs(): Promise<number> {
   const nowMs = Date.now();
   let lastInteractionMs = 0;
   try {
-    lastInteractionMs = await ZBBAutomation.getLastInteractionMs();
+    // 🆕 V32.36.0: 用 getLastUserInteractionMs 只算用户操作 (老板 08-31 拍板)
+    // 旧设计 getLastInteractionMs 包含 ZBB 自己操作, ZBB 业务流期间 lastZbbInteractionMs 一直刷
+    //   → 千机监听 delay 永 > 0 → 等不到 5s 无触摸窗口
+    // 新设计: 千机监听只算用户触摸/滑动, ZBB 操作不影响 delay
+    lastInteractionMs = await ZBBAutomation.getLastUserInteractionMs();
   } catch (e) {
-    logger.warn('千机监听', `getLastInteractionMs 失败, 退避用 5s 固定 delay: ${e}`);
+    logger.warn('千机监听', `getLastUserInteractionMs 失败, 退避用 5s 固定 delay: ${e}`);
     return QIANJI_PENDING_DELAY_MS;
   }
   // 🆕 debug log (老板拍板: 方便验证设计)
   const elapsedSinceInteraction = lastInteractionMs === 0 ? Infinity : nowMs - lastInteractionMs;
   const delay = Math.max(0, lastInteractionMs + QIANJI_PENDING_DELAY_MS - nowMs);
-  logger.info('千机监听', `delay 计算: nowMs-lastInteractionMs=${elapsedSinceInteraction === Infinity ? '∞ (从未操作)' : elapsedSinceInteraction + 'ms'}, delay=${delay}ms`);
+  logger.info('千机监听', `delay 计算 (用户操作): nowMs-lastUserMs=${elapsedSinceInteraction === Infinity ? '∞ (从未操作)' : elapsedSinceInteraction + 'ms'}, delay=${delay}ms`);
   return delay;
 }
 
 /**
- * 检查闸门 + 推迟触发 runZbbWorkflow (用动态 delay)
+ * 🆕 V32.36.0 修法 A+B: 检查闸门 + 持续轮询 delay (不再是 setTimeout 一次性)
+ *
+ * 老板 08-31 装机验证 V32.35.0 发现 bug:
+ *   - 13:02:37 收到吴丽华, delay=2329ms 推迟后再触发
+ *   - 但 setTimeout(2329) 二次调 scheduleQianjiTrigger 在 async 链被吞
+ *   - 直到 13:03:21 收到赵华才触发 (44 秒后)
+ *
+ * 设计要求 (老板拍板):
+ *   - 接收到符合条件的信息后, 判断前后合计 5S 的时间是否无触摸
+ *   - 如果没触摸 → 启动
+ *   - 有触摸 → 推迟再触发 (持续判断, 不能 delay 一次就放弃)
+ *
+ * V32.36.0 修法:
+ *   - 不用 setTimeout 一次性递归 (有 race condition)
+ *   - 改 setInterval 每 500ms 轮询, 闸门 + delay 满足 → trigger
+ *   - trigger 后立即 clearInterval, 不留悬挂
+ *   - 同时拆 5min 静默与千机监听 (getLastUserInteractionMs / getLastZbbInteractionMs)
  */
 async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
-  // 二次闸门 (delay 期间状态可能变了)
+  // 闸门 1: UserIntervention
   if (orchestrator.isInUserIntervention()) {
-    logger.info('千机监听', `推迟后闸门不通过: UserIntervention, 事件保留 pending=${pendingQianjiEvents.length}`);
+    logger.info('千机监听', `闸门不通过: UserIntervention, 事件保留 pending=${pendingQianjiEvents.length}`);
     return;
   }
+  // 闸门 2: Running
   if (orchestrator.isRunning()) {
-    logger.info('千机监听', `推迟后闸门不通过: Running, 事件保留 pending=${pendingQianjiEvents.length}`);
+    logger.info('千机监听', `闸门不通过: Running, 事件保留 pending=${pendingQianjiEvents.length}`);
     return;
   }
-  // 静默期闸门由 native 端拦截
 
-  // 重新算 delay (状态可能变了, 也要重算用户空闲)
-  const delay = await calcIdleDelayMs();
-  if (delay === 0) {
-    // 用户已 idle 5s+ → 立刻触发
-    triggerQianjiRun(payload);
-  } else {
-    logger.info('千机监听', `delay=${delay}ms 推迟后再触发`);
-    setTimeout(() => scheduleQianjiTrigger(payload), delay);
-  }
+  // 首次算 delay + log
+  let initialDelay = await calcIdleDelayMs();
+  logger.info('千机监听', `开始轮询等用户空闲, 初始 delay=${initialDelay}ms (每 500ms 重新判断)`);
+
+  // 持续轮询: 每 500ms 重算 delay, 闸门 + delay 满足 → 触发
+  const POLL_INTERVAL_MS = 500;
+  const MAX_WAIT_MS = 60000; // 最多等 60s (防御悬挂)
+  let elapsed = 0;
+  const startTime = Date.now();
+
+  const intervalId = setInterval(async () => {
+    elapsed = Date.now() - startTime;
+    if (elapsed > MAX_WAIT_MS) {
+      clearInterval(intervalId);
+      logger.warn('千机监听', `轮询超时 ${MAX_WAIT_MS}ms, 放弃本事件 (pkg=${payload?.package})`);
+      return;
+    }
+
+    // 闸门再检 (轮询期间状态可能变了)
+    if (orchestrator.isInUserIntervention()) {
+      logger.info('千机监听', `轮询中闸门不通过: UserIntervention, 放弃 (pkg=${payload?.package})`);
+      clearInterval(intervalId);
+      return;
+    }
+    if (orchestrator.isRunning()) {
+      logger.info('千机监听', `轮询中闸门不通过: Running, 放弃 (pkg=${payload?.package})`);
+      clearInterval(intervalId);
+      return;
+    }
+
+    // 重算 delay
+    const delay = await calcIdleDelayMs();
+    if (delay === 0) {
+      // 满足 5s 无触摸 → 触发
+      clearInterval(intervalId);
+      logger.info('千机监听', `✓ 5s 无触摸窗口已满足, 触发 runZbbWorkflow (pkg=${payload?.package})`);
+      triggerQianjiRun(payload);
+    }
+    // 否则继续轮询 (delay > 0 = 还有触摸, 等下一轮)
+  }, POLL_INTERVAL_MS);
 }
 
 /**

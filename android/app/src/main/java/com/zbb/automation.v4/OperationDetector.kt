@@ -58,11 +58,32 @@ object OperationDetector {
     }
 
     /**
+     * 🆕 V32.36.0 拆 user/zbb: 千机监听只算 user, 5min 静默只算 zbb
      * 拿最后任意一次操作时间（用户 + ZBB 两者最大）
      * Worker.doWork 内判定 5min 静默用
      */
     fun getLastInteractionMs(): Long {
         return maxOf(lastUserInteractionMs, lastZbbInteractionMs)
+    }
+
+    /**
+     * 🆕 V32.36.0: 千机监听只算用户操作 (老板 08-31 拍板)
+     * - 用途: JS 端 calcIdleDelayMs → delay = max(0, lastUser + 5000 - now)
+     * - ZBB 自己操作 (recordZbbInteraction) 不刷这个字段
+     * - 只有 AccessibilityServiceImpl.onAccessibilityEvent 触摸/滑动 才刷
+     */
+    fun getLastUserInteractionMs(): Long {
+        return lastUserInteractionMs
+    }
+
+    /**
+     * 🆕 V32.36.0: 5min 静默期只算 ZBB 自身操作 (老板 08-31 拍板)
+     * - 用途: Worker.doWork 内 isIdleAfterPreCheck 判定 ZBB 是否在跑业务
+     * - 用户操作 (recordUserInteraction) 不刷这个字段
+     * - 只有 ZBB tap/swipe/input/pasteText 桥方法才刷
+     */
+    fun getLastZbbInteractionMs(): Long {
+        return lastZbbInteractionMs
     }
 
     /**

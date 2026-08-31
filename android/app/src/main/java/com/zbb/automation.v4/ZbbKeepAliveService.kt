@@ -105,14 +105,19 @@ class ZbbKeepAliveService : Service() {
                 //          所以 5min 时间起点 = 最后一次操作时间 (含 ZBB 操作和用户操作)
                 // 修复前: tick 固定每 5min 调 startIdleWork (v11 D 方案, 不管操作时间)
                 // 修复后: tick 检查 lastInteraction >= 5min 才触发 → 动态调整
-                val lastInteractionMs = OperationDetector.getLastInteractionMs()
+                // 🆕 V32.36.0 拆 user/zbb: 5min 静默期只算 ZBB 自身操作 (老板 08-31 拍板)
+                // 设计意图: ZBB 跑业务期间 (tap/swipe/input 持续刷 lastZbbInteractionMs) → 永不 idle → 不触发
+                // 旧设计: getLastInteractionMs() = max(user, zbb), 用户偶尔触摸也会重置 5min 计时
+                // 新设计: getLastZbbInteractionMs() 只算 ZBB 自己操作, 用户触摸不影响 5min 静默
+                //   例: 老板刚摸手机 (user=now), 但 ZBB 跑业务结束 (zbb=5min前) → 现在仍 5min idle → 触发干活
+                val lastZbbInteractionMs = OperationDetector.getLastZbbInteractionMs()
                 val nowMs = System.currentTimeMillis()
-                val deltaMs = if (lastInteractionMs == 0L) Long.MAX_VALUE else nowMs - lastInteractionMs
+                val deltaMs = if (lastZbbInteractionMs == 0L) Long.MAX_VALUE else nowMs - lastZbbInteractionMs
                 if (deltaMs >= KEEPALIVE_INTERVAL_MS) {
-                    Log.d(TAG, "tick: triggering WorkOrchestrator.startIdleWork (v12 老板拍板, 5min idle satisfied, lastInteraction=$lastInteractionMs delta=${deltaMs}ms)")
+                    Log.d(TAG, "tick: triggering WorkOrchestrator.startIdleWork (V32.36.0, 5min idle satisfied, lastZbb=$lastZbbInteractionMs delta=${deltaMs}ms)")
                     WorkOrchestrator.startIdleWork(applicationContext)
                 } else {
-                    Log.d(TAG, "tick: skip WorkOrchestrator.startIdleWork (v12 老板拍板, 5min idle NOT satisfied, lastInteraction=$lastInteractionMs delta=${deltaMs}ms < ${KEEPALIVE_INTERVAL_MS}ms)")
+                    Log.d(TAG, "tick: skip WorkOrchestrator.startIdleWork (V32.36.0, 5min idle NOT satisfied, lastZbb=$lastZbbInteractionMs delta=${deltaMs}ms < ${KEEPALIVE_INTERVAL_MS}ms)")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "tick error: ${e.message}")
