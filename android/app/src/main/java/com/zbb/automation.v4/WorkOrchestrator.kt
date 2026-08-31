@@ -34,20 +34,20 @@ object WorkOrchestrator {
      * v10 关键改动: catalyst 异常时切 MainActivity 到前台 (不再 return)
      * v11 关键改动: 切 MainActivity 后模拟触摸 (dispatchGesture) 触发 userActivity
      */
-    fun startIdleWork(context: Context) {
+    fun startIdleWork(context: Context, source: String = "unknown") {
         try {
             val reactContext = AutomationModuleManager.getModule()?.zbbReactApplicationContext()
 
             // ========== Layer 3: reactContext 为 null (RN 还没启动) ==========
             if (reactContext == null) {
-                Log.w(TAG, "react context null — bring MainActivity to front (Layer 3)")
+                Log.w(TAG, "react context null — bring MainActivity to front (Layer 3, source=$source)")
                 startMainActivity(context)
                 return
             }
 
             // ========== Layer 2: catalyst 不活跃 (锁屏/后台休眠) ==========
             if (!reactContext.hasActiveCatalystInstance()) {
-                Log.w(TAG, "catalyst not active (锁屏/后台休眠) — bring MainActivity to front (Layer 2)")
+                Log.w(TAG, "catalyst not active (锁屏/后台休眠) — bring MainActivity to front (Layer 2, source=$source)")
                 startMainActivity(context)
                 return
             }
@@ -57,12 +57,13 @@ object WorkOrchestrator {
                 putString("source", "5min_idle_trigger")
                 putLong("timestamp", System.currentTimeMillis())
                 putString("reason", "user_idle_5min")
+                putString("caller", source)  // 🆕 V32.36.5: 区分触发源 (ZBBKeepAlive_tick / IdleWorker / UserPresent)
             }
 
             reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                 .emit(EVENT_IDLE_WORK_TRIGGER, payload)
 
-            Log.i(TAG, "✅ zbbIdleWorkTrigger emitted to RN (source=5min_idle_trigger, ts=${System.currentTimeMillis()})")
+            Log.i(TAG, "✅ zbbIdleWorkTrigger emitted to RN (source=5min_idle_trigger, caller=$source, ts=${System.currentTimeMillis()})")
         } catch (e: Exception) {
             Log.e(TAG, "startIdleWork failed: ${e.message}", e)
         }

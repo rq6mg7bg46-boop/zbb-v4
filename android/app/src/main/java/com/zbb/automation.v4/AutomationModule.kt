@@ -2113,7 +2113,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     @ReactMethod
     fun triggerIdleWork(promise: Promise) {
         try {
-            WorkOrchestrator.startIdleWork(mReactContext.applicationContext)
+            WorkOrchestrator.startIdleWork(mReactContext.applicationContext, source = "RN_triggerIdleWork")
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("ERROR", e.message)

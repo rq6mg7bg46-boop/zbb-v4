@@ -74,8 +74,8 @@ class IdleTriggerWorker(
 
                 if (noNewInteraction) {
                     // 5s 内无新操作 — 触发干活
-                    Log.i(TAG, "pre-check window clean — triggering idle work via WorkOrchestrator")
-                    WorkOrchestrator.startIdleWork(applicationContext)
+                    Log.i(TAG, "pre-check window clean — triggering idle work via WorkOrchestrator (source=IdleWorker)")
+                    WorkOrchestrator.startIdleWork(applicationContext, source = "IdleWorker")
                 } else {
                     Log.i(TAG, "pre-check window detected new interaction — cancel idle work, restart timer")
                 }

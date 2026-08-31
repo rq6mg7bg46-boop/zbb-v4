@@ -115,7 +115,7 @@ class ZbbKeepAliveService : Service() {
                 val deltaMs = if (lastZbbInteractionMs == 0L) Long.MAX_VALUE else nowMs - lastZbbInteractionMs
                 if (deltaMs >= KEEPALIVE_INTERVAL_MS) {
                     Log.d(TAG, "tick: triggering WorkOrchestrator.startIdleWork (V32.36.0, 5min idle satisfied, lastZbb=$lastZbbInteractionMs delta=${deltaMs}ms)")
-                    WorkOrchestrator.startIdleWork(applicationContext)
+                    WorkOrchestrator.startIdleWork(applicationContext, source = "ZBBKeepAlive_tick")
                 } else {
                     Log.d(TAG, "tick: skip WorkOrchestrator.startIdleWork (V32.36.0, 5min idle NOT satisfied, lastZbb=$lastZbbInteractionMs delta=${deltaMs}ms < ${KEEPALIVE_INTERVAL_MS}ms)")
                 }

@@ -70,7 +70,7 @@ class UserPresentReceiver : BroadcastReceiver() {
         prefs.edit().putLong(KEY_LAST_TRIGGER_MS, nowMs).apply()
 
         // 立即触发 5min 防熄屏
-        Log.i(TAG, "user_present: 解锁立即触发 WorkOrchestrator.startIdleWork")
-        WorkOrchestrator.startIdleWork(context)
+        Log.i(TAG, "user_present: 解锁立即触发 WorkOrchestrator.startIdleWork (source=UserPresent)")
+        WorkOrchestrator.startIdleWork(context, source = "UserPresent")
     }
 }

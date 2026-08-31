@@ -61,13 +61,14 @@ const ZBBAutomation = NativeModules.ZBBAutomation;
 const nativeEmitter = ZBBAutomation ? new NativeEventEmitter(ZBBAutomation) : null;
 
 if (nativeEmitter) {
-  nativeEmitter.addListener('zbbIdleWorkTrigger', (payload?: { source?: string; timestamp?: number; reason?: string }) => {
+  nativeEmitter.addListener('zbbIdleWorkTrigger', (payload?: { source?: string; timestamp?: number; reason?: string; caller?: string }) => {
     const reason = payload?.reason ?? 'unknown';
-    logger.info('zbbIdleWorkTrigger', `收到反息屏事件 source=${payload?.source} reason=${reason}`);
+    const caller = payload?.caller ?? 'unknown';  // 🆕 V32.36.5: 区分触发源 (ZBBKeepAlive_tick / IdleWorker / UserPresent)
+    logger.info('zbbIdleWorkTrigger', `收到反息屏事件 source=${payload?.source} caller=${caller} reason=${reason}`);
 
     // 守卫: UserIntervention / Running → 跳过
     if (orchestrator.isInUserIntervention()) {
-      logger.info('zbbIdleWorkTrigger', '跳过: UserIntervention 中 (反息屏不打扰异常结束)');
+      logger.info('zbbIdleWorkTrigger', `跳过: UserIntervention 中 (caller=${caller}, 反息屏不打扰异常结束)`);
       return;
     }
     if (orchestrator.isRunning()) {
