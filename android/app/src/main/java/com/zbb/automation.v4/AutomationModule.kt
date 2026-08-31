@@ -2651,24 +2651,25 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
             }
         }
     }
-/**
- * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
- *
- * 实测: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
- */
-override fun getConstants(): MutableMap<String, Any> {
-    val constants = mutableMapOf<String, Any>()
-    try {
-        constants["APP_ENV"] = com.zbb.automation.v4.BuildConfig.APP_ENV
-        constants["QIANJI_PACKAGE"] = com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE
-        constants["QIANJI_MAIN_ACTIVITY"] = com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY
-        constants["VERSION_NAME"] = com.zbb.automation.v4.BuildConfig.VERSION_NAME
-        constants["VERSION_CODE"] = com.zbb.automation.v4.BuildConfig.VERSION_CODE
-        constants["IS_NEW_ARCHITECTURE_ENABLED"] = com.zbb.automation.v4.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-        Log.d(TAG, "[getConstants] APP_ENV=${com.zbb.automation.v4.BuildConfig.APP_ENV}")
-    } catch (e: Exception) {
-        Log.e(TAG, "[getConstants] 失败: ${e.message}", e)
+
+    /**
+     * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
+     *
+     * 实测: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
+     */
+    override fun getConstants(): MutableMap<String, Any> {
+        val constants = mutableMapOf<String, Any>()
+        try {
+            constants["APP_ENV"] = com.zbb.automation.v4.BuildConfig.APP_ENV
+            constants["QIANJI_PACKAGE"] = com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE
+            constants["QIANJI_MAIN_ACTIVITY"] = com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY
+            constants["VERSION_NAME"] = com.zbb.automation.v4.BuildConfig.VERSION_NAME
+            constants["VERSION_CODE"] = com.zbb.automation.v4.BuildConfig.VERSION_CODE
+            constants["IS_NEW_ARCHITECTURE_ENABLED"] = com.zbb.automation.v4.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+            Log.d(TAG, "[getConstants] APP_ENV=${com.zbb.automation.v4.BuildConfig.APP_ENV}")
+        } catch (e: Exception) {
+            Log.e(TAG, "[getConstants] 失败: ${e.message}", e)
+        }
+        return constants
     }
-    return constants
-}
 }
