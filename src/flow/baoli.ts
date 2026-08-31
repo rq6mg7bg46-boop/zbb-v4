@@ -28,6 +28,7 @@ import { ZBBAutomation } from '@/native';
 import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
+import { raiseAlert } from '@/services/alert';
 import { px } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23)
 
 const APP_PACKAGES = {
@@ -56,16 +57,22 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
     // 第一轮报备
     const round1Ok = await runBaoliRound(customer, 1);
     if (!round1Ok) {
-      logger.info('保利', '第一轮报备失败');
-      orchestrator.send('BAOLI_FAILED');
+      logger.info('保利', '第一轮报备失败 → 弹窗等老板');
+      // 🆕 V32.36.3: 端失败统一弹窗 + 进 UserIntervention (非 Error 状态)
+      // 老板 08-31 装机验证: 之前 BAOLI_FAILED → Error 状态卡住, 反息屏 5min 后还触发
+      // 期望: 端失败 = 弹窗 + 震动 + "我知道了" 按钮 + 进 UserIntervention
+      await raiseAlert('小主,保利流程报备失败(第1轮),请手动处理!');
+      orchestrator.send('BAOLI_INTERVENE');
       return false;
     }
 
     // 第二轮报备
     const round2Ok = await runBaoliRound(customer, 2);
     if (!round2Ok) {
-      logger.info('保利', '第二轮报备失败');
-      orchestrator.send('BAOLI_FAILED');
+      logger.info('保利', '第二轮报备失败 → 弹窗等老板');
+      // 🆕 V32.36.3: 同上
+      await raiseAlert('小主,保利流程报备失败(第2轮),请手动处理!');
+      orchestrator.send('BAOLI_INTERVENE');
       return false;
     }
 
@@ -74,7 +81,9 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
     return true;
   } catch (error) {
     logger.error('保利', `'流程失败:' ${error}`);
-    orchestrator.send('BAOLI_FAILED');
+    // 🆕 V32.36.3: 异常也弹窗等老板
+    await raiseAlert(`小主,保利流程异常,请手动处理! (${error})`);
+    orchestrator.send('BAOLI_INTERVENE');
     return false;
   }
 }
@@ -196,7 +205,11 @@ async function step3FindMiniApp(): Promise<boolean> {
     await ZBBAutomation.delay(1500);
   }
 
-  logger.info('保利:步骤3', '5 次上滑都没找到');
+  // 🆕 V32.36.3: 5 次上滑都没找到 → 立即弹窗 + 震动 + "我知道了" 按钮
+  // 老板 08-31 装机验证: 之前没弹窗, 流程跑完才报 baoli_failed, 反息屏 5min 还跑
+  // 期望: 单步骤失败立刻弹窗, 老板点 "我知道了" 流程结束
+  logger.error('保利:步骤3', '5 次上滑都没找到云和家经纪云 → 弹窗等老板');
+  await raiseAlert('小主,未找到云和家经纪云,请手动处理!');
   return false;
 }
 
