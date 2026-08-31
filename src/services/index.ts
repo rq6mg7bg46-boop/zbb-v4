@@ -190,15 +190,18 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
   logger.info('千机监听', `开始轮询等用户空闲, 初始 delay=${initialDelay}ms (每 500ms 重新判断)`);
 
   // 持续轮询: 每 500ms 重算 delay, 闸门 + delay 满足 → 触发
+  // 🆕 V32.36.0.1 bug fix: setInterval 跟 async callback 不兼容 (08-31 老板装机验证)
+  //   老板反馈: 14:52:21 delay=1750ms 开始轮询, 14:53:24 才收到第二个推送 (63 秒空窗)
+  //   → 中间 126 次 setInterval callback 全部 await calcIdleDelayMs() 悬挂
+  //   → 闸门2 (isRunning) 永远不返回, trigger 永不调
+  // 修法: 用 setTimeout 递归代替 setInterval, 等前一次 Promise 链完成再排下一次
   const POLL_INTERVAL_MS = 500;
   const MAX_WAIT_MS = 60000; // 最多等 60s (防御悬挂)
-  let elapsed = 0;
-  const startTime = Date.now();
+  let startTime = Date.now();
 
-  const intervalId = setInterval(async () => {
-    elapsed = Date.now() - startTime;
+  const pollOnce = async (): Promise<void> => {
+    const elapsed = Date.now() - startTime;
     if (elapsed > MAX_WAIT_MS) {
-      clearInterval(intervalId);
       logger.warn('千机监听', `轮询超时 ${MAX_WAIT_MS}ms, 放弃本事件 (pkg=${payload?.package})`);
       return;
     }
@@ -206,12 +209,10 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
     // 闸门再检 (轮询期间状态可能变了)
     if (orchestrator.isInUserIntervention()) {
       logger.info('千机监听', `轮询中闸门不通过: UserIntervention, 放弃 (pkg=${payload?.package})`);
-      clearInterval(intervalId);
       return;
     }
     if (orchestrator.isRunning()) {
       logger.info('千机监听', `轮询中闸门不通过: Running, 放弃 (pkg=${payload?.package})`);
-      clearInterval(intervalId);
       return;
     }
 
@@ -219,12 +220,17 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
     const delay = await calcIdleDelayMs();
     if (delay === 0) {
       // 满足 5s 无触摸 → 触发
-      clearInterval(intervalId);
-      logger.info('千机监听', `✓ 5s 无触摸窗口已满足, 触发 runZbbWorkflow (pkg=${payload?.package})`);
+      logger.info('千机监听', `✓ 5s 无触摸窗口已满足, 触发 runZbbWorkflow (pkg=${payload?.package}, 等待 ${elapsed}ms)`);
       triggerQianjiRun(payload);
+      return;
     }
     // 否则继续轮询 (delay > 0 = 还有触摸, 等下一轮)
-  }, POLL_INTERVAL_MS);
+    logger.info('千机监听', `轮询中: delay=${delay}ms, 继续等 ${POLL_INTERVAL_MS}ms 后再判 (elapsed=${elapsed}ms)`);
+    setTimeout(pollOnce, POLL_INTERVAL_MS);
+  };
+
+  // 启动轮询 (首次调)
+  setTimeout(pollOnce, 0);
 }
 
 /**
