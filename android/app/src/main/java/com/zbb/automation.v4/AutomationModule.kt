@@ -69,8 +69,8 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     
     init {
         AutomationModuleManager.registerModule(this)
-        // 🆕 V32.36.2: 把 reactContext 存到 module-level static 变量, 让 AccessibilityService emit
-        setAutomationModuleReactContext(mReactContext)
+        // 🆕 V32.36.2: 把 reactContext 存到 companion object, 让 AccessibilityService emit
+        setReactContext(mReactContext)
         ScreenshotService.onProjectionReady = {
             Log.d(TAG, "ScreenshotService MediaProjection 已就绪")
             sendEvent("onMediaProjectionReady", null)
@@ -2614,35 +2614,43 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
-    // 🆕 V32.36.2: emitUserInteractionRecorded 静态函数, 让 AccessibilityService 可 emit
-//   不依赖 RN bridge Promise, native 推送模式
-@Volatile
-private var sharedReactContext: ReactApplicationContext? = null
+    companion object {
+            private const val TAG = "AutomationModule"
 
-@Synchronized
-fun setAutomationModuleReactContext(ctx: ReactApplicationContext?) {
-    sharedReactContext = ctx
-}
+            // 🆕 V32.36.2: sharedReactContext + emit 函数放 companion object, 让 AccessibilityService 可调
+            @Volatile
+            private var sharedReactContext: ReactApplicationContext? = null
 
-@Synchronized
-private fun getAutomationModuleReactContext(): ReactApplicationContext? {
-    return sharedReactContext
-}
+            @Synchronized
+            fun setReactContext(ctx: ReactApplicationContext?) {
+                sharedReactContext = ctx
+            }
 
-fun emitUserInteractionRecordedFromAccessibilityService(service: android.content.Context, timestampMs: Long) {
-    try {
-        val ctx = getAutomationModuleReactContext() ?: return
-        val event = com.facebook.react.bridge.Arguments.createMap()
-        event.putDouble("timestamp", timestampMs.toDouble())
-        event.putString("source", "AccessibilityService")
-        ctx.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit("UserInteractionRecorded", event)
-    } catch (e: Exception) {
-        Log.w("AutomationModule", "emitUserInteractionRecorded failed: ${e.message}")
+            @Synchronized
+            private fun getReactContext(): ReactApplicationContext? {
+                return sharedReactContext
+            }
+
+            /**
+             * 🆕 V32.36.2: 静态入口 emit DeviceEventEmitter 'UserInteractionRecorded'
+             * - 调用方: AccessibilityServiceImpl.onAccessibilityEvent (主线程)
+             * - 不走 RN bridge Promise (getLastUserInteractionMs), 改 push 模式
+             * - JS 端 addListener 缓存 timestamp 到 local variable, calcIdleDelayMs 用本地缓存
+             */
+            fun emitUserInteractionRecorded(service: android.content.Context, timestampMs: Long) {
+                try {
+                    val ctx = getReactContext() ?: return
+                    val event = com.facebook.react.bridge.Arguments.createMap()
+                    event.putDouble("timestamp", timestampMs.toDouble())
+                    event.putString("source", "AccessibilityService")
+                    ctx.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        .emit("UserInteractionRecorded", event)
+                } catch (e: Exception) {
+                    Log.w(TAG, "emitUserInteractionRecorded failed: ${e.message}")
+                }
+            }
+        }
     }
-}
-}
-
 /**
  * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
  *

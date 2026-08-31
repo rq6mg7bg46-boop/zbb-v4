@@ -370,7 +370,7 @@ class AccessibilityServiceImpl : AccessibilityService() {
                                 //   recordUserInteraction 在 AccessibilityService.onAccessibilityEvent 内调
                                 //   不走 RN bridge Promise, RN bridge queue 堵塞不影响
                                 try {
-                                    com.zbb.automation.v4.AutomationModule.emitUserInteractionRecordedFromAccessibilityService(this, lastUserTouchTime)
+                                    com.zbb.automation.v4.AutomationModule.emitUserInteractionRecorded(this, lastUserTouchTime)
                                 } catch (_: Exception) { /* emit 失败已在 native logcat */ }
             }
             AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> {
