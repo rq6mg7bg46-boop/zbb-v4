@@ -111,6 +111,30 @@ const DAI_SHEN_HE_KEYWORD = '待审核';
 type QianjiPayload = { package?: string; title?: string; text?: string; subText?: string; bigText?: string; timestamp?: number; source?: string };
 const pendingQianjiEvents: QianjiPayload[] = [];  // pending 队列 (FIFO)
 
+// 🆕 V32.36.2: native push 模式缓存 lastUserInteractionMs (不依赖 RN bridge Promise)
+// - 监听 DeviceEventEmitter 'UserInteractionRecorded' 事件
+// - native 端 AccessibilityService 触摸事件 / AutomationModule.recordUserInteraction 都 emit
+// - JS 端缓存 timestamp 到 local variable
+// - calcIdleDelayMs 同步读 local 变量, 不调 RN bridge Promise
+let cachedLastUserInteractionMs: number = 0;
+let nativeEmitterUserInteraction: { remove: () => void } | null = null;
+function setupUserInteractionListener(): void {
+  if (nativeEmitterUserInteraction) {
+    return;  // 单例防重复订阅
+  }
+  if (!nativeEmitter) {
+    logger.warn('services/index.ts', 'native emitter 不可用, 跳过 UserInteractionRecorded 监听');
+    return;
+  }
+  nativeEmitterUserInteraction = nativeEmitter.addListener('UserInteractionRecorded', (event: { timestamp?: number; source?: string }) => {
+    if (event?.timestamp) {
+      cachedLastUserInteractionMs = event.timestamp;
+      logger.info('services/index.ts', `UserInteraction 推送: ts=${event.timestamp} source=${event.source}`);
+    }
+  });
+  logger.info('services/index.ts', '入口 4 监听器已注册: UserInteractionRecorded → 缓存 lastUserInteractionMs');
+}
+
 /**
  * 匹配白名单: text 必须含"待审核" + 项目名 ∈ TRIGGER_PROJECTS
  * 抄 V2.x QianjiService.ts:1413 设计
@@ -134,23 +158,21 @@ function matchQianjiTrigger(text: string | undefined): { matched: boolean; proje
  *   - 例子 B: 用户 3s 前操作过 → delay=2s → 2s 后再触发
  *   - 例子 C: 用户一直操作 → 等用户停止操作后 5s 立刻触发
  */
-async function calcIdleDelayMs(): Promise<number> {
+/**
+ * 🆕 V32.36.2: 计算动态 delay (本地缓存版, 不依赖 RN bridge Promise)
+ *   delay = max(0, cachedLastUserInteractionMs + 5000 - nowMs)
+ *   - cachedLastUserInteractionMs 由 DeviceEventEmitter 'UserInteractionRecorded' push
+ *   - native 端 AccessibilityService 触摸 / AutomationModule.recordUserInteraction 都 emit
+ *   - 不调 RN bridge Promise, RN bridge queue 堵塞不影响 (老板 08-31 装机验证 bug 根因)
+ *
+ * 兜底: 如果 cachedLastUserInteractionMs 仍是 0 (native 端还没 emit 过), 视为从未操作 → delay=0 → 立刻触发
+ */
+function calcIdleDelayMs(): number {
   const nowMs = Date.now();
-  let lastInteractionMs = 0;
-  try {
-    // 🆕 V32.36.0: 用 getLastUserInteractionMs 只算用户操作 (老板 08-31 拍板)
-    // 旧设计 getLastInteractionMs 包含 ZBB 自己操作, ZBB 业务流期间 lastZbbInteractionMs 一直刷
-    //   → 千机监听 delay 永 > 0 → 等不到 5s 无触摸窗口
-    // 新设计: 千机监听只算用户触摸/滑动, ZBB 操作不影响 delay
-    lastInteractionMs = await ZBBAutomation.getLastUserInteractionMs();
-  } catch (e) {
-    logger.warn('千机监听', `getLastUserInteractionMs 失败, 退避用 5s 固定 delay: ${e}`);
-    return QIANJI_PENDING_DELAY_MS;
-  }
-  // 🆕 debug log (老板拍板: 方便验证设计)
-  const elapsedSinceInteraction = lastInteractionMs === 0 ? Infinity : nowMs - lastInteractionMs;
-  const delay = Math.max(0, lastInteractionMs + QIANJI_PENDING_DELAY_MS - nowMs);
-  logger.info('千机监听', `delay 计算 (用户操作): nowMs-lastUserMs=${elapsedSinceInteraction === Infinity ? '∞ (从未操作)' : elapsedSinceInteraction + 'ms'}, delay=${delay}ms`);
+  const lastUserMs = cachedLastUserInteractionMs;
+  const elapsedSinceInteraction = lastUserMs === 0 ? Infinity : nowMs - lastUserMs;
+  const delay = Math.max(0, lastUserMs + QIANJI_PENDING_DELAY_MS - nowMs);
+  logger.info('千机监听', `delay 计算 (本地缓存): nowMs-lastUserMs=${elapsedSinceInteraction === Infinity ? '∞ (从未操作)' : elapsedSinceInteraction + 'ms'}, delay=${delay}ms`);
   return delay;
 }
 
@@ -185,8 +207,8 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
     return;
   }
 
-  // 首次算 delay + log
-  let initialDelay = await calcIdleDelayMs();
+  // 首次算 delay + log (同步, 不再 await)
+  const initialDelay = calcIdleDelayMs();
   logger.info('千机监听', `开始轮询等用户空闲, 初始 delay=${initialDelay}ms (每 500ms 重新判断)`);
 
   // 持续轮询: 每 500ms 重算 delay, 闸门 + delay 满足 → 触发
@@ -216,8 +238,8 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
       return;
     }
 
-    // 重算 delay
-    const delay = await calcIdleDelayMs();
+    // 重算 delay (同步, 不再 await)
+    const delay = calcIdleDelayMs();
     if (delay === 0) {
       // 满足 5s 无触摸 → 触发
       logger.info('千机监听', `✓ 5s 无触摸窗口已满足, 触发 runZbbWorkflow (pkg=${payload?.package}, 等待 ${elapsed}ms)`);
@@ -264,7 +286,7 @@ async function consumeQianjiPending(): Promise<void> {
   // 静默期闸门由 native 端拦截
 
   const payload = pendingQianjiEvents.shift()!;
-  const delay = await calcIdleDelayMs();
+  const delay = calcIdleDelayMs();  // 🆕 V32.36.2: 同步, 不再 await
   logger.info('千机监听', `消费 pending: 弹出事件 (pkg=${payload?.package}), delay=${delay}ms (queue 剩 ${pendingQianjiEvents.length} 个)`);
   if (delay === 0) {
     triggerQianjiRun(payload);
@@ -367,6 +389,9 @@ function subscribeQianjiNewCustomer(
 // 旧 bug: export function 需外部调用才会订阅, 没人调 = 永远不触发
 // 修法: IIFE 自动调一次, 单例防重复
 subscribeQianjiNewCustomer();
+
+// 🆕 V32.36.2: 模块加载时立即订阅 UserInteractionRecorded (native push 模式)
+setupUserInteractionListener();
 
 /**
  * 导出函数: 兼容外部调用 (返回 unsub)

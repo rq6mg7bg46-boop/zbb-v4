@@ -69,6 +69,8 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     
     init {
         AutomationModuleManager.registerModule(this)
+        // 🆕 V32.36.2: 把 reactContext 存到 module-level static 变量, 让 AccessibilityService emit
+        setAutomationModuleReactContext(mReactContext)
         ScreenshotService.onProjectionReady = {
             Log.d(TAG, "ScreenshotService MediaProjection 已就绪")
             sendEvent("onMediaProjectionReady", null)
@@ -2077,6 +2079,34 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     }
 
     /**
+     * 🆕 V32.36.2: 用户操作时 RN 调 (跟 recordZbbInteraction 对偶)
+     * - 操作: OperationDetector.recordUserInteraction() + emit DeviceEventEmitter 'UserInteractionRecorded'
+     * - JS 端 addListener 缓存 lastUserInteractionMs 到 local variable
+     * - 不依赖 Promise chain, RN bridge queue 堵塞不影响
+     *
+     * 设计理由 (老板 08-31 装机验证 V32.36.0.1 bug 反证):
+     *   - V32.36.0 调 getLastUserInteractionMs() Promise, RN bridge queue 被 pollA11y 堵塞
+     *   - pollOnce 内 await calcIdleDelayMs() 永悬挂, setTimeout 链断
+     *   - V32.36.2 改 push 模式, native 推送时间戳, JS 缓存 + 同步读
+     */
+    @ReactMethod
+    fun recordUserInteraction(promise: Promise) {
+        try {
+            val nowMs = System.currentTimeMillis()
+            OperationDetector.recordUserInteraction()
+            // emit DeviceEventEmitter 让 JS 端缓存 (不依赖 Promise 链)
+            val event = com.facebook.react.bridge.Arguments.createMap()
+            event.putDouble("timestamp", nowMs.toDouble())
+            event.putString("source", "AutomationModule")
+            mReactContext.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit("UserInteractionRecorded", event)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    /**
      * 2026-07-07 v6 方向 L 调整：手动 trigger 5min 干活流程（调试用）
      * 实际生产中由 IdleTriggerWorker 5min tick 自动 trigger
      */
@@ -2584,24 +2614,53 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
-    /**
-     * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
-     *
-     * 实测: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
-     */
-    override fun getConstants(): MutableMap<String, Any> {
-        val constants = mutableMapOf<String, Any>()
-        try {
-            constants["APP_ENV"] = com.zbb.automation.v4.BuildConfig.APP_ENV
-            constants["QIANJI_PACKAGE"] = com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE
-            constants["QIANJI_MAIN_ACTIVITY"] = com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY
-            constants["VERSION_NAME"] = com.zbb.automation.v4.BuildConfig.VERSION_NAME
-            constants["VERSION_CODE"] = com.zbb.automation.v4.BuildConfig.VERSION_CODE
-            constants["IS_NEW_ARCHITECTURE_ENABLED"] = com.zbb.automation.v4.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-            Log.d(TAG, "[getConstants] APP_ENV=${com.zbb.automation.v4.BuildConfig.APP_ENV}")
-        } catch (e: Exception) {
-            Log.e(TAG, "[getConstants] 失败: ${e.message}", e)
-        }
-        return constants
+    // 🆕 V32.36.2: emitUserInteractionRecorded 静态函数, 让 AccessibilityService 可 emit
+//   不依赖 RN bridge Promise, native 推送模式
+@Volatile
+private var sharedReactContext: ReactApplicationContext? = null
+
+@Synchronized
+fun setAutomationModuleReactContext(ctx: ReactApplicationContext?) {
+    sharedReactContext = ctx
+}
+
+@Synchronized
+private fun getAutomationModuleReactContext(): ReactApplicationContext? {
+    return sharedReactContext
+}
+
+fun emitUserInteractionRecordedFromAccessibilityService(service: android.content.Context, timestampMs: Long) {
+    try {
+        val ctx = getAutomationModuleReactContext() ?: return
+        val event = com.facebook.react.bridge.Arguments.createMap()
+        event.putDouble("timestamp", timestampMs.toDouble())
+        event.putString("source", "AccessibilityService")
+        ctx.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("UserInteractionRecorded", event)
+    } catch (e: Exception) {
+        Log.w("AutomationModule", "emitUserInteractionRecorded failed: ${e.message}")
     }
+}
+}
+
+/**
+ * 🆕 08-25 老板拍板 修法1 (V2.x 实测): getConstants() 暴露 BuildConfig
+ *
+ * 实测: readBuildEnv bridge 不暴露, getConstants() 同步常量更稳
+ */
+override fun getConstants(): MutableMap<String, Any> {
+    val constants = mutableMapOf<String, Any>()
+    try {
+        constants["APP_ENV"] = com.zbb.automation.v4.BuildConfig.APP_ENV
+        constants["QIANJI_PACKAGE"] = com.zbb.automation.v4.BuildConfig.QIANJI_PACKAGE
+        constants["QIANJI_MAIN_ACTIVITY"] = com.zbb.automation.v4.BuildConfig.QIANJI_MAIN_ACTIVITY
+        constants["VERSION_NAME"] = com.zbb.automation.v4.BuildConfig.VERSION_NAME
+        constants["VERSION_CODE"] = com.zbb.automation.v4.BuildConfig.VERSION_CODE
+        constants["IS_NEW_ARCHITECTURE_ENABLED"] = com.zbb.automation.v4.BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
+        Log.d(TAG, "[getConstants] APP_ENV=${com.zbb.automation.v4.BuildConfig.APP_ENV}")
+    } catch (e: Exception) {
+        Log.e(TAG, "[getConstants] 失败: ${e.message}", e)
+    }
+    return constants
+}
 }

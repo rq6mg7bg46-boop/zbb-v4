@@ -366,6 +366,12 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 // 2026-07-07 v6 方向 L 调整：5min 静默 + 干活机制
                 // 用户真实触摸 → 喂给 OperationDetector，5min 静默期重置
                 OperationDetector.recordUserInteraction()
+                                // 🆕 V32.36.2: emit DeviceEventEmitter 让 JS 端缓存 (不依赖 Promise 链)
+                                //   recordUserInteraction 在 AccessibilityService.onAccessibilityEvent 内调
+                                //   不走 RN bridge Promise, RN bridge queue 堵塞不影响
+                                try {
+                                    com.zbb.automation.v4.AutomationModule.emitUserInteractionRecordedFromAccessibilityService(this, lastUserTouchTime)
+                                } catch (_: Exception) { /* emit 失败已在 native logcat */ }
             }
             AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> {
                 val packageName = event.packageName?.toString() ?: return
