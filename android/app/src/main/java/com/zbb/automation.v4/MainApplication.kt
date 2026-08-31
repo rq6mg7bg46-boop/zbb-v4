@@ -52,11 +52,11 @@ class MainApplication : Application(), ReactApplication {
     // 之后由 LogUploadWorker.doWork() 成功路径自动排 24h 链式任务
     LogUploadScheduler.scheduleInitialAndLoop(this)
 
-    // 2026-07-07 v6 方向 L 调整：5min 静默 + 干活机制（替换 v5 ZbbAntiSleepWorker 的 5min WakeLock 5s）
-    // v5 强制 WakeLock 5s 在 release 模式 + 锁屏下被 EMUI doze 拒绝
-    // v6 等 5min 真静默后启动干活流程，屏幕自然亮，锁屏问题自然消解
-    // 之后由 IdleTriggerWorker.doWork() 成功路径自动排 5min 链式任务
-    IdleTriggerScheduler.scheduleInitialAndLoop(this)
+    // 🆕 V32.36.6: 删 IdleTriggerScheduler.scheduleInitialAndLoop (老板 08-31 拍板方案 A)
+    // 5min 防熄屏改由 ZbbKeepAliveService.tick 独家负责 (handler.postDelayed 5min)
+    // V32.33 老板拍板 "删 ZBBKeepAliveService.tick 调 scheduleNext" 防双链叠加
+    // 但当时没删 IdleTriggerScheduler 这条链, 8月31日实战反证: AlarmManager 链在 EMUI doze 不可靠
+    // 删 IdleTriggerReceiver + IdleTriggerWorker + IdleTriggerScheduler (AndroidManifest + 3 个 Kotlin 文件)
 
     // 🆕 v19.44 (07-21) 老板拍板 D12-C: 启动时强制重置 mutex
     // 防止 RN/Hermes native state 跨 session 残留 + force-stop 后 state 未释放

@@ -92,11 +92,17 @@
       </intent-filter>
     </receiver>
 
-    <!-- v8 老板设计 2026-07-08: AlarmManager 触发器 Receiver
-         AlarmManager → IdleTriggerReceiver.onReceive → Worker.doWork -->
-    <receiver
-        android:name=".IdleTriggerReceiver"
-        android:exported="false" />
+    <!-- 🆕 V32.36.6: 删 IdleTriggerReceiver (老板 08-31 拍板方案 A)
+         老板反证: IdleWorker 跟 ZBBKeepAlive_tick 双触发链叠加
+         - 17:10:25 IdleWorker + 17:10:56 ZBBKeepAlive_tick 31秒内 emit 2 次
+         - 老板设计意图: ZBBKeepAliveService.tick (前台服务 handler.postDelayed 5min) 严格不延迟
+         - IdleWorker (AlarmManager.setAndAllowWhileIdle) EMUI doze 下延迟 6min+
+         修法: 删 IdleWorker 链 (AndroidManifest + 3 个 Kotlin 文件), 只留 ZBBKeepAlive_tick
+         V32.33 老板拍板 "删 ZBBKeepAliveService.tick 调 scheduleNext" 但没删 IdleWorker 这条链
+         残留 8 月 31 日实战反证: AlarmManager 链在 EMUI doze 下不可靠, 5min → 6min+
+
+         v8 老板设计 2026-07-08 (已废弃): AlarmManager 触发器 Receiver
+    -->
 
     <!-- 🆕 v19.61 (07-22) 老板拍板: 解锁立即触发 5min 防熄屏
          系统 ACTION_USER_PRESENT 广播 → UserPresentReceiver.onReceive → WorkOrchestrator.startIdleWork

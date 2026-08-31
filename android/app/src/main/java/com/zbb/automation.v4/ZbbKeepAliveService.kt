@@ -91,13 +91,10 @@ class ZbbKeepAliveService : Service() {
 
                 Log.d(TAG, "tick: triggering LogUploadScheduler.scheduleNextForTest(0)")
                 LogUploadScheduler.scheduleNextForTest(applicationContext, 0L)
-                // 🆕 08-27 老板拍板: 删 IdleTriggerScheduler.scheduleNext(applicationContext)
-                // 根因 (实测 log D:\Users\lt-ceo\Desktop\test.txt): 双触发链叠加导致间隔 10min (期望 5min)
-                //   旧: AlarmManager 5min → emit + ZbbKeepAliveService.tick 5min → scheduleNext(5min) 再排下次 → 叠加成 10min
-                //   新: AlarmManager 5min 独占触发, ZbbKeepAliveService.tick 保留 WorkOrchestrator.startIdleWork (下面)
-                //   注意: 这条 tick 链是直接 emit, 不依赖 scheduleNext, 删 scheduleNext 不影响 tick 链
-                // 引用: skill zbb-automation-v4-umbrella §11 dead logic 3 问
-                //       "防的 X 是真问题还是伪问题?" → AlarmManager 链 v9 实战已稳, tick 再排是冗余
+                // 🆕 V32.36.6: 删 IdleWorker 链 (老板 08-31 拍板方案 A, 详见 AndroidManifest)
+                //   老板 08-31 装机验证: IdleWorker + ZBBKeepAlive_tick 31秒内 emit 2 次 zbbIdleWorkTrigger
+                //   实战反证: AlarmManager.setAndAllowWhileIdle 在 EMUI doze 下延迟 6min+
+                //   修法: 只留 ZbbKeepAliveService.tick 这条链 (handler.postDelayed 5min 严格不延迟)
 
                 // v12 老板拍板: tick 调 startIdleWork 前检查 lastInteraction 5min 静默
                 // 设计意图: ZBB 自己的操作 + 用户操作 = 都是对手机的操作, 系统按 lastInteraction + 10min 熄屏

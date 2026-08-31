@@ -160,7 +160,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
      * 老板原话: "用 KeyguardManager.isKeyguardLocked() 不是 pm.isInteractive()"
      * 跟 v19.61 业务闸门 4 闸门 (keyguard 闸门) 一致 — 已用于:
      *   - AccessibilityServiceImpl.handleAccessibilityNotification (L258/259)
-     *   - IdleTriggerWorker L52/53
+     *   - (IdleTriggerWorker L52/53 — V32.36.6 已删, 老板 08-31 拍板方案 A)
      *   - (方案 1 已删)
      *   - UserPresentReceiver L54/55
      *   - ZbbKeepAliveService (similar)
@@ -2108,7 +2108,7 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
 
     /**
      * 2026-07-07 v6 方向 L 调整：手动 trigger 5min 干活流程（调试用）
-     * 实际生产中由 IdleTriggerWorker 5min tick 自动 trigger
+     * 实际生产中由 ZbbKeepAliveService.tick 5min 触发 (V32.36.6: IdleTriggerWorker 已删, 老板 08-31 拍板方案 A)
      */
     @ReactMethod
     fun triggerIdleWork(promise: Promise) {

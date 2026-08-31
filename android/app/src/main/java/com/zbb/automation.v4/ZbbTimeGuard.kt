@@ -17,7 +17,7 @@ import java.time.ZoneId
  *   - 第二道: UserPresentReceiver (解锁立即触发, 5min debounce)
  *   - 第三道: AccessibilityServiceImpl.handleAccessibilityNotification (千机通知, 08-27 老板拍板统一方案)
  *   - ❌ 不接 LogUploadWorker (log 是基础设施, 24h 上传)
- *   - ❌ 不接 IdleTriggerWorker (闸门在 tick 入口拦了, Worker 不会被触发)
+ *   - ❌ 不接 IdleTriggerWorker (V32.36.6 已删, 老板 08-31 拍板方案 A)
  *
  * 设计要点:
  *   - D1.1 中央闸门: 业务入口统一调 isQuietHour(), 不是 Worker
@@ -44,6 +44,10 @@ import java.time.ZoneId
  *   v19.46 错位: 把 isQuietHour 接进 Worker (LogUploadWorker/IdleTriggerWorker)
  *                但漏了 WorkOrchestrator.startIdleWork() 入口
  *                → 22:00 业务层还在跑（被老板抓到, 22:00 反馈）
+ *   v32.36.6 (08-31 老板拍板方案 A): 删 IdleTriggerReceiver + IdleTriggerWorker + IdleTriggerScheduler
+ *                AlarmManager 链 EMUI doze 不可靠, 5min → 6min+
+ *                实战反证: IdleWorker + ZBBKeepAlive_tick 31秒内 emit 2 次 zbbIdleWorkTrigger
+ *                只留 ZbbKeepAliveService.tick (handler.postDelayed 5min 严格不延迟)
  *   v19.61 重构: 闸门移到业务中心 (tick + UserPresent + 千机通知 4 个入口)
  */
 object ZbbTimeGuard {

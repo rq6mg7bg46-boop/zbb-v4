@@ -20,7 +20,6 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
  *
  * 触发链路:
  * - 5min 静默 + 5s 前置观察通过
- * - → IdleTriggerWorker.doWork() 调 startIdleWork(context)
  * - → Layer 1: catalyst 活跃 → emit "zbbIdleWorkTrigger" → JS services/index.ts 监听
  * - → Layer 2/3: catalyst 不活跃/null → 切 MainActivity 到前台 + 模拟触摸
  *      → FLAG_KEEP_SCREEN_ON 生效 + userActivity 重置 timeout → 屏幕保持亮
