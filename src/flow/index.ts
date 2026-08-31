@@ -16,7 +16,7 @@
 
 import { runQianjiFlow } from './qianji';
 import { runBaoliFlow } from './baoli';
-import { orchestrator } from '@/core/stateMachine';
+import { orchestrator, OrchState } from '@/core/stateMachine';
 import { setZbbWorkflowRunner } from './handleStart';
 import { logger } from '@/utils/logger';
 import type { ProjectType } from './types';
@@ -129,11 +129,19 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
     orchestrator.send(readyEventMap[customer.projectType as ProjectType]);
 
     try {
-      // 调用端流程 (每个端自主 launchApp + 完整流程)
+      // 🆕 V32.36.4: 端流程内部已自管状态转换 (V32.36.3 改 baoli.ts raiseAlert + send INTERVENE/FAILED)
+      //   - runZbbWorkflow 不再二次发 onFailed, 避免 'BAOLI_FAILED' 二次触发 Illegal transition
+      //   - 只读 orchestrator 当前状态决定 return reason
       const ok = await config.run(customer);
       if (!ok) {
-        logger.info('runZbbWorkflow', `${config.logTag}端失败 → 进 Error`);
-        orchestrator.send(config.onFailed);
+        // 读当前状态机 (baoli.ts 已经发了 INTERVENE 或 FAILED)
+        const currentState = orchestrator.getState();
+        if (currentState === OrchState.UserIntervention) {
+          logger.info('runZbbWorkflow', `${config.logTag}端失败 → 弹窗等老板 (V32.36.3 raiseAlert + INTERVENE)`);
+          return { ok: false, skipped: false, reason: 'user_intervention' };
+        }
+        // Error 状态 = 真正失败 (没 raiseAlert)
+        logger.info('runZbbWorkflow', `${config.logTag}端失败 → 进 Error (无弹窗)`);
         return { ok: false, skipped: false, reason: 'baoli_failed' };
       }
 
