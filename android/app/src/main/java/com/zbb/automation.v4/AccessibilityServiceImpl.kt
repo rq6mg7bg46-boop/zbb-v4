@@ -2432,273 +2432,54 @@ class AccessibilityServiceImpl : AccessibilityService() {
     }
     
     private fun recognizeTextWithPositionInternal(): List<LegacyOcrResult> {
-        val results = mutableListOf<LegacyOcrResult>()
-        
-        // 先截取屏幕
-        val bitmap = captureScreenshot()
-        if (bitmap == null) {
-            Log.e(TAG, "截图失败，无法进行 OCR")
-            return results
-        }
-        
-        try {
-            // 确保 ML Kit 已初始化
-            if (!mlkitInitialized) {
-                initMlKitOCR()
-            }
-            
-            if (mlkitRecognizer == null) {
-                Log.e(TAG, "ML Kit OCR 未初始化")
-                bitmap.recycle()
-                return results
-            }
-            
-            // 同步等待识别结果
-            val latch = CountDownLatch(1)
-            var recognitionResult: com.google.mlkit.vision.text.Text? = null
-            var recognitionError: Exception? = null
-            
-            // V32.36.7: OCR 全删, 不再调用 ML Kit process
-            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
-            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
-            Log.w(TAG, "OCR 已禁用 (V32.36.7), recognizeTextWithPosition 返回 empty")
-            latch.countDown()
-            
-            // 等待识别完成（最多10秒）
-            latch.await(10, TimeUnit.SECONDS)
-            
-            if (recognitionResult != null) {
-                for (block in recognitionResult!!.textBlocks) {
-                    for (line in block.lines) {
-                        val text = line.text
-                        val boundingBox = line.boundingBox
-                        
-                        if (text.isNotEmpty() && text.length <= 100 && boundingBox != null) {
-                            results.add(LegacyOcrResult(
-                                text,
-                                android.graphics.Rect(
-                                    boundingBox.left,
-                                    boundingBox.top,
-                                    boundingBox.right,
-                                    boundingBox.bottom
-                                )
-                            ))
-                        }
-                    }
-                }
-            }
-            
-            Log.d(TAG, "ML Kit OCR 识别到 ${results.size} 个文字区域")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "ML Kit OCR 识别异常: ${e.message}")
-            e.printStackTrace()
-        } finally {
-            bitmap.recycle()
-        }
-        
-        return results
+        // V32.36.7: OCR 全删, 直接返回 empty
+        Log.w(TAG, "recognizeTextWithPosition 已禁用 (V32.36.7 OCR 全删), 返回 empty list")
+        return emptyList()
     }
     
     /**
-     * 使用 ML Kit OCR 查找指定文字的位置
-     * 返回包含该文字的中心坐标
+     * 使用 ML Kit OCR 查找指定文字的位置 (V32.36.7 OCR 全删, 返回 null)
+     * 函数签名保留 (避免破坏 AutomationModule 编译), 函数体直接返回 null
      */
     fun findTextByTesseract(targetText: String): LegacyOcrResult? {
-        Log.d(TAG, ">>> findTextByTesseract 开始查找: $targetText")
-        
-        // 先截取屏幕
-        val bitmap = captureScreenshot()
-        if (bitmap == null) {
-            Log.e(TAG, "截图失败，无法进行 OCR")
-            return null
-        }
-        
-        try {
-            // 确保 ML Kit 已初始化
-            if (!mlkitInitialized) {
-                initMlKitOCR()
-            }
-            
-            if (mlkitRecognizer == null) {
-                Log.e(TAG, "ML Kit OCR 未初始化")
-                bitmap.recycle()
-                return null
-            }
-            
-            // 同步等待识别结果
-            val latch = CountDownLatch(1)
-            var recognitionResult: com.google.mlkit.vision.text.Text? = null
-            var recognitionError: Exception? = null
-            
-            // V32.36.7: OCR 全删, 不再调用 ML Kit process
-            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
-            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
-            Log.w(TAG, "OCR 已禁用 (V32.36.7), recognizeTextWithPosition 返回 empty")
-            latch.countDown()
-            
-            // 等待识别完成（最多10秒）
-            latch.await(10, TimeUnit.SECONDS)
-            
-            if (recognitionResult != null) {
-                // 遍历所有识别到的文字块
-                for (block in recognitionResult!!.textBlocks) {
-                    for (line in block.lines) {
-                        val text = line.text
-                        val boundingBox = line.boundingBox
-                        
-                        // 检查是否包含目标文字
-                        if (text.contains(targetText) && boundingBox != null) {
-                            Log.d(TAG, "ML Kit OCR 找到 '$targetText' 在位置 ${boundingBox.left}, ${boundingBox.top}")
-                            return LegacyOcrResult(
-                                targetText,
-                                android.graphics.Rect(
-                                    boundingBox.left,
-                                    boundingBox.top,
-                                    boundingBox.right,
-                                    boundingBox.bottom
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            
-            // 如果没找到，返回识别内容用于调试
-            val allText = recognitionResult?.textBlocks?.flatMap { it.lines.map { line -> line.text } }?.joinToString(", ") ?: ""
-            Log.w(TAG, "ML Kit OCR 未找到 '$targetText'，识别内容: $allText")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "ML Kit OCR 查找异常: ${e.message}")
-        } finally {
-            bitmap.recycle()
-        }
-        
+        Log.w(TAG, "findTextByTesseract 已禁用 (V32.36.7 OCR 全删), 返回 null")
         return null
     }
     
     /**
-     * 带权限检查和自动切换的 OCR 查找
-     * 权限无效时会请求授权，授权后自动切换到目标应用再截图
+     * 带权限检查和自动切换的 OCR 查找 (V32.36.7 OCR 全删, 返回 null)
+     * 函数签名保留, 函数体直接返回 null
      */
     fun findTextByMLKitWithPermission(targetText: String, packageName: String): LegacyOcrResult? {
-        Log.d(TAG, ">>> findTextByMLKitWithPermission 开始")
-        
-        // 检查权限是否有效
-        val bitmap = captureScreenshot()
-        
-        if (bitmap == null) {
-            Log.w(TAG, ">>> 截图失败，MediaProjection 权限无效")
-            return null
-        }
-        
-        return performOCR(bitmap, targetText)
-    }
-    
-    /**
-     * 带权限检查和自动切换的 OCR 查找（由 JS 层调用）
-     * JS 层会先请求权限并切换到目标应用，然后重新请求权限
-     * 这个方法只负责截图和 OCR，不负责切换应用或请求权限
-     */
-    fun findTextWithAppSwitch(targetText: String, packageName: String): LegacyOcrResult? {
-        Log.d(TAG, ">>> findTextWithAppSwitch 开始: $targetText, $packageName")
-        
-        // JS 层已经：
-        // 1. 请求了权限（第一次）
-        // 2. 切换到微信
-        // 3. 重新请求了权限（第二次）
-        // 所以这里 MediaProjection 应该是有效的，直接等待并截图
-        
-        // 等待界面稳定
-        Log.d(TAG, ">>> 等待界面稳定...")
-        try {
-            Thread.sleep(1000)
-        } catch (e: InterruptedException) {
-            e.printStackTrace()
-        }
-        
-        // 截图
-        val bitmap = captureScreenshot()
-        if (bitmap == null) {
-            Log.e(TAG, ">>> 截图失败")
-            return null
-        }
-        
-        Log.d(TAG, ">>> 截图成功")
-        
-        // 执行 OCR
-        return performOCR(bitmap, targetText)
-    }
-    
-    /**
-     * 执行 OCR 识别
-     */
-    private fun performOCR(bitmap: Bitmap, targetText: String): LegacyOcrResult? {
-        try {
-            // 确保 ML Kit 已初始化
-            if (!mlkitInitialized) {
-                initMlKitOCR()
-            }
-            
-            if (mlkitRecognizer == null) {
-                Log.e(TAG, "ML Kit OCR 未初始化")
-                bitmap.recycle()
-                return null
-            }
-            
-            // 同步等待识别结果
-            val latch = CountDownLatch(1)
-            var recognitionResult: com.google.mlkit.vision.text.Text? = null
-            
-            // V32.36.7: OCR 全删, 不再调用 ML Kit process (findTextByMLKitWithPermission)
-            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
-            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
-            Log.w(TAG, "OCR 已禁用 (V32.36.7), findTextByMLKitWithPermission 返回 null")
-            latch.countDown()
-            
-            // 等待识别完成（最多10秒）
-            latch.await(10, TimeUnit.SECONDS)
-            
-            if (recognitionResult != null) {
-                for (block in recognitionResult!!.textBlocks) {
-                    for (line in block.lines) {
-                        val text = line.text
-                        val boundingBox = line.boundingBox
-                        
-                        if (text.contains(targetText) && boundingBox != null) {
-                            Log.d(TAG, ">>> 找到 '$targetText' 在位置 ${boundingBox.left}, ${boundingBox.top}")
-                            bitmap.recycle()
-                            return LegacyOcrResult(
-                                targetText,
-                                android.graphics.Rect(
-                                    boundingBox.left,
-                                    boundingBox.top,
-                                    boundingBox.right,
-                                    boundingBox.bottom
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-            
-            val allText = recognitionResult?.textBlocks?.flatMap { it.lines.map { line -> line.text } }?.joinToString(", ") ?: ""
-            Log.w(TAG, ">>> OCR 未找到 '$targetText'，识别内容: $allText")
-            
-        } catch (e: Exception) {
-            Log.e(TAG, ">>> OCR 异常: ${e.message}")
-        } finally {
-            bitmap.recycle()
-        }
-        
+        Log.w(TAG, "findTextByMLKitWithPermission 已禁用 (V32.36.7 OCR 全删), 返回 null")
         return null
     }
     
     /**
-     * 兼容旧方法名
+     * 带权限检查和自动切换的 OCR 查找（由 JS 层调用） (V32.36.7 OCR 全删, 返回 null)
+     * 函数签名保留, 函数体直接返回 null
+     */
+    fun findTextWithAppSwitch(targetText: String, packageName: String): LegacyOcrResult? {
+        Log.w(TAG, "findTextWithAppSwitch 已禁用 (V32.36.7 OCR 全删), 返回 null")
+        return null
+    }
+    
+    /**
+     * 执行 OCR 识别 (V32.36.7 OCR 全删, 返回 null)
+     * 函数签名保留, 函数体直接返回 null
+     */
+    private fun performOCR(bitmap: Bitmap, targetText: String): LegacyOcrResult? {
+        Log.w(TAG, "performOCR 已禁用 (V32.36.7 OCR 全删), 返回 null")
+        bitmap.recycle()
+        return null
+    }
+    
+    /**
+     * 兼容旧方法名 (V32.36.7 OCR 全删, 返回 null)
      */
     fun findTextByMLKit(targetText: String): LegacyOcrResult? {
-        return findTextByTesseract(targetText)
+        Log.w(TAG, "findTextByMLKit 已禁用 (V32.36.7 OCR 全删), 返回 null")
+        return null
     }
     
     /**
