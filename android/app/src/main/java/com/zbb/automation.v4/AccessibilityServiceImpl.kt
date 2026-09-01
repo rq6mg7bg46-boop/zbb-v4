@@ -43,11 +43,10 @@ import android.os.VibratorManager
 import android.view.View
 import android.view.WindowManager.LayoutParams
 import android.widget.Toast
-// V32.36.7: OCR imports 已删 (老板 09-01 拍板 OCR 误判率高, 全删)
-//   com.google.mlkit.vision.common.InputImage
-//   com.google.mlkit.vision.text.TextRecognition
-//   com.google.mlkit.vision.text.TextRecognizer
-//   com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileInputStream
@@ -2337,16 +2336,394 @@ class AccessibilityServiceImpl : AccessibilityService() {
             null
         }
     }
-
+    
+    // ==================== OCR识别 ====================
+    
+    /**
+     * 识别屏幕上的文字
+     * 返回识别到的所有文字列表
+     */
+    fun recognizeText(): List<String> {
+        // 确保在主线程执行
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Log.w(TAG, "recognizeText 尝试在非主线程调用，已在主线程重新执行")
+            var result: List<String> = emptyList()
+            val latch = CountDownLatch(1)
+            mainHandler.post {
+                result = recognizeTextInternal()
+                latch.countDown()
+            }
+            latch.await(10, TimeUnit.SECONDS)
+            return result
+        }
+        return recognizeTextInternal()
+    }
+    
+    private fun recognizeTextInternal(): List<String> {
+        val texts = mutableListOf<String>()
+        
+        // 直接使用 AccessibilityNodeInfo 方式获取节点文字
+        // 跳过截图和 MLKit OCR（速度太慢且无法获取实际屏幕像素）
+        val rootNode = rootInActiveWindow ?: return texts
+        
+        try {
+            collectTextRecursive(rootNode, texts)
+        } catch (e: Exception) {
+            Log.e(TAG, "Node OCR 失败: ${e.message}")
+        } finally {
+            rootNode.recycle()
+        }
+            
+        Log.d(TAG, "Node OCR 识别到 ${texts.size} 个文字节点")
+        return texts
+    }
+    
+    /**
+     * OCR 识别结果的数据类（用于兼容）
+     */
+    data class LegacyOcrResult(
+        val text: String,
+        val bounds: android.graphics.Rect
+    )
+    
+    /**
+     * ML Kit OCR 引擎状态
+     */
+    private var mlkitRecognizer: TextRecognizer? = null
+    private var mlkitInitialized = false
+    
+    /**
+     * 初始化 ML Kit OCR 引擎
+     * Bundled 模式：模型内置在 APK 中，无需 Google Play 服务
+     */
+    private fun initMlKitOCR() {
+        if (mlkitInitialized) return
+        
+        try {
+            // 使用 Bundled 模式，模型内置在 APK 中
+            mlkitRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            mlkitInitialized = true
+            Log.d(TAG, "ML Kit OCR 初始化成功 (Bundled 模式)")
+        } catch (e: Exception) {
+            Log.e(TAG, "ML Kit OCR 初始化异常: ${e.message}")
+            e.printStackTrace()
+        }
+    }
+    
+    /**
+     * 使用 ML Kit OCR 进行文字识别
+     * 返回每个文字块的位置信息
+     */
+    fun recognizeTextWithPosition(): List<LegacyOcrResult> {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Log.w(TAG, "recognizeTextWithPosition 尝试在非主线程调用")
+            var result: List<LegacyOcrResult> = emptyList()
+            val latch = CountDownLatch(1)
+            mainHandler.post {
+                result = recognizeTextWithPositionInternal()
+                latch.countDown()
+            }
+            latch.await(15, TimeUnit.SECONDS)
+            return result
+        }
+        return recognizeTextWithPositionInternal()
+    }
+    
+    private fun recognizeTextWithPositionInternal(): List<LegacyOcrResult> {
+        val results = mutableListOf<LegacyOcrResult>()
+        
+        // 先截取屏幕
+        val bitmap = captureScreenshot()
+        if (bitmap == null) {
+            Log.e(TAG, "截图失败，无法进行 OCR")
+            return results
+        }
+        
+        try {
+            // 确保 ML Kit 已初始化
+            if (!mlkitInitialized) {
+                initMlKitOCR()
+            }
+            
+            if (mlkitRecognizer == null) {
+                Log.e(TAG, "ML Kit OCR 未初始化")
+                bitmap.recycle()
+                return results
+            }
+            
+            // 同步等待识别结果
+            val latch = CountDownLatch(1)
+            var recognitionResult: com.google.mlkit.vision.text.Text? = null
+            var recognitionError: Exception? = null
+            
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+            mlkitRecognizer?.process(inputImage)
+                ?.addOnSuccessListener { text ->
+                    recognitionResult = text
+                    latch.countDown()
+                }
+                ?.addOnFailureListener { e ->
+                    recognitionError = e
+                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
+                    latch.countDown()
+                }
+            
+            // 等待识别完成（最多10秒）
+            latch.await(10, TimeUnit.SECONDS)
+            
+            if (recognitionResult != null) {
+                for (block in recognitionResult!!.textBlocks) {
+                    for (line in block.lines) {
+                        val text = line.text
+                        val boundingBox = line.boundingBox
+                        
+                        if (text.isNotEmpty() && text.length <= 100 && boundingBox != null) {
+                            results.add(LegacyOcrResult(
+                                text,
+                                android.graphics.Rect(
+                                    boundingBox.left,
+                                    boundingBox.top,
+                                    boundingBox.right,
+                                    boundingBox.bottom
+                                )
+                            ))
+                        }
+                    }
+                }
+            }
+            
+            Log.d(TAG, "ML Kit OCR 识别到 ${results.size} 个文字区域")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "ML Kit OCR 识别异常: ${e.message}")
+            e.printStackTrace()
+        } finally {
+            bitmap.recycle()
+        }
+        
+        return results
+    }
+    
+    /**
+     * 使用 ML Kit OCR 查找指定文字的位置
+     * 返回包含该文字的中心坐标
+     */
+    fun findTextByTesseract(targetText: String): LegacyOcrResult? {
+        Log.d(TAG, ">>> findTextByTesseract 开始查找: $targetText")
+        
+        // 先截取屏幕
+        val bitmap = captureScreenshot()
+        if (bitmap == null) {
+            Log.e(TAG, "截图失败，无法进行 OCR")
+            return null
+        }
+        
+        try {
+            // 确保 ML Kit 已初始化
+            if (!mlkitInitialized) {
+                initMlKitOCR()
+            }
+            
+            if (mlkitRecognizer == null) {
+                Log.e(TAG, "ML Kit OCR 未初始化")
+                bitmap.recycle()
+                return null
+            }
+            
+            // 同步等待识别结果
+            val latch = CountDownLatch(1)
+            var recognitionResult: com.google.mlkit.vision.text.Text? = null
+            var recognitionError: Exception? = null
+            
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+            mlkitRecognizer?.process(inputImage)
+                ?.addOnSuccessListener { text ->
+                    recognitionResult = text
+                    latch.countDown()
+                }
+                ?.addOnFailureListener { e ->
+                    recognitionError = e
+                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
+                    latch.countDown()
+                }
+            
+            // 等待识别完成（最多10秒）
+            latch.await(10, TimeUnit.SECONDS)
+            
+            if (recognitionResult != null) {
+                // 遍历所有识别到的文字块
+                for (block in recognitionResult!!.textBlocks) {
+                    for (line in block.lines) {
+                        val text = line.text
+                        val boundingBox = line.boundingBox
+                        
+                        // 检查是否包含目标文字
+                        if (text.contains(targetText) && boundingBox != null) {
+                            Log.d(TAG, "ML Kit OCR 找到 '$targetText' 在位置 ${boundingBox.left}, ${boundingBox.top}")
+                            return LegacyOcrResult(
+                                targetText,
+                                android.graphics.Rect(
+                                    boundingBox.left,
+                                    boundingBox.top,
+                                    boundingBox.right,
+                                    boundingBox.bottom
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // 如果没找到，返回识别内容用于调试
+            val allText = recognitionResult?.textBlocks?.flatMap { it.lines.map { line -> line.text } }?.joinToString(", ") ?: ""
+            Log.w(TAG, "ML Kit OCR 未找到 '$targetText'，识别内容: $allText")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "ML Kit OCR 查找异常: ${e.message}")
+        } finally {
+            bitmap.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * 带权限检查和自动切换的 OCR 查找
+     * 权限无效时会请求授权，授权后自动切换到目标应用再截图
+     */
+    fun findTextByMLKitWithPermission(targetText: String, packageName: String): LegacyOcrResult? {
+        Log.d(TAG, ">>> findTextByMLKitWithPermission 开始")
+        
+        // 检查权限是否有效
+        val bitmap = captureScreenshot()
+        
+        if (bitmap == null) {
+            Log.w(TAG, ">>> 截图失败，MediaProjection 权限无效")
+            return null
+        }
+        
+        return performOCR(bitmap, targetText)
+    }
+    
+    /**
+     * 带权限检查和自动切换的 OCR 查找（由 JS 层调用）
+     * JS 层会先请求权限并切换到目标应用，然后重新请求权限
+     * 这个方法只负责截图和 OCR，不负责切换应用或请求权限
+     */
+    fun findTextWithAppSwitch(targetText: String, packageName: String): LegacyOcrResult? {
+        Log.d(TAG, ">>> findTextWithAppSwitch 开始: $targetText, $packageName")
+        
+        // JS 层已经：
+        // 1. 请求了权限（第一次）
+        // 2. 切换到微信
+        // 3. 重新请求了权限（第二次）
+        // 所以这里 MediaProjection 应该是有效的，直接等待并截图
+        
+        // 等待界面稳定
+        Log.d(TAG, ">>> 等待界面稳定...")
+        try {
+            Thread.sleep(1000)
+        } catch (e: InterruptedException) {
+            e.printStackTrace()
+        }
+        
+        // 截图
+        val bitmap = captureScreenshot()
+        if (bitmap == null) {
+            Log.e(TAG, ">>> 截图失败")
+            return null
+        }
+        
+        Log.d(TAG, ">>> 截图成功")
+        
+        // 执行 OCR
+        return performOCR(bitmap, targetText)
+    }
+    
+    /**
+     * 执行 OCR 识别
+     */
+    private fun performOCR(bitmap: Bitmap, targetText: String): LegacyOcrResult? {
+        try {
+            // 确保 ML Kit 已初始化
+            if (!mlkitInitialized) {
+                initMlKitOCR()
+            }
+            
+            if (mlkitRecognizer == null) {
+                Log.e(TAG, "ML Kit OCR 未初始化")
+                bitmap.recycle()
+                return null
+            }
+            
+            // 同步等待识别结果
+            val latch = CountDownLatch(1)
+            var recognitionResult: com.google.mlkit.vision.text.Text? = null
+            
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+            mlkitRecognizer?.process(inputImage)
+                ?.addOnSuccessListener { text ->
+                    recognitionResult = text
+                    latch.countDown()
+                }
+                ?.addOnFailureListener { e ->
+                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
+                    latch.countDown()
+                }
+            
+            // 等待识别完成（最多10秒）
+            latch.await(10, TimeUnit.SECONDS)
+            
+            if (recognitionResult != null) {
+                for (block in recognitionResult!!.textBlocks) {
+                    for (line in block.lines) {
+                        val text = line.text
+                        val boundingBox = line.boundingBox
+                        
+                        if (text.contains(targetText) && boundingBox != null) {
+                            Log.d(TAG, ">>> 找到 '$targetText' 在位置 ${boundingBox.left}, ${boundingBox.top}")
+                            bitmap.recycle()
+                            return LegacyOcrResult(
+                                targetText,
+                                android.graphics.Rect(
+                                    boundingBox.left,
+                                    boundingBox.top,
+                                    boundingBox.right,
+                                    boundingBox.bottom
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            
+            val allText = recognitionResult?.textBlocks?.flatMap { it.lines.map { line -> line.text } }?.joinToString(", ") ?: ""
+            Log.w(TAG, ">>> OCR 未找到 '$targetText'，识别内容: $allText")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, ">>> OCR 异常: ${e.message}")
+        } finally {
+            bitmap.recycle()
+        }
+        
+        return null
+    }
+    
+    /**
+     * 兼容旧方法名
+     */
+    fun findTextByMLKit(targetText: String): LegacyOcrResult? {
+        return findTextByTesseract(targetText)
+    }
+    
     /**
      * 截取当前屏幕
      * 优先使用 screencap 命令（截取整个屏幕，最可靠）
      * 备选使用 ScreenshotService MediaProjection
-     * V32.36.7: OCR 已删, captureScreenshot 仅用于 screenshot 调试, 不再调 OCR
      */
     fun captureScreenshot(): Bitmap? {
         Log.d(TAG, ">>> captureScreenshot() 开始")
-
+        
         // 方法1：优先使用 screencap 命令（最可靠，截取整个屏幕）
         val screencapBitmap = captureByScreencap()
         if (screencapBitmap != null) {

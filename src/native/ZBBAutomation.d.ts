@@ -18,20 +18,29 @@ export interface A11yNode {
 }
 
 /**
- * OCR 已删除 (V32.36.7, 老板 09-01 拍板 OCR 误判率高, 全删)
- * 老板实战反证:
- *   - judge.isScreenText OCR 误报率高 (ML Kit 拉丁+中文模型混淆)
- *   - click.byText(useOcr=true) 截图+ML Kit 500ms-2s 慢
- *   - step3 找云和家 OCR 误判, 走 V2 反证 scrollUp (按屏幕分辨率动态上滑)
- * 删的 API:
- *   - OcrResult (interface)
- *   - FindTextResult (interface)
- *   - findTextByMLKit / findTextByMLKitWithPermission
- *   - ocrContainsText / screenContainsText
- *   - screenshotAndFindText / screenshotForOcr
- *   - recognizeScreen / recognizeText / recognizeTextWithPosition
- *   - setOcrOptions / extractScreenContent (依赖 OCR)
+ * OCR 识别结果
  */
+export interface OcrResult {
+  text: string;
+  confidence: number;
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+}
+
+/**
+ * 查找文字结果
+ */
+export interface FindTextResult {
+  found: boolean;
+  x?: number;
+  y?: number;
+  text?: string;
+  error?: string;
+}
 
 /**
  * 提取内容结果
@@ -95,8 +104,17 @@ export interface ZBBAutomationModule {
   getClickableElements(): Promise<A11yNode[]>;
   findElementsByText(text: string): Promise<A11yNode[]>;
 
-  // OCR 已删除 (V32.36.7) — 用 A11y 替代 (findElementByText / findElementsByText / getAllTextNodes)
+  // OCR
+  findTextByMLKit(targetText: string): Promise<FindTextResult>;
+  screenContainsText(targetText: string): Promise<boolean>;
+  ocrContainsText(targetText: string): Promise<boolean>;
+  screenshotAndFindText(targetText: string): Promise<FindTextResult>;
+  recognizeScreen(): Promise<OcrResult[]>;
+  extractScreenContent(type: 'phone' | 'name' | 'all'): Promise<ExtractContentResult>;
+  screenshotForOcr(): Promise<string>;
   getAllTextNodes(): Promise<A11yNode[]>; // 🆕 08-24 加 contentDesc 字段 (千机端 80% 节点 text="", 必须靠 contentDesc 识别)
+  recognizeTextWithPosition(): Promise<OcrResult[]>;
+  setOcrOptions(usePreprocessing: boolean, useCorrection: boolean): void;
 
   // MediaProjection
   requestMediaProjectionPermission(): Promise<boolean>;

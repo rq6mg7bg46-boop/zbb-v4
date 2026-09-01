@@ -1,17 +1,12 @@
 /**
- * V4.x click operation (老板实测 08-22, V32.36.7 OCR 已删)
+ * V4.x click operation (老板实测 08-22)
  *
- * 4 个 method (V32.36.7 OCR 删除后剩 4 个):
- * - byText(text)         按文字找节点 + 点击中心 (A11y only)
+ * 5 个 method:
+ * - byText(text)         按文字找节点 + 点击中心
  * - byNode(node)         A11y 节点 + 点击中心
  * - byId(viewId)         按 viewId 找节点 + 点击中心
  * - byBounds(bounds)     按 bounds 中心点击
  * - byCoords(x, y)       按坐标点击
- *
- * V32.36.7 改动:
- *   - byText 删 useOcr 选项 (老板 09-01 拍板 OCR 误判率高)
- *   - byText 现在纯 A11y (findElementByText 找节点)
- *   - 业务流程调用: await click.byText('开始');
  *
  * 业务流程调用:
  *   import { click } from '@/operations/click';
@@ -40,8 +35,7 @@ async function waitForCondition<T>(
 }
 
 /**
- * 按文字点击 (A11y 找节点 + 点击中心)
- * V32.36.7: OCR 已删, 只用 A11y (findElementByText)
+ * 按文字点击 (自动 OCR/A11y 找节点 + 点击中心)
  *
  * @param text 目标文字
  * @param options.level HumanLevel 档位 (PRECISE=±2px / NORMAL=±5px / WIDE=±10px)
@@ -49,12 +43,30 @@ async function waitForCondition<T>(
  */
 export async function byText(
   text: string,
-  options?: { timeoutMs?: number; level?: HumanLevel },
+  options?: { timeoutMs?: number; useOcr?: boolean; level?: HumanLevel },
 ): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const useOcr = options?.useOcr ?? false;
   const level = options?.level ?? HumanLevel.PRECISE;
 
-  // V32.36.7: A11y only, OCR 已删 (老板拍板)
+  if (useOcr) {
+    // OCR 模式: 截图 + ML Kit 找文字 + 点击
+    const result = await waitForCondition(
+      async () => {
+        const r = await ZBBAutomation.screenshotAndFindText(text);
+        return r?.found ? r : null;
+      },
+      timeoutMs,
+    );
+    if (!result || !result.x || !result.y) {
+      logger.warn('click.byText', `OCR 没找到: "${text}"`);
+      return false;
+    }
+    const { x, y } = applyHumanOffset(result.x, result.y, level);
+    return ZBBAutomation.click(x, y);
+  }
+
+  // A11y 模式 (默认): 用 findElementByText
   const node = await waitForCondition(
     async () => {
       const n = await ZBBAutomation.findElementByText(text);
