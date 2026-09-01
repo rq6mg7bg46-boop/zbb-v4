@@ -2593,36 +2593,48 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 // 忽略子节点错误
             } finally {
                 child.recycle()
+            }
         }
     }
-
+    
     /**
-     * 等待屏幕上出现指定文字 (A11y 版本, V32.36.7 OCR 已删)
+     * 检查屏幕上是否包含指定文字
+     * @param targetText 要查找的文字
+     * @param ignoreCase 是否忽略大小写
+     * @return true表示找到
+     */
+    fun screenContainsText(targetText: String, ignoreCase: Boolean = true): Boolean {
+        val texts = recognizeText()
+        return texts.any { text ->
+            if (ignoreCase) {
+                text.contains(targetText, ignoreCase = true)
+            } else {
+                text.contains(targetText)
+            }
+        }
+    }
+    
+    /**
+     * 等待屏幕上出现指定文字
      * @param targetText 要等待的文字
      * @param timeout 超时时间（毫秒）
      * @return true表示找到，false表示超时
      */
     fun waitForScreenText(targetText: String, timeout: Long = 10000): Boolean {
         val startTime = System.currentTimeMillis()
-
+        
         while (System.currentTimeMillis() - startTime < timeout) {
-            // V32.36.7: 改用 getAllTextNodes (A11y) 替代 OCR
-            val nodes = getAllTextNodes()
-            val found = nodes.any { node ->
-                node.text?.contains(targetText, ignoreCase = true) == true ||
-                node.contentDesc?.contains(targetText, ignoreCase = true) == true
-            }
-            if (found) {
+            if (screenContainsText(targetText)) {
                 Log.d(TAG, "找到目标文字: $targetText")
                 return true
             }
             Thread.sleep(500)
         }
-
+        
         Log.w(TAG, "等待文字超时: $targetText")
         return false
     }
-
+    
     // ==================== 屏幕尺寸 ====================
     
     /**
