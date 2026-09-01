@@ -8,7 +8,8 @@
 import { NativeModules } from 'react-native';
 import type { ZBBAutomationModule } from './ZBBAutomation';
 import { logger } from '@/utils/logger';
-export type { ZBBAutomationModule, A11yNode, OcrResult, FindTextResult, ExtractContentResult } from './ZBBAutomation';
+// V32.36.7: OCR 接口已删 (老板 09-01 拍板 OCR 误判率高, 全删)
+export type { ZBBAutomationModule, A11yNode, ExtractContentResult } from './ZBBAutomation';
 
 const Native = NativeModules.ZBBAutomation as ZBBAutomationModule | undefined;
 

@@ -461,8 +461,9 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    // Google ML Kit OCR (Bundled 模式，无需 Google Play 服务)
-    implementation("com.google.mlkit:text-recognition:16.0.0")
+    // V32.36.7: 删 ML Kit OCR 依赖 (老板 09-01 拍板 OCR 误判率高, 全删)
+    //   implementation("com.google.mlkit:text-recognition:16.0.0")
+    // 删除后 APK 瘦 30MB+ (ML Kit 中文模型 + 拉丁模型)
 
     // 2026-07-04 v1.6.4.1-huawei-hotfix：日志自动上报服务
     implementation("androidx.work:work-runtime-ktx:2.9.0")
