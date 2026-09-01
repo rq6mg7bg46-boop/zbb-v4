@@ -2606,13 +2606,11 @@ class AccessibilityServiceImpl : AccessibilityService() {
         val startTime = System.currentTimeMillis()
 
         while (System.currentTimeMillis() - startTime < timeout) {
-            // V32.36.7: 用 getAllTextNodes (返回 List<Map<String, Any>>) 替代 OCR
+            // V32.36.7: 改用 getAllTextNodes (A11y) 替代 OCR
             val nodes = getAllTextNodes()
             val found = nodes.any { node ->
-                val text = node["text"]?.toString() ?: ""
-                val desc = node["contentDesc"]?.toString() ?: ""
-                text.contains(targetText, ignoreCase = true) ||
-                desc.contains(targetText, ignoreCase = true)
+                node.text?.contains(targetText, ignoreCase = true) == true ||
+                node.contentDesc?.contains(targetText, ignoreCase = true) == true
             }
             if (found) {
                 Log.d(TAG, "找到目标文字: $targetText")
