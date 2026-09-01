@@ -39,13 +39,15 @@ export async function handleStart(): Promise<void> {
       case 'qianji_inside': {
         // 老板情况 1: 已在千机 → 下滑刷新, 不重新打开
         logger.info('handleStart', '已在千机内, 下滑刷新保证数据最新');
-        // V32.36.8 老板 09-09 修: 原硬编码 px(540, 1800, 540, 600, 800) 是 nova480dpi 3x
-        //   改 V2.x 反证 client/.../AccessibilityServiceImpl.kt:1851 scrollDown 同款 (屏中心 + 屏上1/3→屏下1/3)
+        // V32.36.9 老板 09-09 修: 原 hard-coded px(540, 1800, 540, 600, 800) 是 nova480dpi 3x
+        //   V32.36.8 改 dp 适配 (centerXDp/screenHeightDp) — 但千机容器跟企微一样拦 A11y dispatchGesture
+        //   V32.36.9 改 swipeShell (input swipe 通道, 千机/企微都可接收)
+        //   V2.x 反证 client/.../AccessibilityServiceImpl.kt:1851 scrollDown 同款 (屏中心 + 屏上1/3→屏下1/3)
         const swipeStartX = px(centerXDp());
         const swipeStartY = px(Math.round(screenHeightDp() / 3));
         const swipeEndX = swipeStartX;
         const swipeEndY = px(Math.round(screenHeightDp() * 2 / 3));
-        await ZBBAutomation.swipe(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 800);
+        await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 800);
         await ZBBAutomation.delay(1500); // 等刷新加载
         return await runZbbWorkflow();
       }

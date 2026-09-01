@@ -199,21 +199,24 @@ async function step3FindMiniApp(): Promise<boolean> {
         return true;
       }
     }
-    // 上滑 (跨机型 dp 适配, V32.36.8 老板 09-09 修工作台上滑 bug)
-    // V2.x 反证 client/android/.../AccessibilityServiceImpl.kt:1833 scrollUp:
+    // 上滑 (跨机型 dp 适配, V32.36.9 老板 09-09 修工作台上滑 bug, 用 swipeShell 绕过企微 A11y 拦截)
+    // V2.x 反证 client/android/.../AutomationModule.kt:1117 swipeShell:
+    //   Runtime.getRuntime().exec("input swipe $startX $startY $endX $endY $durationMs").waitFor()
+    //   绕过 AccessibilityService.dispatchGesture 在企微的拦截 (V32.36.8 老板现场反证: 企微不响应 dispatchGesture)
+    // V2.x 反证 client/.../AccessibilityServiceImpl.kt:1833 scrollUp:
     //   startX = screenWidth / 2f
-    //   startY = screenHeight * 2 / 3f  (Y 起点 = 屏下 1/3)
-    //   endX   = startX                 (垂直)
-    //   endY   = screenHeight / 3f      (Y 终点 = 屏上 1/3)
+    //   startY = screenHeight * 2 / 3f    (Y 起点 = 屏下 1/3)
+    //   endX   = startX                    (垂直)
+    //   endY   = screenHeight / 3f        (Y 终点 = 屏上 1/3)
     //   duration = 500ms
     // V4 老板 08-23 拍板: 坐标用 dp 写, px() 自动按机型转
-    // V32.36.8 老板 09-09 修: 历史 swipe(px(180), px(500), px(180), px(267), 500) Y 变化太小 (233dp ≈ 23% 屏)
-    //   改 V2.x 同款 (Y 变化 33% 屏), centerXDp() / screenHeightDp() 工具函数已存在 DpUtil.ts:30-48
+    // V32.36.8 老板 09-09 修 1: Y 变化 23% 屏 → 33% 屏 (V2.x 反证 OK)
+    // V32.36.9 老板 09-09 修 2: dispatchGesture → swipeShell (input swipe 通道, 企微可接收)
     const swipeStartX = px(centerXDp());
     const swipeStartY = px(Math.round(screenHeightDp() * 2 / 3));
     const swipeEndX = swipeStartX;
     const swipeEndY = px(Math.round(screenHeightDp() / 3));
-    await ZBBAutomation.swipe(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 500);
+    await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 500);
     await ZBBAutomation.delay(1500);
   }
 
@@ -404,14 +407,15 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   if (await judge.isScreenText('报备成功')) {
     logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
 
-    // 情况 2-1: 上滑屏幕 (跨机型 dp 适配, V32.36.8 老板 09-09 修)
+    // 情况 2-1: 上滑屏幕 (跨机型 dp 适配, V32.36.9 老板 09-09 修, 改 swipeShell)
+    //   V2.x 反证 client/.../AutomationModule.kt:1117 swipeShell (input swipe 通道, 企微可接收)
     //   V2.x 反证 client/.../AccessibilityServiceImpl.kt:1833 scrollUp
     //   duration 1000ms (慢一点, 等截图动画)
     const swipeStartX = px(centerXDp());
     const swipeStartY = px(Math.round(screenHeightDp() * 2 / 3));
     const swipeEndX = swipeStartX;
     const swipeEndY = px(Math.round(screenHeightDp() / 3));
-    await ZBBAutomation.swipe(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 1000);
+    await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 1000);
 
     // 情况 2-2: 找"上传附件"坐标
     const uploadNode = await a11y.findByText('上传附件');
