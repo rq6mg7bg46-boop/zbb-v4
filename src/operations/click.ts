@@ -35,7 +35,8 @@ async function waitForCondition<T>(
 }
 
 /**
- * 按文字点击 (自动 OCR/A11y 找节点 + 点击中心)
+ * 按文字点击 (A11y 找节点 + 点击中心)
+ * V32.36.7: OCR 已禁用, 只用 A11y (findElementByText)
  *
  * @param text 目标文字
  * @param options.level HumanLevel 档位 (PRECISE=±2px / NORMAL=±5px / WIDE=±10px)
@@ -43,30 +44,12 @@ async function waitForCondition<T>(
  */
 export async function byText(
   text: string,
-  options?: { timeoutMs?: number; useOcr?: boolean; level?: HumanLevel },
+  options?: { timeoutMs?: number; level?: HumanLevel },
 ): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const useOcr = options?.useOcr ?? false;
   const level = options?.level ?? HumanLevel.PRECISE;
 
-  if (useOcr) {
-    // OCR 模式: 截图 + ML Kit 找文字 + 点击
-    const result = await waitForCondition(
-      async () => {
-        const r = await ZBBAutomation.screenshotAndFindText(text);
-        return r?.found ? r : null;
-      },
-      timeoutMs,
-    );
-    if (!result || !result.x || !result.y) {
-      logger.warn('click.byText', `OCR 没找到: "${text}"`);
-      return false;
-    }
-    const { x, y } = applyHumanOffset(result.x, result.y, level);
-    return ZBBAutomation.click(x, y);
-  }
-
-  // A11y 模式 (默认): 用 findElementByText
+  // V32.36.7: A11y only, OCR 已禁用 (老板拍板)
   const node = await waitForCondition(
     async () => {
       const n = await ZBBAutomation.findElementByText(text);

@@ -1,10 +1,14 @@
 /**
- * V4.x judge module (老板实测 08-22)
+ * V4.x judge module (老板实测 08-22, V32.36.7 OCR 已禁用)
  *
  * 界面判断:
- * - isScreenText(text)         当前屏幕是否含文字
+ * - isScreenText(text)         当前屏幕是否含文字 (A11y only, V32.36.7 OCR 已删)
  * - isAppForeground(pkg)       当前前台 app 是否指定包名
  * - waitForScreen(text, ms)    等待屏幕出现文字 (轮询)
+ *
+ * V32.36.7 改动:
+ *   - OCR fallback 删了 (老板 09-01 拍板 OCR 误判率高, 全删)
+ *   - judge.isScreenText 现在只用 A11y (findElementByText)
  */
 
 import { ZBBAutomation } from '@/native';
@@ -13,17 +17,13 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const POLL_INTERVAL_MS = 200;
 
 /**
- * 当前屏幕是否含文字 (A11y + OCR 双重)
+ * 当前屏幕是否含文字 (纯 A11y, V32.36.7 OCR 已删)
  */
 export async function isScreenText(text: string): Promise<boolean> {
-  // A11y 优先 (快)
+  // V32.36.7: 只用 A11y, OCR fallback 删除 (老板拍板 OCR 误判率高)
   try {
     const node = await ZBBAutomation.findElementByText(text);
-    if (node) return true;
-  } catch {}
-  // OCR fallback (慢但准)
-  try {
-    return await ZBBAutomation.ocrContainsText(text);
+    return !!node;
   } catch {
     return false;
   }

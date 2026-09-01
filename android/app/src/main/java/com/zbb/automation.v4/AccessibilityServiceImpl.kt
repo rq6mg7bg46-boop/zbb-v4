@@ -43,10 +43,12 @@ import android.os.VibratorManager
 import android.view.View
 import android.view.WindowManager.LayoutParams
 import android.widget.Toast
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.TextRecognizer
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+// V32.36.7: ML Kit OCR imports 已删 (老板 09-01 拍板 OCR 误判率高, 全删)
+//   com.google.mlkit.vision.common.InputImage
+//   com.google.mlkit.vision.text.TextRecognition
+//   com.google.mlkit.vision.text.TextRecognizer
+//   com.google.mlkit.vision.text.latin.TextRecognizerOptions
+// 替代: recognizeText/recognizeTextWithPosition/findTextByMLKit 改 A11y 或返回空
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileInputStream
@@ -2387,23 +2389,23 @@ class AccessibilityServiceImpl : AccessibilityService() {
     )
     
     /**
-     * ML Kit OCR 引擎状态
+     * ML Kit OCR 引擎状态 (V32.36.7 已禁用)
      */
-    private var mlkitRecognizer: TextRecognizer? = null
+    private var mlkitRecognizer: Any? = null  // 原类型 TextRecognizer?, V32.36.7 改 Any? (不引用 ML Kit)
     private var mlkitInitialized = false
-    
+
     /**
-     * 初始化 ML Kit OCR 引擎
-     * Bundled 模式：模型内置在 APK 中，无需 Google Play 服务
+     * 初始化 ML Kit OCR 引擎 (V32.36.7 已禁用)
+     * V32.36.7: OCR 全删, 不调用 ML Kit, 仅记录 log
      */
     private fun initMlKitOCR() {
         if (mlkitInitialized) return
-        
+
         try {
-            // 使用 Bundled 模式，模型内置在 APK 中
-            mlkitRecognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            // V32.36.7: 不调用 TextRecognition.getClient (ML Kit 已删依赖)
+            mlkitRecognizer = null
             mlkitInitialized = true
-            Log.d(TAG, "ML Kit OCR 初始化成功 (Bundled 模式)")
+            Log.w(TAG, "ML Kit OCR 已禁用 (V32.36.7 老板拍板 OCR 误判率高, 全删)")
         } catch (e: Exception) {
             Log.e(TAG, "ML Kit OCR 初始化异常: ${e.message}")
             e.printStackTrace()
@@ -2456,17 +2458,11 @@ class AccessibilityServiceImpl : AccessibilityService() {
             var recognitionResult: com.google.mlkit.vision.text.Text? = null
             var recognitionError: Exception? = null
             
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-            mlkitRecognizer?.process(inputImage)
-                ?.addOnSuccessListener { text ->
-                    recognitionResult = text
-                    latch.countDown()
-                }
-                ?.addOnFailureListener { e ->
-                    recognitionError = e
-                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
-                    latch.countDown()
-                }
+            // V32.36.7: OCR 全删, 不再调用 ML Kit process
+            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
+            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
+            Log.w(TAG, "OCR 已禁用 (V32.36.7), recognizeTextWithPosition 返回 empty")
+            latch.countDown()
             
             // 等待识别完成（最多10秒）
             latch.await(10, TimeUnit.SECONDS)
@@ -2535,17 +2531,11 @@ class AccessibilityServiceImpl : AccessibilityService() {
             var recognitionResult: com.google.mlkit.vision.text.Text? = null
             var recognitionError: Exception? = null
             
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-            mlkitRecognizer?.process(inputImage)
-                ?.addOnSuccessListener { text ->
-                    recognitionResult = text
-                    latch.countDown()
-                }
-                ?.addOnFailureListener { e ->
-                    recognitionError = e
-                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
-                    latch.countDown()
-                }
+            // V32.36.7: OCR 全删, 不再调用 ML Kit process
+            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
+            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
+            Log.w(TAG, "OCR 已禁用 (V32.36.7), recognizeTextWithPosition 返回 empty")
+            latch.countDown()
             
             // 等待识别完成（最多10秒）
             latch.await(10, TimeUnit.SECONDS)
@@ -2660,16 +2650,11 @@ class AccessibilityServiceImpl : AccessibilityService() {
             val latch = CountDownLatch(1)
             var recognitionResult: com.google.mlkit.vision.text.Text? = null
             
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-            mlkitRecognizer?.process(inputImage)
-                ?.addOnSuccessListener { text ->
-                    recognitionResult = text
-                    latch.countDown()
-                }
-                ?.addOnFailureListener { e ->
-                    Log.e(TAG, "ML Kit OCR 识别失败: ${e.message}")
-                    latch.countDown()
-                }
+            // V32.36.7: OCR 全删, 不再调用 ML Kit process (findTextByMLKitWithPermission)
+            //   原代码: InputImage.fromBitmap + mlkitRecognizer?.process(inputImage)?.addOnSuccessListener...
+            //   V32.36.7: 跳过 OCR, 直接 countDown 让上层拿到 null
+            Log.w(TAG, "OCR 已禁用 (V32.36.7), findTextByMLKitWithPermission 返回 null")
+            latch.countDown()
             
             // 等待识别完成（最多10秒）
             latch.await(10, TimeUnit.SECONDS)
