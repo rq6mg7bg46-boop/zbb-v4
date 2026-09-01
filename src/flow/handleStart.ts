@@ -15,6 +15,7 @@ import { ZBBAutomation } from '@/native';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
 import { classifyScreenKind } from '@/core/screen/PageIdentifier';
 import { logger } from '@/utils/logger';
+import { px, centerXDp, screenHeightDp } from '@/utils/DpUtil'; // V32.36.8 老板 09-09 修 handleStart 下滑刷新 (跨机型 dp)
 
 // 实测: 跑完整业务流 (千机→保利→越秀, 导入在文件末尾避免循环依赖)
 let runZbbWorkflowRef: (() => Promise<void>) | null = null;
@@ -38,8 +39,13 @@ export async function handleStart(): Promise<void> {
       case 'qianji_inside': {
         // 老板情况 1: 已在千机 → 下滑刷新, 不重新打开
         logger.info('handleStart', '已在千机内, 下滑刷新保证数据最新');
-        // 实测 (V2.x qianjiFlow.refresh): swipe 540,1800 → 540,600, 800ms
-        await ZBBAutomation.swipe(540, 1800, 540, 600, 800);
+        // V32.36.8 老板 09-09 修: 原硬编码 px(540, 1800, 540, 600, 800) 是 nova480dpi 3x
+        //   改 V2.x 反证 client/.../AccessibilityServiceImpl.kt:1851 scrollDown 同款 (屏中心 + 屏上1/3→屏下1/3)
+        const swipeStartX = px(centerXDp());
+        const swipeStartY = px(Math.round(screenHeightDp() / 3));
+        const swipeEndX = swipeStartX;
+        const swipeEndY = px(Math.round(screenHeightDp() * 2 / 3));
+        await ZBBAutomation.swipe(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 800);
         await ZBBAutomation.delay(1500); // 等刷新加载
         return await runZbbWorkflow();
       }
