@@ -216,7 +216,9 @@ async function step3FindMiniApp(): Promise<boolean> {
     const swipeStartY = px(Math.round(screenHeightDp() * 2 / 3));
     const swipeEndX = swipeStartX;
     const swipeEndY = px(Math.round(screenHeightDp() / 3));
-    await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 500);
+    logger.info('保利:步骤3', `swipeShell: (${swipeStartX},${swipeStartY}) → (${swipeEndX},${swipeEndY}) 500ms`);
+    const swipeOk = await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 500);
+    logger.info('保利:步骤3', `swipeShell 结果: ${swipeOk}`);
     await ZBBAutomation.delay(1500);
   }
 
