@@ -15,6 +15,13 @@ export interface A11yNode {
   className?: string;
   packageName?: string;
   contentDesc?: string; // 🆕 08-26: mock 首页语义标签 (e.g. "楼盘 保利缦城和颂")
+  /**
+   * 🆕 V32.36.11 (09-02 老板反证金标准): native found flag
+   * - findElementByText 找到时 = true
+   * - 没找到时 = false (debugInfo 对象, 无 centerX)
+   * - judge/click 用这个判 (跟 V2.x v22.02.30 click-by-text 模式一致)
+   */
+  found?: boolean;
 }
 
 /**

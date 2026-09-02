@@ -18,12 +18,20 @@ const POLL_INTERVAL_MS = 200;
 
 /**
  * 当前屏幕是否含文字 (纯 A11y, V32.36.7 OCR 已删)
+ *
+ * 🆕 V32.36.11 (09-02 老板反证金标准): 改判 found:!!node 误报问题
+ *   - AutomationModule.kt findElementByText 没找到时返回 debugInfo {found:false, searchText, reason, hint}
+ *   - debugInfo 是 JS object, truthy → !!node 返回 true (false positive!)
+ *   - click.byText 用 n.centerX !== undefined, debugInfo 没 centerX → 返回 null → 'A11y 没找到'
+ *   - 老板现场反证: judge 找到, click 找不到 (同一个调用不同判定)
+ *   修法: 看 node.found === true (跟 click 一致, 都是看 native found flag)
  */
 export async function isScreenText(text: string): Promise<boolean> {
   // V32.36.7: 只用 A11y, OCR fallback 删除 (老板拍板 OCR 误判率高)
+  // V32.36.11: 判 found:true 而非 !!node (老板反证金标准)
   try {
     const node = await ZBBAutomation.findElementByText(text);
-    return !!node;
+    return node?.found === true;
   } catch {
     return false;
   }

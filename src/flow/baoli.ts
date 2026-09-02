@@ -30,6 +30,7 @@ import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
+import { scrollUpPPlus, scrollDownPPlus, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',
@@ -187,8 +188,22 @@ async function step2ClickWorkbench(): Promise<boolean> {
 async function step3FindMiniApp(): Promise<boolean> {
   logger.info('保利:步骤3', '上滑查找云和家经纪云...');
 
-  // V2.x 实战经验铁证: 步骤 3 上滑"云和家经纪云"专用 - 跨机型适配
-  // nova 480dpi 1dp=3px vs vivo 320dpi 1dp=2px
+  // V32.36.11 老板 09-02 反证金标准 - V2.x BaoliService L610-650 完整修法:
+  //   V2.x v22.02.30 用 swipe + P+ 拟人化 (惯性 overshoot + 回弹), delay 2-2.5s
+  //   V4 V32.36.9 改 swipeShell (input swipe), delay 1500ms → 老板装机实测失败
+  //   V2.x v22.02.30 老板装机实测 swipe 在企微工作台 OK
+  //   V2.x 假设 '云和家经纪云' 在工作台中部, 上滑 5 次 (50% 屏高) 必能找到
+  //
+  // 关键设计 (V2.x BaoliService L617-649):
+  //   1. 先 findNodeByText (retries=1) 立即调一次
+  //   2. 找到了 humanTap (P+ 拟人化 ±2px 偏移) + return
+  //   3. 没找到 → for i in 5:
+  //     a. humanSwipeWithBounceDp 上滑 (中心 X + 屏下 84% → 屏上 28%, 500ms)
+  //        - 内部: swipe(x1, y1, x2+20, y2-30, 500) + delay(200) + swipe(x2+20, y2-30, x2, y2, 300)
+  //     b. delay 2-2.5s (随机, 拟人化操作间隔)
+  //     c. findNodeByText (retries=1) 再找
+  //     d. 找到 humanTap + break
+  //   4. 5 次后 fallback humanTapDp(223, 501)
   for (let attempt = 0; attempt < 5; attempt++) {
     const found = await judge.isScreenText('云和家经纪云');
     if (found) {
@@ -199,33 +214,23 @@ async function step3FindMiniApp(): Promise<boolean> {
         return true;
       }
     }
-    // 上滑 (跨机型 dp 适配, V32.36.9 老板 09-09 修工作台上滑 bug, 用 swipeShell 绕过企微 A11y 拦截)
-    // V2.x 反证 client/android/.../AutomationModule.kt:1117 swipeShell:
-    //   Runtime.getRuntime().exec("input swipe $startX $startY $endX $endY $durationMs").waitFor()
-    //   绕过 AccessibilityService.dispatchGesture 在企微的拦截 (V32.36.8 老板现场反证: 企微不响应 dispatchGesture)
-    // V2.x 反证 client/.../AccessibilityServiceImpl.kt:1833 scrollUp:
-    //   startX = screenWidth / 2f
-    //   startY = screenHeight * 2 / 3f    (Y 起点 = 屏下 1/3)
-    //   endX   = startX                    (垂直)
-    //   endY   = screenHeight / 3f        (Y 终点 = 屏上 1/3)
-    //   duration = 500ms
-    // V4 老板 08-23 拍板: 坐标用 dp 写, px() 自动按机型转
-    // V32.36.8 老板 09-09 修 1: Y 变化 23% 屏 → 33% 屏 (V2.x 反证 OK)
-    // V32.36.9 老板 09-09 修 2: dispatchGesture → swipeShell (input swipe 通道, 企微可接收)
-    const swipeStartX = px(centerXDp());
-    const swipeStartY = px(Math.round(screenHeightDp() * 2 / 3));
-    const swipeEndX = swipeStartX;
-    const swipeEndY = px(Math.round(screenHeightDp() / 3));
-    logger.info('保利:步骤3', `swipeShell: (${swipeStartX},${swipeStartY}) → (${swipeEndX},${swipeEndY}) 500ms`);
-    const swipeOk = await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 500);
-    logger.info('保利:步骤3', `swipeShell 结果: ${swipeOk}`);
-    await ZBBAutomation.delay(1500);
+    // V2.x BaoliService L628 反证金标准 — humanSwipeWithBounceDp P+ 拟人化上滑:
+    //   起点: (centerXDp, appHeightDp * 0.84)   (屏下 84% = 接近底部)
+    //   终点: (centerXDp, appHeightDp * 0.28)   (屏上 28% = 接近顶部)
+    //   Y 变化 56% 屏 (V2.x 经验值, 比 V4 之前的 33% 屏更激进入攻, 但有效)
+    //   duration 500ms (越秀速度, 快)
+    // V32.36.11 改 swipeShell → swipe (V2.x 同款 dispatchGesture)
+    //   V2.x v22.02.30 老板装机实测 swipe 在企微 OK
+    //   V4 V32.36.9 swipeShell 老板装机实测失败
+    const swipeOk = await scrollUpPPlus();
+    logger.info('保利:步骤3', `humanSwipeWithBounceDp 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
+    // V2.x BaoliService L636 实战金标准: delay 2-2.5s (随机, 拟人化操作间隔)
+    await pPlusDelay(2000, 500);
   }
 
-  // 🆕 V32.36.3: 5 次上滑都没找到 → 立即弹窗 + 震动 + "我知道了" 按钮
-  // 老板 08-31 装机验证: 之前没弹窗, 流程跑完才报 baoli_failed, 反息屏 5min 还跑
-  // 期望: 单步骤失败立刻弹窗, 老板点 "我知道了" 流程结束
-  logger.error('保利:步骤3', '5 次上滑都没找到云和家经纪云 → 弹窗等老板');
+  // V2.x BaoliService L654 fallback: humanTapDp(223, 501) dp = (669, 1503) px on nova
+  // V4 V32.36.3: 5 次上滑都没找到 → 立即弹窗 + 老板手动处理
+  logger.warn('保利:步骤3', '5 次上滑都没找到云和家经纪云 → fallback 坐标 + 弹窗等老板');
   await raiseAlert('小主,未找到云和家经纪云,请手动处理!');
   return false;
 }
@@ -409,15 +414,13 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   if (await judge.isScreenText('报备成功')) {
     logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
 
-    // 情况 2-1: 上滑屏幕 (跨机型 dp 适配, V32.36.9 老板 09-09 修, 改 swipeShell)
-    //   V2.x 反证 client/.../AutomationModule.kt:1117 swipeShell (input swipe 通道, 企微可接收)
-    //   V2.x 反证 client/.../AccessibilityServiceImpl.kt:1833 scrollUp
-    //   duration 1000ms (慢一点, 等截图动画)
-    const swipeStartX = px(centerXDp());
-    const swipeStartY = px(Math.round(screenHeightDp() * 2 / 3));
-    const swipeEndX = swipeStartX;
-    const swipeEndY = px(Math.round(screenHeightDp() / 3));
-    await ZBBAutomation.swipeShell(swipeStartX, swipeStartY, swipeEndX, swipeEndY, 1000);
+    // 情况 2-1: 上滑屏幕 (V32.36.11 老板 09-02 修, 改 humanSwipeWithBounceDp)
+    //   V2.x 反证 client/services/BaoliService.ts L178-189 humanSwipeWithBounceDp (P+ 拟人化)
+    //   V2.x v22.02.30 老板装机实测 swipe (dispatchGesture) 在企微 OK
+    //   V4 V32.36.9 swipeShell 老板装机实测失败 → 改回 V2.x 同款
+    //   duration 主滑 1000ms (慢一点, 等截图动画) + 回弹 300ms
+    const swipeOk = await scrollUpPPlus();  // 默认 500ms 起步
+    logger.info('保利:步骤13-情况2', `humanSwipeWithBounceDp 上滑结果: ${swipeOk}`);
 
     // 情况 2-2: 找"上传附件"坐标
     const uploadNode = await a11y.findByText('上传附件');
