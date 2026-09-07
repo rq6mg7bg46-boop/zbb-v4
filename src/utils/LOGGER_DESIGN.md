@@ -217,6 +217,8 @@ installConsoleHook();
 
 ## 7. 关键 commit hash 时间线
 
+### 7.1 logger 3 路并打 (V32.27 → V32.34.3, 08-27 ~ 08-30)
+
 ```
 3dd20c7 V32.33 writeBusinessLog Promise fix           ❌ RN bridge 不暴露
 8905142 V32.33 slider 依赖删除 (build fix)             ✅ Win11 build 通
@@ -225,6 +227,30 @@ installConsoleHook();
 e977d63 V32.34.2 JS sendToServer log text 只日期        ❌ 漏改 native
 9db688f V32.34.3 native DATE_FMT_LINE 只拼日期          ✅ 期望格式 100% 匹配
 ```
+
+### 7.2 V32.34.3 之后的业务反证 (V32.36.0 → V32.36.11, 08-31 ~ 09-02)
+
+老板 09-02 装机 PASS (V32.36.11), logger 链路稳定不变, 业务流程修复反证如下:
+
+```
+61a1c46 V32.36.0 千机监听 5s 延迟 setTimeout race + 拆 5min 静默       ⚠️ 仍有 race
+b71308d V32.36.0.1 千机监听轮询改 setTimeout 递归 (修 setInterval 悬挂) ⚠️ build error
+46f3832 V32.36.2 companion object 包装 emit 静态函数 (build error 修复)  ✅ build 通
+54de542 V32.36.2 千机监听改 native push 模式 (UserInteractionRecorded) ✅ 修 RN bridge 堵塞
+e53dddc V32.36.3 端失败弹窗 + step3 单步骤失败立刻 raiseAlert           ✅ 装机验证
+736152b V32.36.4 runZbbWorkflow 不再二次发 onFailed (避免 Illegal)     ✅
+ad33ab8 V32.36.5 5min 反息屏加 caller 字段 (区分触发源)                 ✅
+a8d14bf V32.36.6 删 IdleWorker 链只留 ZBBKeepAlive (handler.postDelayed) ✅ EMUI doze 修
+20114d9 V32.36.7 OCR 全删 (老板 09-01 拍板 OCR 误判率高)               ⚠️ build 失败
+776934e V32.36.7 OCR 函数体改空 (稳健方式)                              ✅ build 通
+4c0b664 V32.36.7 OCR 函数体改空 (跳过 ML Kit API 调用)                  ✅
+80d1e4a V32.36.8 工作台上滑改 V2.x 反证 (改坐标 Y 33% 屏)              ❌ 仍不上滑
+ecee6b9 V32.36.9 上滑/下滑改 swipeShell (input swipe 通道)             ❌ 仍失败
+dae0283 V32.36.10 加 swipeShell log (装机调试)                          ❌ 根因 = dispatchGesture 被拦截
+817ba7d V32.36.11 judge found:true + V2.x humanSwipeWithBounceDp P+ 拟人化 ✅ 老板 nova 装机 PASS
+```
+
+**核心经验 (V32.36.11)**: 修 ZBB bug 前必 grep V2.x (`D:\projects\project_coze0520\client\`) 找反证金标准. V2.x swipe (dispatchGesture) 在 nova EMUI 10 行为稳定, V4 swipeShell 反而被拦截. 4 轮反证后改回 V2.x 设计 + P+ 拟人化, 装机 PASS.
 
 ---
 
@@ -242,9 +268,13 @@ e977d63 V32.34.2 JS sendToServer log text 只日期        ❌ 漏改 native
 
 ## 9. Reference
 
-- **AGENTS.md** — 项目级铁律 + 关键架构决策
-- **README.md** — 项目总览 + 版本时间线 + 装机 SOP
+- **AGENTS.md** — 项目级铁律 + 关键架构决策 (已更新到 V32.36.11)
+- **README.md** — 项目总览 + 版本时间线 + 装机 SOP (已更新到 V32.36.11)
 - **Skill `boss-zbb-v4-logger-server-log-long-term-sop`** — 6 轮反证 + V32.34.x 修法时间线
 - **Skill `zbb-v4-v32-33-commit-push-win11-rebuild-debug-sop`** — V32.33 commit + push + Win11 rebuild 完整链路
+- **Skill `zbb-v32.36.11-workbench-swipe-fix`** — V32.36.8/9/10/11 4 轮反证 + V32.36.11 装机 PASS 金标准
+- **Skill `zbb-v4-screen-aware-flow`** — V4 入口判断 3 种情况 + 千机端 PageIdentifier
+- **Skill `zbb-ocr-disable-stable-build-pattern`** — OCR 全删稳健模式 (V32.36.7 实战反证)
+- **Skill `zbb-v4-qianji-monitor-pending-queue`** — 千机监听 + pending 队列设计 + 3 入口触发
 - **android/app/src/main/java/com/zbb/automation.v4/BusinessLogWriter.kt** — V32.34.3 DATE_FMT_LINE 修复
 - **android/app/src/main/java/com/zbb/automation.v4/AutomationModule.kt** — V32.33 writeBusinessLog 去 Promise 参数
