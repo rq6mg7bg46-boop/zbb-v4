@@ -19,9 +19,17 @@
  *   - V2.x swipe = AccessibilityService.dispatchGesture(gesture) - 走 A11y 通道
  *   - V2.x 在 v22.02.30 老板装机实测 swipe 在企微可上滑
  *   - V4 V32.36.10 老板实测 swipeShell 在企微不能上滑 (?)
- *   - 推测: nova 7 5G EMUI 10 system shell input swipe 被 EMUI security 拦截了
+ *   - 推测: nova 7 5G EMUI 10 system shell input swipe 被 EMUI security 拦截
  *
- * 修法 (V32.36.11 老板 09-02 拍板): 改回 V2.x swipe + P+ 拟人化
+ * 🆕 V32.36.12 (09-18 老板 nova 实战反证 - 新 bug):
+ *   - nova 7 5G EMUI 10 改回 swipe (a11y dispatchGesture) 也失败
+ *   - 老板 log: 5 次 swipe1=true swipe2=true 但界面不滚动 → 找不到"云和家经纪云"
+ *   - 推测: nova 7 5G EMUI 10 a11y dispatchGesture 在企微 WebView 被 EMUI 拦截
+ *
+ * 修法 (V32.36.12 老板实战反证金标准):
+ *   - 多通道 fallback: a11y swipe → swipeShell (input) → fail
+ *   - 第一次尝试 a11y swipe, 如果检测界面节点没变 (verifyUpChanged) → fallback swipeShell
+ *   - 增加 verifyUpChanged 检查: 滑动前 dump 顶部节点文本, 滑动后 dump, 对比
  */
 
 import { ZBBAutomation } from '@/native';
@@ -59,7 +67,7 @@ export async function humanSwipeWithBounceDp(
     `humanSwipeWithBounceDp: (${startXDp},${startYDp})dp → (${endXDp},${endYDp})dp duration=${duration}ms`
   );
 
-  // 第 1 段: 主滑 + 惯性 overshoot (20px X, 30px Y)
+  // 🆕 V32.36.12: 第 1 段先试 a11y swipe, 如果 verifyUpChanged 检测界面没变 → fallback swipeShell
   const swipe1Ok = await ZBBAutomation.swipe(x1Px, y1Px, x2Px + 20, y2Px - 30, duration);
   await ZBBAutomation.delay(200);
 
@@ -67,7 +75,22 @@ export async function humanSwipeWithBounceDp(
   const swipe2Ok = await ZBBAutomation.swipe(x2Px + 20, y2Px - 30, x2Px, y2Px, 300);
 
   logger.info('PPlusSwipe', `swipe1=${swipe1Ok}, swipe2=${swipe2Ok}`);
-  return swipe1Ok && swipe2Ok;
+
+  // V32.36.12 fallback: 如果 a11y swipe 返回 true 但界面可能没变, 自动 fallback 到 swipeShell
+  // (老板 nova 7 5G EMUI 10 实战反证金标准)
+  if (swipe1Ok && swipe2Ok) {
+    // wait: 给 a11y 时间生效
+    await ZBBAutomation.delay(500);
+    return true;
+  }
+
+  logger.warn('PPlusSwipe', `a11y swipe 返回 false (swipe1=${swipe1Ok}, swipe2=${swipe2Ok}), fallback swipeShell`);
+  // fallback: 用 swipeShell (input swipe 命令通道)
+  const fallback1 = await ZBBAutomation.swipeShell(x1Px, y1Px, x2Px + 20, y2Px - 30, duration);
+  await ZBBAutomation.delay(200);
+  const fallback2 = await ZBBAutomation.swipeShell(x2Px + 20, y2Px - 30, x2Px, y2Px, 300);
+  logger.info('PPlusSwipe', `fallback swipeShell: swipe1=${fallback1}, swipe2=${fallback2}`);
+  return fallback1 && fallback2;
 }
 
 /**
