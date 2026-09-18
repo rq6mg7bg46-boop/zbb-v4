@@ -5,11 +5,11 @@
  * - 步骤 1: 打开企业微信 (Intent)
  * - 步骤 2: 点击工作台
  * - 步骤 3: 上滑查找"云和家经纪云" (跨机型 dp 适配)
- * - 步骤 4: 找"郑州保利山水和颂"
+ * - 步骤 4: 找"郑州保利山水和颂" (V2.x BaoliService.ts:706 反证金标准: 步骤 4 跟 projectName 无关)
  * - 步骤 5: 点底部"报备"按钮 (V2.x 步骤 4.5, v22.00.1 修复)
- * - 步骤 6: 找"粘贴完整客户信息..."节点 + 长按输入框 + 粘贴 (V2.x 步骤 7)
+ * - 步骤 6: 找"粘贴完整客户信息... "节点 + 长按输入框 + 粘贴 (V2.x 步骤 7)
  * - 步骤 7: 点"请选择分期" (V2.x 步骤 9)
- * - 步骤 8: 选择报备项目 (V2.x 步骤 10)
+ * - 步骤 8: 选择报备项目 (V2.x 步骤 10, round 1=缦城和颂, round 2=山水和颂)
  * - 步骤 9: 点确认 (V2.x 步骤 11)
  * - 步骤 10: 点智能识别 (V2.x 步骤 12)
  * - 步骤 11: 点报备 (V2.x 步骤 13)
@@ -38,6 +38,11 @@ const APP_PACKAGES = {
 };
 
 // 保利项目名 (V2.x BaoliService 实测)
+// 🆕 V32.36.11 (老板 09-07 拍板): 区分步骤 4 跳转入口 vs 步骤 10 实际项目名
+//   V2.x BaoliService.ts:706-718 反证金标准: 步骤 4 跟 projectName 完全无关, 不论 round 1/2 都找同一个跳转入口
+//   V2.x BaoliService.ts:706 硬编码: '郑州保利山水和颂' (云和家小程序第一屏跳转入口)
+//   V2.x BaoliService.ts:118-119: 步骤 10 选的实际报备项目名 (跟项目一一对应)
+const STEP4_TARGET = '郑州保利山水和颂'; // V2.x 反证金标准 (步骤 4 跳转入口, round 1/2 都用)
 const PROJECT_NAME_ROUND_1 = '郑州市三村杓袁7号地项目-保利缦城和颂【郑州保利和颂】';
 const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和颂【郑州保利山水和颂】';
 
@@ -107,9 +112,8 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
   const step3 = await step3FindMiniApp();
   if (!step3) return false;
 
-  // 步骤 4: 找报备项目名
-  const projectName = round === 1 ? PROJECT_NAME_ROUND_1 : PROJECT_NAME_ROUND_2;
-  const step4 = await step4FindProject(projectName);
+  // 步骤 4: 找报备项目名 (V2.x BaoliService.ts:706-718 反证金标准: 步骤 4 跟 projectName 无关, 始终找 '郑州保利山水和颂' 跳转入口)
+  const step4 = await step4FindProject(STEP4_TARGET);
   if (!step4) return false;
 
   // 步骤 5: 点底部"报备"按钮
@@ -124,7 +128,8 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
   const step7 = await step7SelectInstallment();
   if (!step7) return false;
 
-  // 步骤 8: 选择报备项目 (再确认一次)
+  // 步骤 8: 选择报备项目 (再确认一次, V2.x BaoliService.ts:118-119 反证金标准: projectName 跟 round 对应)
+  const projectName = round === 1 ? PROJECT_NAME_ROUND_1 : PROJECT_NAME_ROUND_2;
   const step8 = await step8SelectProject(projectName);
   if (!step8) return false;
 
@@ -236,26 +241,54 @@ async function step3FindMiniApp(): Promise<boolean> {
 }
 
 // ============================================================
-// 步骤 4: 找报备项目名
+// 步骤 4: 找报备项目名 (V2.x BaoliService.ts:706-718 反证金标准)
+// 🆕 V32.36.12 (老板 09-07 拍板): 删 verifyAndRecover + V2.x 1 次精确匹配
+//   老板 09-07 反证: verifyAndRecover 24s 超时 + raiseAlert 弹窗 = 8 分钟卡死根因
+//   V2.x 反证金标准: 1 次 findNodeByText 精确匹配, 找不到不重试 (v19.x-fix-D2)
+//   老板硬约束: 不复制 V2.x 30s fallback (startPulseVibration + Toast + GO)
+//   复用 V4 click.byText (V32.36.11 实测 3s 命中, 走 findElementByText 穿透 WebView 路线)
+//   加 centerX<=0 防御 (V4 已知占位节点 bug)
+//   tap 后 2.5-3.5s 拟人化 (V2.x pGammaDelay 反证)
 // ============================================================
 async function step4FindProject(projectName: string): Promise<boolean> {
   logger.info('保利:步骤4', `找"${projectName}"...`);
 
-  const verifyResult = await verifyAndRecover(projectName, {
-    timeoutMs: 8000,
-    maxRetries: 2,
-  });
+  // 1. V2.x v22.02.33 反证金标准: delay 3000ms 等节点树加载
+  await ZBBAutomation.delay(3000);
 
-  if (!verifyResult.ok) {
-    logger.warn('保利:步骤4', `找不到 ${projectName}`);
-    orchestrator.send('BAOLI_INTERVENE'); // 老板介入
+  // 2. V32.36.11 调试铁律: dump 一次界面 (老板 log 能看到真实状态)
+  const screenTexts = await judge.dumpScreenTexts(30);
+  if (screenTexts.length === 0) {
+    logger.info('保利:步骤4', '当前界面: [空]');
+  } else {
+    screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
+  }
+
+  // 3. V2.x BaoliService.ts:718 反证金标准: 1 次精确匹配 (不重试)
+  //    V4 V32.36.11 judge.ts:54 反证: getAllTextNodes 穿透 WebView
+  const nodes = await ZBBAutomation.getAllTextNodes();
+  const projectEntry = nodes.find((n: any) => n.text === '郑州保利山水和颂');
+
+  // ★ V32.36.12 防御: centerX<=0 是 V4 native 已知占位节点 bug (V32.36.10 反证)
+  if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
+    logger.warn('保利:步骤4', `未找到"郑州保利山水和颂" (节点无效: ${JSON.stringify(projectEntry)})`);
+    return false;
+  }
+  logger.info('保利:步骤4', `✓ 找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+
+  // 4. 复用 V4 click.byText (V4 全局 13 处统一用, 跟 V2.x humanTap 等价)
+  //    V32.36.11 实测 nova 3s 命中 = 走 click.byText 路线
+  const ok = await click.byText('郑州保利山水和颂');
+  if (!ok) {
+    logger.warn('保利:步骤4', 'click.byText 失败, 返回 false');
     return false;
   }
 
-  const ok = await click.byText(projectName);
-  if (!ok) return false;
+  // 5. V2.x pGammaDelay(2500, 3500) 拟人化随机 (V2.x v22.00.1 实战铁证 <2.5s 填表时页面未渲染完)
+  const tapDelay = 2500 + Math.floor(Math.random() * 1000);
+  logger.info('保利:步骤4', `tap 后等 ${tapDelay}ms (V2.x pGammaDelay 拟人化)`);
+  await ZBBAutomation.delay(tapDelay);
 
-  await ZBBAutomation.delay(2000);
   logger.info('保利:步骤4', `✓ 已点 ${projectName}`);
   return true;
 }
