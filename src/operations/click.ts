@@ -42,6 +42,18 @@ async function waitForCondition<T>(
  * @param options.level HumanLevel 档位 (PRECISE=±2px / NORMAL=±5px / WIDE=±10px)
  *                    文档步骤4 "中等坐标偏移" 对应 NORMAL, 默认 PRECISE
  */
+/**
+ * 按文字查找节点 + 点击中心 (A11y)
+ *
+ * V32.36.21 (09-19 老板 nova 装机实测 - 老板拍板统一修):
+ *   之前老板报"卡住, 后续所有 click.byText 都需要排查", 一致性问题
+ *   真因: ZBBAutomation.findElementByText 内部 a11y dump 在企微 WebView 内卡死,
+ *         waitForCondition 等不到 → 永久阻塞 caller
+ *   修法 (老板 09-19 拍板): 包 Promise.race, 5s 超时后返 false 不阻塞 caller
+ *     - 5s 还没找到 → 返回 false (跟之前 A11y 没找到行为一致)
+ *     - V4 全局 click.byText 调用点都受保护 (baoli step5/6/... + 千机 + 其他 13+ 处)
+ *     - 不需要每个 caller 都改成 click.byNode / click.byCoords
+ */
 export async function byText(
   text: string,
   options?: { timeoutMs?: number; level?: HumanLevel },
@@ -50,19 +62,38 @@ export async function byText(
   const level = options?.level ?? HumanLevel.PRECISE;
 
   // V32.36.7: A11y only, OCR 已禁用 (老板拍板)
-  const node = await waitForCondition(
-    async () => {
-      const n = await ZBBAutomation.findElementByText(text);
-      return n && n.centerX !== undefined ? n : null;
-    },
-    timeoutMs,
-  );
-  if (!node || node.centerX === undefined || node.centerY === undefined) {
-    logger.warn('click.byText', `A11y 没找到: "${text}"`);
-    return false;
+  // V32.36.21 老板 09-19 拍板: Promise.race 5s 超时保护, 防止 a11y dump 卡死阻塞整个 V4 caller
+  const lookupPromise = (async () => {
+    const node = await waitForCondition(
+      async () => {
+        const n = await ZBBAutomation.findElementByText(text);
+        return n && n.centerX !== undefined ? n : null;
+      },
+      timeoutMs,
+    );
+    if (!node || node.centerX === undefined || node.centerY === undefined) {
+      logger.warn('click.byText', `A11y 没找到: "${text}"`);
+      return false;
+    }
+    const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
+    return ZBBAutomation.click(x, y);
+  })();
+
+  // V32.36.21: 老板 09-19 拍板统一修 - 5s 硬超时, 返 false 不阻塞 caller
+  let timeoutHandle: any = null;
+  const timeoutPromise = new Promise<boolean>(resolve => {
+    timeoutHandle = setTimeout(() => {
+      logger.warn('click.byText', `a11y lookup 超时 (${timeoutMs}ms): "${text}" (老板 09-19 拍板: 返 false 不阻塞)`);
+      resolve(false);
+    }, timeoutMs + 500);  // 给 waitForCondition 多 500ms 缓冲
+  });
+
+  try {
+    const result = await Promise.race([lookupPromise, timeoutPromise]);
+    return result;
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
-  const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
-  return ZBBAutomation.click(x, y);
 }
 
 /**
@@ -79,15 +110,33 @@ export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PREC
 
 /**
  * 按 viewId 点击
+ *
+ * V32.36.21 老板 09-19 拍板统一修: Promise.race 5s 超时保护 (跟 byText 同款)
  */
 export async function byId(viewId: string, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
-  const node = await ZBBAutomation.findElementByViewId(viewId);
-  if (!node || node.centerX === undefined || node.centerY === undefined) {
-    logger.warn('click.byId', `没找到: "${viewId}"`);
-    return false;
+  const lookupPromise = (async () => {
+    const node = await ZBBAutomation.findElementByViewId(viewId);
+    if (!node || node.centerX === undefined || node.centerY === undefined) {
+      logger.warn('click.byId', `没找到: "${viewId}"`);
+      return false;
+    }
+    const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
+    return ZBBAutomation.click(x, y);
+  })();
+
+  let timeoutHandle: any = null;
+  const timeoutPromise = new Promise<boolean>(resolve => {
+    timeoutHandle = setTimeout(() => {
+      logger.warn('click.byId', `a11y lookup 超时 (${DEFAULT_TIMEOUT_MS}ms): "${viewId}" (老板 09-19 拍板)`);
+      resolve(false);
+    }, DEFAULT_TIMEOUT_MS + 500);
+  });
+
+  try {
+    return await Promise.race([lookupPromise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
-  const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);
-  return ZBBAutomation.click(x, y);
 }
 
 /**
