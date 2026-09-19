@@ -21,25 +21,18 @@
  *   - V4 V32.36.10 老板实测 swipeShell 在企微不能上滑 (?)
  *   - 推测: nova 7 5G EMUI 10 system shell input swipe 被 EMUI security 拦截
  *
- * 🆕 V32.36.15 (09-19 老板 nova 装机实测 - 修法):
- *   - nova 7 5G EMUI 10 V32.36.12 PPlusSwipe 上滑失败, 千机能开
- *   - 真因: V32.36.12 L81-85 a11y swipe 返回 true 但界面没动 → 假阳性
- *   - V32.36.12 加的 swipeShell fallback 也被 EMUI 拦截 → 没用
- *   - 按 skill zbb-v32.36.11-workbench-swipe-fix 6 步排查:
- *     1) 老板 nova 装机实测, V32.36.12 装 OK 千机也开
- *     2) V32.36.12 PPlusSwipe.ts 第 81-85 行 a11y swipe 返回 true 即认为成功, 没 verify
- *     3) a11y swipe 实际没让界面滚动 (nova EMUI 10 + 企微 WebView 拦截)
- *     4) V32.36.11 (commit 817ba7d) 没这层假阳性, 纯 V2.x swipe (a11y)
- *     5) V32.36.11 老板 nova 装机实测 PASS (skill 已记录)
- *     6) 修法: 删 V32.36.12 加的 swipeShell fallback, 改纯 swipe (a11y) + 加 verifyUpChanged
+ * 🆕 V32.36.16 (09-19 老板 nova 装机实测 - 修法):
+ *   - V32.36.15 verifyUpChanged 在企微 WebView 假阴性 (老板铁子错位诊断)
+ *   - 真因: a11y dump 看不到 WebView 内部节点变化 (只暴露系统覆盖层)
+ *   - 老板 09-19 实测: V2.x v22.02.30 老方案 (无 verifyUpChanged) 在 nova 也能上滑
+ *   - 修法: 删 verifyUpChanged, 回到 V32.36.11 纯 V2.x 同款 swipe (a11y dispatchGesture)
  *
- * 修法 (V32.36.15 老板 09-19 拍板 A 方案 - 按 skill zbb-v32.36.11-workbench-swipe-fix):
+ * 修法 (V32.36.16 老板 09-19 拍板 - 按 skill zbb-v32.36.11-workbench-swipe-fix):
  *   - 第 1 段 swipe (a11y, V2.x 同款 dispatchGesture)
  *   - delay(200ms) 等惯性
  *   - 第 2 段 swipe 回弹 (300ms 慢速, 拟人化)
- *   - 加 verifyUpChanged: 滑动前 dump 顶部节点文本, 滑动后 dump, 对比 hash
- *   - 节点没变 → 返回 false (老板 nova a11y 假阳性规避)
- *   - 不 fallback swipeShell (skill 已证明 nova EMUI 也拦 swipeShell)
+ *   - 不加 verifyUpChanged (老板 nova 实测会假阴性)
+ *   - 不 fallback swipeShell (skill 证明 nova EMUI 也拦 swipeShell)
  */
 
 import { ZBBAutomation } from '@/native';
@@ -59,7 +52,6 @@ import { logger } from '@/utils/logger';
  *   1. swipe(x1Px, y1Px, x2Px+20, y2Px-30, duration)  ← 多滑 20px/30px 惯性 overshoot
  *   2. delay(200ms)                                    ← 等惯性
  *   3. swipe(x2Px+20, y2Px-30, x2Px, y2Px, 300ms)      ← 回弹 (300ms 慢速, 拟人化)
- *   4. verifyUpChanged (V32.36.15 老板 09-19 加)        ← 验 a11y 真生效
  */
 export async function humanSwipeWithBounceDp(
   startXDp: number,
@@ -78,11 +70,6 @@ export async function humanSwipeWithBounceDp(
     `humanSwipeWithBounceDp: (${startXDp},${startYDp})dp → (${endXDp},${endYDp})dp duration=${duration}ms`
   );
 
-  // 🆕 V32.36.15: verifyUpChanged - 滑动前 dump 节点 hash, 滑动后对比
-  const beforeHash = await ZBBAutomation.getAllTextNodes()
-    .then(nodes => nodes.slice(0, 5).map(n => n.text || '').join('|'))
-    .catch(() => '');
-
   // 第 1 段: 主滑 + 惯性 overshoot (20px X, 30px Y)
   const swipe1Ok = await ZBBAutomation.swipe(x1Px, y1Px, x2Px + 20, y2Px - 30, duration);
   await ZBBAutomation.delay(200);
@@ -90,21 +77,10 @@ export async function humanSwipeWithBounceDp(
   // 第 2 段: 回弹 (300ms 慢速, 拟人化)
   const swipe2Ok = await ZBBAutomation.swipe(x2Px + 20, y2Px - 30, x2Px, y2Px, 300);
 
-  // 🆕 V32.36.15: verifyUpChanged 检测 a11y 假阳性 (老板 nova 7 5G EMUI 10 装机实测)
-  // 等 800ms 让 WebView 渲染完成
-  await ZBBAutomation.delay(800);
-  const afterHash = await ZBBAutomation.getAllTextNodes()
-    .then(nodes => nodes.slice(0, 5).map(n => n.text || '').join('|'))
-    .catch(() => '');
+  logger.info('PPlusSwipe', `swipe1=${swipe1Ok}, swipe2=${swipe2Ok}`);
 
-  const changed = beforeHash !== afterHash;
-  logger.info(
-    'PPlusSwipe',
-    `swipe1=${swipe1Ok}, swipe2=${swipe2Ok}, verifyUpChanged=${changed} (before=${beforeHash.slice(0, 40)}, after=${afterHash.slice(0, 40)})`
-  );
-
-  // V32.36.15: 不假阳性, 节点没变就返回 false (老板 nova 上滑成功判定)
-  return swipe1Ok && swipe2Ok && changed;
+  // V32.36.16: 按 skill 老板 09-19 实测, 不假阳性也不假阴性, 信 V2.x 老方案 native 返回值
+  return swipe1Ok && swipe2Ok;
 }
 
 /**
