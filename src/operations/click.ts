@@ -77,9 +77,14 @@ export async function byText(
       // V32.36.18 验证: getAllTextNodes 单次 dump 在 nova WebView 上能返回外层节点
       const nodes = await ZBBAutomation.getAllTextNodes();
       // 模糊匹配 (跟 judge.isScreenText 同款)
-      const node = nodes.find((n: any) => n?.text?.toString()?.includes(text));
+      // V32.36.23 老板 09-19 实测: 某些 WebView 浮窗节点 centerX=-152 (负值, 不可见占位节点)
+      //   必须过滤 centerX > 0 && centerY > 0, 否则 tap 到屏幕外
+      const node = nodes.find((n: any) =>
+        n?.text?.toString()?.includes(text) &&
+        n.centerX > 0 && n.centerY > 0
+      );
       if (!node || node.centerX === undefined || node.centerY === undefined) {
-        logger.warn('click.byText', `getAllTextNodes 没找到: "${text}"`);
+        logger.warn('click.byText', `getAllTextNodes 没找到有效节点: "${text}" (可能所有匹配节点坐标无效)`);
         return false;
       }
       const { x, y } = applyHumanOffset(node.centerX, node.centerY, level);

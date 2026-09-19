@@ -332,7 +332,12 @@ async function step5ClickReportButton(): Promise<boolean> {
     logger.info('保利:步骤5', '找不到报备按钮');
     return false;
   }
-  await ZBBAutomation.delay(2000);
+  // V32.36.23 老板 09-19 装机实测: delay 2000 太短, 步骤6 立即执行时页面还没渲染完
+  //   真因: 老板 nova 11:46 实测步骤5 跟 步骤6 同时执行 (间隔 < 1s)
+  //   修法: 改 delay 3000-4000 拟人化随机 (V2.x pGammaDelay)
+  const pageDelay = 3000 + Math.floor(Math.random() * 1000);
+  logger.info('保利:步骤5', `点完报备后等 ${pageDelay}ms (V32.36.23 等页面渲染)`);
+  await ZBBAutomation.delay(pageDelay);
   logger.info('保利:步骤5', '✓ 已点报备按钮');
   return true;
 }
