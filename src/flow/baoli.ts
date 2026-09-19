@@ -315,6 +315,14 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     logger.info('保利:步骤4', `tap 后等 ${tapDelay}ms (V2.x pGammaDelay 拟人化)`);
     await ZBBAutomation.delay(tapDelay);
 
+    // V32.36.25 老板 09-19 装机实测 - 修法:
+    //   老板 11:53 实测 log: step4 完成立刻 step5, 间隔 0s, 但步骤5 找'报备'坐标错位
+    //   真因: 老板 nova 11:53:42 step4 + step5 同 1 秒内执行, 报备页面还没渲染完
+    //   修法: step4 完成后随机 delay 2-3s, 给云和家小程序"报备"页面渲染时间
+    const step4ToStep5Delay = 2000 + Math.floor(Math.random() * 1000);  // 2000-3000ms
+    logger.info('保利:步骤4', `step4 完成 → step5 前等 ${step4ToStep5Delay}ms (老板 09-19 拍板 2-3s 随机)`);
+    await ZBBAutomation.delay(step4ToStep5Delay);
+
     logger.info('保利:步骤4', `✓ 已点 ${projectName}`);
     return true;
   }
