@@ -199,43 +199,43 @@ async function step3FindMiniApp(): Promise<boolean> {
   //   V2.x v22.02.30 老板装机实测 swipe 在企微工作台 OK
   //   V2.x 假设 '云和家经纪云' 在工作台中部, 上滑 5 次 (50% 屏高) 必能找到
   //
-  // 关键设计 (V2.x BaoliService L617-649 + 老板 09-19 实测改):
-  //   1. 先 scrollUpPPlus() 上滑一次 (V32.36.17 老板 09-19 实测改 - judge.isScreenText 在 WebView 卡死)
-  //   2. 然后 findNodeByText (retries=1) 立即调一次
-  //   3. 找到了 humanTap (P+ 拟人化 ±2px 偏移) + return
-  //   4. 没找到 → for i in 4 (V32.36.17 减 1 次因为第 1 步先上滑):
+  // 关键设计 (老板 09-19 实测改 - V2.x v22.02.30 老方案 + 老板原话逻辑):
+  //   "点击工作台后, dump 当前界面所有节点, 匹配云和家经纪云, 找到就点, 找不到就上滑, 循环 5 次"
+  //   1. 先 judge.isScreenText('云和家经纪云') 找一次 (V32.36.18 单次 dump, 不重试不阻塞)
+  //   2. 找到了 humanTap (P+ 拟人化 ±2px 偏移) + return
+  //   3. 没找到 → for i in 5:
   //     a. humanSwipeWithBounceDp 上滑 (中心 X + 屏下 84% → 屏上 28%, 500ms)
   //        - 内部: swipe(x1, y1, x2+20, y2-30, 500) + delay(200) + swipe(x2+20, y2-30, x2, y2, 300)
   //     b. delay 2-2.5s (随机, 拟人化操作间隔)
-  //     c. findNodeByText (retries=1) 再找
+  //     c. judge.isScreenText('云和家经纪云') 再找一次 (V32.36.18 不阻塞)
   //     d. 找到 humanTap + break
-  //   5. 4 次后 fallback humanTapDp(223, 501)
+  //   4. 5 次后 fallback humanTapDp(223, 501)
   //
-  // V32.36.17 (09-19 老板 nova 装机实测 - 修法):
-  //   - 真因: judge.isScreenText('云和家经纪云') 在企微 WebView 内 a11y dump 卡死 45+ 秒
-  //   - logcat 看不到任何 PPlusSwipe log, 因为根本走不到 scrollUpPPlus()
-  //   - V2.x v22.02.30 老方案是 先 findNodeByText 后上滑, 但 nova EMUI 10 WebView 跟 V2.x vivo 不一样
-  //   - 修法: 先 scrollUpPPlus() 一次 (信 V2.x 老方案 native 返回值, 不依赖 a11y dump 验),
-  //           再 judge.isScreenText (此时界面已变化, WebView 节点可能更新)
-  for (let attempt = 0; attempt < 4; attempt++) {
-    // V32.36.17 老板 09-19 拍板: 第一次先上滑, 后续循环也先上滑再 judge
-    const swipeOk = await scrollUpPPlus();
-    if (!swipeOk) {
-      logger.warn('保利:步骤3', `scrollUpPPlus 失败 (attempt ${attempt + 1})`);
-    }
-
+  // V32.36.18 (09-19 老板 nova 装机实测 - 修法):
+  //   - 真因: judge.isScreenText 之前 3 次重试 + 1s backoff 在企微 WebView 内 dump 卡死
+  //   - 老板原话: "查找没有找到它第一个没有反馈有没有找到, 第二个他没有正确的调用继续下滑的操作"
+  //   - 修法: isScreenText 单次 dump 不重试 (V32.36.18) + baoli step3 恢复 V2.x 老顺序 (先 judge 再上滑)
+  for (let attempt = 0; attempt < 5; attempt++) {
     const found = await judge.isScreenText('云和家经纪云');
     if (found) {
-      logger.info('保利:步骤3', `✓ 第 ${attempt + 1} 次找到云和家经纪云 (上滑后 judge)`);
+      logger.info('保利:步骤3', `✓ 第 ${attempt + 1} 次找到云和家经纪云 (judge.isScreenText)`);
       const ok = await click.byText('云和家经纪云');
       if (ok) {
         await ZBBAutomation.delay(3000);
         return true;
       }
     }
-    // V32.36.17 老板 09-19 拍板: judge 在 WebView 卡死, 跳过一次老代码的重复上滑,
-    //   只保留 pPlusDelay 2-2.5s 给下一轮上滑后等待 WebView 渲染
-    // V2.x BaoliService L636: delay 2-2.5s (随机, 拟人化操作间隔)
+    // V2.x BaoliService L628 反证金标准 — humanSwipeWithBounceDp P+ 拟人化上滑:
+    //   起点: (centerXDp, appHeightDp * 0.84)   (屏下 84% = 接近底部)
+    //   终点: (centerXDp, appHeightDp * 0.28)   (屏上 28% = 接近顶部)
+    //   Y 变化 56% 屏 (V2.x 经验值, 比 V4 之前的 33% 屏更激进入攻, 但有效)
+    //   duration 500ms (越秀速度, 快)
+    // V32.36.11 改 swipeShell → swipe (V2.x 同款 dispatchGesture)
+    //   V2.x v22.02.30 老板装机实测 swipe 在企微 OK
+    //   V4 V32.36.9 swipeShell 老板装机实测失败
+    const swipeOk = await scrollUpPPlus();
+    logger.info('保利:步骤3', `humanSwipeWithBounceDp 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
+    // V2.x BaoliService L636 实战金标准: delay 2-2.5s (随机, 拟人化操作间隔)
     await pPlusDelay(2000, 500);
   }
 

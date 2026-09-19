@@ -59,31 +59,31 @@ export async function dumpScreenTexts(maxCount: number = 30): Promise<string[]> 
  *     - 加 3 次重试 + 1000ms backoff (老板 09-07 拍板, 足够等 WebView 建树)
  *     - 总耗时上限 ~3s, 不卡 68 秒
  */
+/**
+ * 当前屏幕是否包含指定文字 (A11y only, V32.36.7 OCR 已删)
+ *
+ * V32.36.18 (09-19 老板 nova 装机实测 - 修法):
+ *   - 真因: 之前 3 次重试 + 1s backoff 在企微 WebView 上 getAllTextNodes dump 卡死
+ *   - 老板命中错位: judge 没返回 true/false, for 循环卡死, 永远走不到 scrollUpPPlus
+ *   - 修法 (老板拍板 B 简洁版): 完全放弃 WebView 重试, 单次 getAllTextNodes
+ *     - 拿到节点 → 模糊匹配 includes(text) → 返回 true/false (立刻反馈)
+ *     - 拿不到 / dump 空 → 返回 false (保证不阻塞 for 循环)
+ *     - 老板原文 (09-19): "查找没有找到它第一个没有反馈有没有找到, 第二个他没有正确的调用继续下滑的操作"
+ *     - 现在: isScreenText 立刻返 true/false, baoli step3 for 循环能继续下次上滑
+ */
 export async function isScreenText(text: string): Promise<boolean> {
-  // V32.36.7: 只用 A11y, OCR fallback 删除 (老板拍板 OCR 误判率高)
-  // V32.36.11 (09-07): 改用 getAllTextNodes 遍历 (穿透 WebView)
-  //   V2.x 反证金标准: findAccessibilityNodeInfosByText 不穿透 WebView
-  //   老板实战 15:40 反证: dump 找到 30 条节点, findElementByText 找到 0 条
-  //   老板实战 15:48 反证: 单次 getAllTextNodes 拿 5 条 (WebView 未建), 需要轮询
-  const RETRIES = 3;
-  const BACKOFF_MS = 1000;
-
-  for (let i = 0; i < RETRIES; i++) {
-    try {
-      const nodes = await ZBBAutomation.getAllTextNodes();
-      for (const node of nodes) {
-        const t = node?.text?.toString() || '';
-        if (t.includes(text)) {
-          return true;
-        }
+  // V32.36.18 老板 09-19 拍板 B: 单次 getAllTextNodes, 不重试, 保证不阻塞
+  // 之前 3 次重试 (V32.36.11 09-07) 老板 nova 装机实测在企微 WebView 内 dump 卡死 45+ 秒
+  try {
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    for (const node of nodes) {
+      const t = node?.text?.toString() || '';
+      if (t.includes(text)) {
+        return true;
       }
-    } catch {
-      // 忽略单次错误, 下一轮重试
     }
-    // 老板 09-07 实战反证: WebView 节点树建树需 2-5s, 必须等
-    if (i < RETRIES - 1) {
-      await new Promise(r => setTimeout(r, BACKOFF_MS));
-    }
+  } catch {
+    // 忽略错误, 视作没找到 (老板 09-19 拍板 B 简洁版)
   }
   return false;
 }
