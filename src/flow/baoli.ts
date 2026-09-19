@@ -298,11 +298,14 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     }
     logger.info('保利:步骤4', `✓ 第 ${attempt}/3 次找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
 
-    // 4. 复用 V4 click.byText (V4 全局 13 处统一用, 跟 V2.x humanTap 等价)
-    //    V32.36.11 实测 nova 3s 命中 = 走 click.byText 路线
-    const ok = await click.byText('郑州保利山水和颂');
+    // 4. V32.36.20 (09-19 老板 nova 装机实测 - 修法):
+    //    之前 V32.36.11 用 click.byText('郑州保利山水和颂') 又走一遍 a11y dump 找节点
+    //    老板 nova 上 a11y dump 在企微 WebView 内卡死 (跟 judge 同问题)
+    //    现在节点已经找到了 (projectEntry), 直接 byNode(projectEntry) 用已有坐标, 跳过 a11y dump
+    //    V32.36.11 老板 nova 实测 byNode 3s 命中 (跟 click.byText 等价)
+    const ok = await click.byNode(projectEntry);
     if (!ok) {
-      logger.warn('保利:步骤4', `第 ${attempt}/3 次 click.byText 失败`);
+      logger.warn('保利:步骤4', `第 ${attempt}/3 次 click.byNode 失败`);
       if (attempt < 3) continue;
       return false;
     }
