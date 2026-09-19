@@ -259,44 +259,64 @@ async function step3FindMiniApp(): Promise<boolean> {
 async function step4FindProject(projectName: string): Promise<boolean> {
   logger.info('保利:步骤4', `找"${projectName}"...`);
 
-  // 1. V2.x v22.02.33 反证金标准: delay 3000ms 等节点树加载
-  await ZBBAutomation.delay(3000);
+  // V32.36.19 (09-19 老板 nova 装机实测 - 修法):
+  //   老板原话: "这里加一个循环, 查找三次, 每次间隔时间为 2-3s 间的随机时间"
+  //   真因: 云和家小程序刚跳转时节点树建树慢, 单次 dump 拿不到完整节点 (老板 log 显示节点 [更多/关闭/首页])
+  //   修法: 3 次循环, 每次 dump + 匹配, 间隔 2-3s 随机 (V2.x pGammaDelay 拟人化)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    logger.info('保利:步骤4', `第 ${attempt}/3 次查找`);
 
-  // 2. V32.36.11 调试铁律: dump 一次界面 (老板 log 能看到真实状态)
-  const screenTexts = await judge.dumpScreenTexts(30);
-  if (screenTexts.length === 0) {
-    logger.info('保利:步骤4', '当前界面: [空]');
-  } else {
-    screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
+    // 1. V2.x v22.02.33 反证金标准: delay 3000ms 等节点树加载
+    if (attempt === 1) {
+      // 第 1 次前等 3000ms (云和家小程序加载)
+      await ZBBAutomation.delay(3000);
+    } else {
+      // 第 2/3 次前等 2000-3000ms 随机 (老板 09-19 拍板, 间隔 2-3s)
+      const wait = 2000 + Math.floor(Math.random() * 1000);
+      logger.info('保利:步骤4', `间隔等待 ${wait}ms (老板 09-19 拍板: 2-3s 随机)`);
+      await ZBBAutomation.delay(wait);
+    }
+
+    // 2. V32.36.11 调试铁律: dump 一次界面 (老板 log 能看到真实状态)
+    const screenTexts = await judge.dumpScreenTexts(30);
+    if (screenTexts.length === 0) {
+      logger.info('保利:步骤4', '当前界面: [空]');
+    } else {
+      screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
+    }
+
+    // 3. V2.x BaoliService.ts:718 反证金标准: 精确匹配
+    //    V4 V32.36.11 judge.ts:54 反证: getAllTextNodes 穿透 WebView
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    const projectEntry = nodes.find((n: any) => n.text === '郑州保利山水和颂');
+
+    // ★ V32.36.12 防御: centerX<=0 是 V4 native 已知占位节点 bug (V32.36.10 反证)
+    if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
+      logger.warn('保利:步骤4', `第 ${attempt}/3 次未找到"郑州保利山水和颂" (节点无效: ${JSON.stringify(projectEntry)})`);
+      if (attempt < 3) continue;
+      return false;
+    }
+    logger.info('保利:步骤4', `✓ 第 ${attempt}/3 次找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+
+    // 4. 复用 V4 click.byText (V4 全局 13 处统一用, 跟 V2.x humanTap 等价)
+    //    V32.36.11 实测 nova 3s 命中 = 走 click.byText 路线
+    const ok = await click.byText('郑州保利山水和颂');
+    if (!ok) {
+      logger.warn('保利:步骤4', `第 ${attempt}/3 次 click.byText 失败`);
+      if (attempt < 3) continue;
+      return false;
+    }
+
+    // 5. V2.x pGammaDelay(2500, 3500) 拟人化随机 (V2.x v22.00.1 实战铁证 <2.5s 填表时页面未渲染完)
+    const tapDelay = 2500 + Math.floor(Math.random() * 1000);
+    logger.info('保利:步骤4', `tap 后等 ${tapDelay}ms (V2.x pGammaDelay 拟人化)`);
+    await ZBBAutomation.delay(tapDelay);
+
+    logger.info('保利:步骤4', `✓ 已点 ${projectName}`);
+    return true;
   }
 
-  // 3. V2.x BaoliService.ts:718 反证金标准: 1 次精确匹配 (不重试)
-  //    V4 V32.36.11 judge.ts:54 反证: getAllTextNodes 穿透 WebView
-  const nodes = await ZBBAutomation.getAllTextNodes();
-  const projectEntry = nodes.find((n: any) => n.text === '郑州保利山水和颂');
-
-  // ★ V32.36.12 防御: centerX<=0 是 V4 native 已知占位节点 bug (V32.36.10 反证)
-  if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
-    logger.warn('保利:步骤4', `未找到"郑州保利山水和颂" (节点无效: ${JSON.stringify(projectEntry)})`);
-    return false;
-  }
-  logger.info('保利:步骤4', `✓ 找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
-
-  // 4. 复用 V4 click.byText (V4 全局 13 处统一用, 跟 V2.x humanTap 等价)
-  //    V32.36.11 实测 nova 3s 命中 = 走 click.byText 路线
-  const ok = await click.byText('郑州保利山水和颂');
-  if (!ok) {
-    logger.warn('保利:步骤4', 'click.byText 失败, 返回 false');
-    return false;
-  }
-
-  // 5. V2.x pGammaDelay(2500, 3500) 拟人化随机 (V2.x v22.00.1 实战铁证 <2.5s 填表时页面未渲染完)
-  const tapDelay = 2500 + Math.floor(Math.random() * 1000);
-  logger.info('保利:步骤4', `tap 后等 ${tapDelay}ms (V2.x pGammaDelay 拟人化)`);
-  await ZBBAutomation.delay(tapDelay);
-
-  logger.info('保利:步骤4', `✓ 已点 ${projectName}`);
-  return true;
+  return false;
 }
 
 // ============================================================
