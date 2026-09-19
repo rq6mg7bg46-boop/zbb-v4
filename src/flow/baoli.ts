@@ -335,9 +335,14 @@ async function step4FindProject(projectName: string): Promise<boolean> {
 // ============================================================
 async function step5ClickReportButton(): Promise<boolean> {
   logger.info('保利:步骤5', '点底部"报备"按钮...');
-  const ok = await click.byText('报备');
+  // V32.36.26 老板 09-19 装机实测 - 修法:
+  //   老板 nova dump 实测: uiautomator dump 报备按钮 bounds=[399,2122][1038,2153], 中心=(719, 2138)
+  //   但 V4 getAllTextNodes 返回 (121, 1033) - WebView 内部坐标, 不是物理屏幕坐标
+  //   修法: 老板 nova 上 hardcode byCoords(719, 2138), 不用 V4 dump 错位坐标
+  //   备注: 跨机型要重测, 但老板 nova (1080x2153) 是当前唯一目标
+  const ok = await click.byCoords(719, 2138);
   if (!ok) {
-    logger.info('保利:步骤5', '找不到报备按钮');
+    logger.info('保利:步骤5', '点报备失败');
     return false;
   }
   // V32.36.23 老板 09-19 装机实测: delay 2000 太短, 步骤6 立即执行时页面还没渲染完

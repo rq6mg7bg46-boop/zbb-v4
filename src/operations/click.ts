@@ -1,58 +1,71 @@
 /**
- * V4.x click operation (老板实测 08-22)
+ * V4.x click module (老板实测 08-22)
  *
- * 5 个 method:
- * - byText(text)         按文字找节点 + 点击中心
- * - byNode(node)         A11y 节点 + 点击中心
- * - byId(viewId)         按 viewId 找节点 + 点击中心
- * - byBounds(bounds)     按 bounds 中心点击
- * - byCoords(x, y)       按坐标点击
+ * 点击操作封装:
+ * - byText(text)            按文字找节点 + 点击中心 (V32.36.22 改用 getAllTextNodes)
+ * - byNode(node)            A11y 节点 + 点击中心
+ * - byId(viewId)            按 viewId 找节点 + 点击中心 (V32.36.22 改用 getAllTextNodes)
+ * - byBounds(bounds)        按 bounds 点击中心
+ * - byCoords(x, y)          按屏幕物理坐标点击 (V32.36.26 老板 nova hardcode 修法)
  *
- * 业务流程调用:
- *   import { click } from '@/operations/click';
- *   await click.byText('开始');
+ * 老板 09-19 nova 实测发现的 4 个核心问题 (V32.36.18-26 修法链):
+ *  1. judge.isScreenText WebView dump 卡死 - V32.36.18 单次 dump 不重试
+ *  2. click.byText findElementByText 卡死 - V32.36.22 改用 getAllTextNodes
+ *  3. getAllTextNodes 返回 centerX/Y 负值 - V32.36.23 过滤 centerX > 0 && centerY > 0
+ *  4. getAllTextNodes 坐标是 WebView 内部坐标, 不是物理屏幕坐标 - V32.36.26 hardcode byCoords 兜底
+ *
+ * 老板原话: '后续还会有很多类似的这种查找界面上指定的文字坐标, 然后点击这个坐标的操作.
+ *  如果是这个方法出了问题, 是不是可以统一把这个方法修复掉?'
+ *  → V32.36.21 老板拍板统一修 click.byText + byId Promise.race 5s 超时
+ *  → V32.36.22 老板拍板重新build 改用 getAllTextNodes (绕开 native a11y dump 卡死)
+ *  → V32.36.26 老板 nova 上 V4 dump 坐标错位, 加 byCoords hardcode 修法
  */
 
-import { ZBBAutomation, A11yNode } from '@/native';
-import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
+import { ZBBAutomation } from '@/native';
 import { logger } from '@/utils/logger';
+import type { A11yNode } from '@/native';
 
 const DEFAULT_TIMEOUT_MS = 5000;
-const POLL_INTERVAL_MS = 200;
 
 async function waitForCondition<T>(
-  predicate: () => Promise<T | null | undefined | false>,
+  predicate: () => Promise<T | null>,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
-  pollMs: number = POLL_INTERVAL_MS,
 ): Promise<T | null> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const result = await predicate();
-    if (result) return result as T;
-    await new Promise(r => setTimeout(r, pollMs));
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const result = await predicate();
+      if (result) return result;
+    } catch {
+      // 忽略单次错误, 下一轮重试
+    }
+    await new Promise(r => setTimeout(r, 250));
   }
   return null;
 }
 
-/**
- * 按文字点击 (A11y 找节点 + 点击中心)
- * V32.36.7: OCR 已禁用, 只用 A11y (findElementByText)
- *
- * @param text 目标文字
- * @param options.level HumanLevel 档位 (PRECISE=±2px / NORMAL=±5px / WIDE=±10px)
- *                    文档步骤4 "中等坐标偏移" 对应 NORMAL, 默认 PRECISE
- */
+export type HumanLevel = 'precise' | 'normal' | 'wide';
+
+function applyHumanOffset(x: number, y: number, level: HumanLevel = 'precise'): { x: number; y: number } {
+  let rangeX = 0;
+  let rangeY = 0;
+  if (level === 'precise') {
+    rangeX = 2;
+    rangeY = 2;
+  } else if (level === 'normal') {
+    rangeX = 5;
+    rangeY = 5;
+  } else if (level === 'wide') {
+    rangeX = 10;
+    rangeY = 5;
+  }
+  const dx = Math.floor(Math.random() * (rangeX * 2 + 1)) - rangeX;
+  const dy = Math.floor(Math.random() * (rangeY * 2 + 1)) - rangeY;
+  return { x: x + dx, y: y + dy };
+}
+
 /**
  * 按文字查找节点 + 点击中心 (A11y)
- *
- * V32.36.21 (09-19 老板 nova 装机实测 - 老板拍板统一修):
- *   之前老板报"卡住, 后续所有 click.byText 都需要排查", 一致性问题
- *   真因: ZBBAutomation.findElementByText 内部 a11y dump 在企微 WebView 内卡死,
- *         waitForCondition 等不到 → 永久阻塞 caller
- *   修法 (老板 09-19 拍板): 包 Promise.race, 5s 超时后返 false 不阻塞 caller
- *     - 5s 还没找到 → 返回 false (跟之前 A11y 没找到行为一致)
- *     - V4 全局 click.byText 调用点都受保护 (baoli step5/6/... + 千机 + 其他 13+ 处)
- *     - 不需要每个 caller 都改成 click.byNode / click.byCoords
  *
  * V32.36.22 (09-19 老板 nova 装机实测 - 老板拍板重新build):
  *   老板实测 V32.36.21 5s 后 Promise.race 返 false, 但 native findElementByText 还在后台跑
@@ -63,22 +76,20 @@ async function waitForCondition<T>(
  *     - 找不到 → 返 false
  *     - 不阻塞, 不卡 native 调用
  *     - Promise.race 5s 兜底, 万一 getAllTextNodes 也卡死也能返 false
+ *
+ * V32.36.23 (09-19 老板 nova 装机实测):
+ *   老板 nova 11:46 实测 getAllTextNodes 返回 centerX=-152 负值 (WebView 浮窗占位节点)
+ *   修法: 过滤 centerX > 0 && centerY > 0, 跳过负值占位节点
  */
 export async function byText(
   text: string,
   options?: { timeoutMs?: number; level?: HumanLevel },
 ): Promise<boolean> {
-  const level = options?.level ?? HumanLevel.PRECISE;
+  const level = options?.level ?? 'precise';
 
-  // V32.36.22 老板 09-19 拍板重新build: 用 getAllTextNodes 单次 dump (跟 V32.36.18 judge.isScreenText 同款)
-  //   不用 findElementByText (native 端在 WebView 卡死, JS Promise.race 无效)
   const lookupPromise = (async () => {
     try {
-      // V32.36.18 验证: getAllTextNodes 单次 dump 在 nova WebView 上能返回外层节点
       const nodes = await ZBBAutomation.getAllTextNodes();
-      // 模糊匹配 (跟 judge.isScreenText 同款)
-      // V32.36.23 老板 09-19 实测: 某些 WebView 浮窗节点 centerX=-152 (负值, 不可见占位节点)
-      //   必须过滤 centerX > 0 && centerY > 0, 否则 tap 到屏幕外
       const node = nodes.find((n: any) =>
         n?.text?.toString()?.includes(text) &&
         n.centerX > 0 && n.centerY > 0
@@ -96,7 +107,6 @@ export async function byText(
     }
   })();
 
-  // V32.36.21 兜底: Promise.race 5s 超时, 万一 getAllTextNodes 也卡死
   let timeoutHandle: any = null;
   const timeoutPromise = new Promise<boolean>(resolve => {
     timeoutHandle = setTimeout(() => {
@@ -113,9 +123,9 @@ export async function byText(
 }
 
 /**
- * 按 A11y 节点点击
+ * 按 A11y 节点点击 (用节点本身的 centerX/Y)
  */
-export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
+export async function byNode(node: A11yNode, level: HumanLevel = 'precise'): Promise<boolean> {
   if (!node || node.centerX === undefined || node.centerY === undefined) {
     logger.warn('click.byNode', `节点无效: ${node}`);
     return false;
@@ -127,18 +137,18 @@ export async function byNode(node: A11yNode, level: HumanLevel = HumanLevel.PREC
 /**
  * 按 viewId 点击
  *
- * V32.36.21 老板 09-19 拍板统一修: Promise.race 5s 超时保护 (跟 byText 同款)
- *
  * V32.36.22 老板 09-19 拍板重新build: 跟 byText 同款, 用 getAllTextNodes 不用 findElementByViewId
  *   (native 端 findElementByViewId 在 WebView 也卡死, 跟 findElementByText 同问题)
  *   注: viewId 在 WebView 里通常不可见, 老板 nova 实际使用 byId 场景很少, 兜底返 false
  */
-export async function byId(viewId: string, level: HumanLevel = HumanLevel.PRECISE): Promise<boolean> {
+export async function byId(viewId: string, level: HumanLevel = 'precise'): Promise<boolean> {
   const lookupPromise = (async () => {
     try {
-      // V32.36.22: 改用 getAllTextNodes (native findElementByViewId 在 WebView 也卡死)
       const nodes = await ZBBAutomation.getAllTextNodes();
-      const node = nodes.find((n: any) => n?.viewId?.toString() === viewId);
+      const node = nodes.find((n: any) =>
+        n?.viewId?.toString() === viewId &&
+        n.centerX > 0 && n.centerY > 0
+      );
       if (!node || node.centerX === undefined || node.centerY === undefined) {
         logger.warn('click.byId', `没找到 viewId: "${viewId}" (WebView 里通常不可见)`);
         return false;
@@ -167,29 +177,22 @@ export async function byId(viewId: string, level: HumanLevel = HumanLevel.PRECIS
 }
 
 /**
- * 按 bounds 点击中心
- */
-export async function byBounds(
-  bounds: { left: number; top: number; right: number; bottom: number },
-  level: HumanLevel = HumanLevel.PRECISE,
-): Promise<boolean> {
-  const x = Math.floor((bounds.left + bounds.right) / 2);
-  const y = Math.floor((bounds.top + bounds.bottom) / 2);
-  const { x: hx, y: hy } = applyHumanOffset(x, y, level);
-  return ZBBAutomation.click(hx, hy);
-}
-
-/**
- * 按坐标点击
+ * 按屏幕物理坐标点击 (V32.36.26 老板 09-19 拍板修法 - 老板 nova 上 V4 dump 坐标错位)
+ *
+ * 老板 09-19 nova 实测:
+ *   uiautomator dump (真实屏幕坐标) 报备按钮 = (719, 2138)
+ *   V4 getAllTextNodes 返回 (121, 1033) - WebView 内部坐标, 不是物理坐标
+ *   真因: nova EMUI 10 WebView getBoundsInScreen 返回 WebView 内部坐标, 不是物理屏幕坐标
+ *   修法: 老板 nova 实测 hardcode (360-720 屏中部) / (720 屏中点) 不依赖 V4 dump
  */
 export async function byCoords(
   x: number,
   y: number,
-  level: HumanLevel = HumanLevel.PRECISE,
+  level: HumanLevel = 'precise',
 ): Promise<boolean> {
-  const { x: hx, y: hy } = applyHumanOffset(x, y, level);
-  return ZBBAutomation.click(hx, hy);
+  const { x: tapX, y: tapY } = applyHumanOffset(x, y, level);
+  logger.info('click.byCoords', `tap (${x}, ${y}) → (${tapX}, ${tapY}) (V32.36.26 老板 nova hardcode)`);
+  return ZBBAutomation.click(tapX, tapY);
 }
 
-export const click = { byText, byNode, byId, byBounds, byCoords };
-export default click;
+export const click = { byText, byNode, byId, byCoords };
