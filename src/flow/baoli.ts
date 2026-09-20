@@ -686,9 +686,11 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     try {
       const allNodes = await ZBBAutomation.getAllTextNodes();
 
-      // 老板反证金标准 #1: 过滤 className='android.widget.Image' (跟 V4 native 一致)
+      // 老板反证金标准 #1: 过滤 className='android.widget.Image' 或 type='image' (V32.36.38 native 扩展)
       const images = allNodes.filter((n: any) =>
-        n?.className?.toString() === 'android.widget.Image'
+        n?.className?.toString() === 'android.widget.Image' ||
+        n?.className?.toString().endsWith('.ImageView') ||
+        n?.type === 'image'  // V32.36.38 native 端用 type='image' 标记
       );
       logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点`);
 

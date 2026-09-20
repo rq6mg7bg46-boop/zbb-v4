@@ -2687,6 +2687,10 @@ class AccessibilityServiceImpl : AccessibilityService() {
         val isInteractive = className.endsWith("EditText") || className.endsWith("Button")
                 || className.endsWith("CheckBox") || className.endsWith("RadioButton")
                 || className.endsWith("Switch")
+        // 🆕 V32.36.38 (09-20 老板 nova 装机实测): Image 节点也返回
+        //   老板反证金标准: 老板 dump 实测 3 个 Image 节点 (二维码), 之前 V32.36.37 step13-2-2 过滤掉
+        //   修法: text/contentDesc 都为空且不是 interactive 的 Image 节点也返回 (type='image')
+        val isImage = className == "android.widget.Image" || className.endsWith(".ImageView")
         if (isInteractive) {
             val typeTag = when {
                 className.endsWith("EditText") -> "editText"
@@ -2724,6 +2728,28 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 "centerX" to centerX,
                 "centerY" to centerY,
                 "type" to "desc"
+            ))
+        }
+
+        // 🆕 V32.36.38 (09-20 老板 nova 装机实测): Image 节点返回 (无 text/contentDesc 的二维码)
+        //   老板反证金标准: 老板 nova dump 实测 Image 节点 (二维码) 56-87px, text/contentDesc 都空
+        //   修法: isImage 且没被上面 add 过, 加 type='image' + bounds 信息
+        //   注: 老板铁子铁律 - 不引入新 native API, 直接扩展现有 getAllTextNodes 返回 Image
+        if (isImage) {
+            // 避免重复: interactive/text/desc 都返回过, 重新检查 type 跟 Image 兼容不
+            // Image 节点 text="" contentDesc="" isInteractive=false, 上面三个都不会 add
+            // 这里补一个 type='image' 节点给 TS 端过滤
+            val bounds = android.graphics.Rect()
+            node.getBoundsInScreen(bounds)
+            result.add(mapOf(
+                "text" to "",
+                "centerX" to centerX,
+                "centerY" to centerY,
+                "type" to "image",
+                "className" to className,
+                "width" to (bounds.right() - bounds.left()),   // TS 端过滤二维码尺寸用
+                "height" to (bounds.bottom() - bounds.top()),  // TS 端过滤二维码尺寸用
+                "clickable" to node.isClickable
             ))
         }
 
