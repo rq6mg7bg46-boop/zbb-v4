@@ -100,21 +100,39 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
 async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<boolean> {
   logger.info('app', `========== 保利第 ${round} 轮开始 ==========`);
 
-  // 步骤 1: 打开企业微信
-  const step1 = await step1OpenWechat();
-  if (!step1) return false;
+  // V32.36.42 老板 09-20 装机实测 - 修法 (老板拍板 简单方案):
+  //   老板 16:25:48 实测: 第一轮完成后第二轮又从打开企业微信开始, 浪费 ~10-15s
+  //   老板拍板: '第二轮在完成第一轮之后, 点击返回按钮, 可以直接到步骤5, 不需要再从打开企业微信开始'
+  //   修法 (老板铁子反证金标准): runBaoliRound 内部按 round 区分
+  //     - round=1: 完整跑 step1-4 (打开企微 → 工作台 → 云和家 → 项目)
+  //     - round=2: 跳过 step1-4, 直接从 step5 开始 (报备成功后已经在项目详情页附近)
+  //   V2.x 反证金标准: handleSecondRound L2385+ 老板拍板 - 第二轮开始前 currentRound=2 + PROJECT_NAME_ROUND_2
+  //   老板铁子担心 (V4 简化): 万一第一轮报备成功后不在项目详情页, step5 dump 找"报备"按钮会失败
+  //                     但老板拍板简单方案先试, 失败再加 B 方案 (tap 返回键 + 找项目详情页)
+  if (round === 1) {
+    // 步骤 1: 打开企业微信
+    const step1 = await step1OpenWechat();
+    if (!step1) return false;
 
-  // 步骤 2: 点击工作台
-  const step2 = await step2ClickWorkbench();
-  if (!step2) return false;
+    // 步骤 2: 点击工作台
+    const step2 = await step2ClickWorkbench();
+    if (!step2) return false;
 
-  // 步骤 3: 上滑查找"云和家经纪云"
-  const step3 = await step3FindMiniApp();
-  if (!step3) return false;
+    // 步骤 3: 上滑查找"云和家经纪云"
+    const step3 = await step3FindMiniApp();
+    if (!step3) return false;
 
-  // 步骤 4: 找报备项目名 (V2.x BaoliService.ts:706-718 反证金标准: 步骤 4 跟 projectName 无关, 始终找 '郑州保利山水和颂' 跳转入口)
-  const step4 = await step4FindProject(STEP4_TARGET);
-  if (!step4) return false;
+    // 步骤 4: 找报备项目名 (V2.x BaoliService.ts:706-718 反证金标准: 步骤 4 跟 projectName 无关, 始终找 '郑州保利山水和颂' 跳转入口)
+    const step4 = await step4FindProject(STEP4_TARGET);
+    if (!step4) return false;
+  } else {
+    // V32.36.42 老板拍板 - 第二轮跳过 step1-4, 直接从 step5 开始
+    //   假设: 第一轮报备成功后页面已经在"项目详情页" (跟 V2.x handleSecondRound 反证金标准一致)
+    //   老板实测: 第一轮成功后, 第二轮直接点报备按钮
+    //   万一失败: step5ClickReportButton 内部 dump 找"报备" Button 找不到 → 返回 false → runBaoliRound return false
+    //           → V32.36.43+ 老板铁子再加 B 方案 (tap 返回键 + 找项目详情页)
+    logger.info('保利', `第 ${round} 轮跳过 step1-4, 直接从 step5 开始 (V32.36.42 老板拍板简单方案)`);
+  }
 
   // 步骤 5: 点底部"报备"按钮
   const step5 = await step5ClickReportButton();
