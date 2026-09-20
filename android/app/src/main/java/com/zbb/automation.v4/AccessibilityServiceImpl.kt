@@ -2741,6 +2741,14 @@ class AccessibilityServiceImpl : AccessibilityService() {
             // 这里补一个 type='image' 节点给 TS 端过滤
             // V32.36.38b 修法: 复用 outer scope 的 bounds (L2680) 不要再 declare 局部变量
             //   Kotlin Rect.right/left/bottom/top 是 property 不是 function - 用 .right 不是 .right()
+            //
+            // V32.36.46 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
+            //   老板铁子错位: V32.36.38b 用嵌套 Map 结构 (bounds 子 map), RN bridge 序列化丢字段
+            //   老板 17:36 实测: V32.36.44 用 bounds 推算还是 0 个 -> bounds 也没传过来
+            //   修法: 把 width/height/left/top/right/bottom 都转成 top-level Int 字段, 不嵌套
+            //     - imageWidth, imageHeight (Int)
+            //     - imageLeft, imageTop, imageRight, imageBottom (Int)
+            //   TS 端: 优先读 imageWidth/imageHeight, fallback width/height, fallback bounds
             val imageW = bounds.right - bounds.left   // Kotlin Rect.right 是 Int property
             val imageH = bounds.bottom - bounds.top
             result.add(mapOf(
@@ -2749,8 +2757,14 @@ class AccessibilityServiceImpl : AccessibilityService() {
                 "centerY" to centerY,
                 "type" to "image",
                 "className" to className,
-                "width" to imageW,    // TS 端过滤二维码尺寸用
-                "height" to imageH,   // TS 端过滤二维码尺寸用
+                "width" to imageW,        // V32.36.38b 字段
+                "height" to imageH,       // V32.36.38b 字段
+                "imageWidth" to imageW,    // V32.36.46 top-level Int 字段 (RN bridge 友好)
+                "imageHeight" to imageH,   // V32.36.46 top-level Int 字段
+                "imageLeft" to bounds.left,     // V32.36.46 top-level Int 字段
+                "imageTop" to bounds.top,       // V32.36.46 top-level Int 字段
+                "imageRight" to bounds.right,   // V32.36.46 top-level Int 字段
+                "imageBottom" to bounds.bottom, // V32.36.46 top-level Int 字段
                 "clickable" to node.isClickable
             ))
         }
