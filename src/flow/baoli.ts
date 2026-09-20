@@ -769,9 +769,29 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       //   老板铁子错位: 用 40-100 固定尺寸过滤, 老板 nova 实际二维码 144x141 (列表页 84x87 / 结果页 144x141)
       //   真实情况: 不同页面二维码尺寸差异大, 固定范围会漏
       //   修法: aspect ratio (宽高比) 0.85-1.15 接近正方形 (二维码特征) + 尺寸 50-300 宽松范围
+      //
+      // V32.36.44 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
+      //   老板铁子错位: V32.36.38b native 加了 width/height 字段, TS 端用 (n as any).width
+      //   真实情况: V4 TS A11yNode interface 没声明 width/height, RN bridge 序列化时可能丢失
+      //             老板 nova log: dump 找到 85 个 Image 节点, 二维码候选 0 个 -> 全部 width/height 是 undefined
+      //   真因: V4 native V32.36.38b 的 type='image' 节点, RN bridge 没把 width/height 传到 TS 端
+      //   修法: 用 V4 A11yNode 已有的 bounds 字段 (L11 interface 已声明) 推算 width/height
+      //     - bounds = { left, top, right, bottom } (V4 native L2680 getBoundsInScreen 已有)
+      //     - width = bounds.right - bounds.left
+      //     - height = bounds.bottom - bounds.top
+      //   老板铁子铁律: 不依赖 RN bridge 序列化的未声明字段, 用已声明的 bounds 推算
       const qrCandidates = images.filter((n: any) => {
-        const w = (n as any).width ?? 0;
-        const h = (n as any).height ?? 0;
+        // V32.36.44 优先用 bounds (V4 A11yNode interface 已声明), 失败 fallback width/height (V32.36.38b)
+        const bounds = (n as any).bounds;
+        let w = 0;
+        let h = 0;
+        if (bounds && typeof bounds === 'object') {
+          w = (bounds.right ?? 0) - (bounds.left ?? 0);
+          h = (bounds.bottom ?? 0) - (bounds.top ?? 0);
+        } else {
+          w = (n as any).width ?? 0;
+          h = (n as any).height ?? 0;
+        }
         if (w === 0 || h === 0) return false;  // 排除占位
         // 二维码特征: 接近正方形 (aspect ratio 0.85-1.15)
         const aspectRatio = w / h;
@@ -780,13 +800,14 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
         const isRightSize = w >= 50 && w <= 300 && h >= 50 && h <= 300;
         return isSquareLike && isRightSize;
       });
-      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300): ${qrCandidates.length} 个`);
+      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300): ${qrCandidates.length} 个 (V32.36.44 用 bounds 推算)`);
 
       // 老板反证金标准 #3: 按 Y 升序排序 (bounds.top 越小越靠上 = 最新报备)
+      // V32.36.44 用 bounds.top 推算 Y 最小, 不用 height (跟 width/height 字段丢失 bug 协同修法)
       qrCandidates.sort((a: any, b: any) => {
-        const aH = a.height ?? 0;
-        const bH = b.height ?? 0;
-        return (a.centerY - aH / 2) - (b.centerY - bH / 2);
+        const aTop = (a as any).bounds?.top ?? a.centerY - ((a as any).height ?? 0) / 2;
+        const bTop = (b as any).bounds?.top ?? b.centerY - ((b as any).height ?? 0) / 2;
+        return aTop - bTop;
       });
 
       // 老板反证金标准 #4: 点第一个 (Y 最小 = 最新报备), 零抖动
