@@ -335,12 +335,32 @@ async function step4FindProject(projectName: string): Promise<boolean> {
 // ============================================================
 async function step5ClickReportButton(): Promise<boolean> {
   logger.info('保利:步骤5', '点底部"报备"按钮...');
-  // V32.36.26 老板 09-19 装机实测 - 修法:
-  //   老板 nova dump 实测: uiautomator dump 报备按钮 bounds=[399,2122][1038,2153], 中心=(719, 2138)
-  //   但 V4 getAllTextNodes 返回 (121, 1033) - WebView 内部坐标, 不是物理屏幕坐标
-  //   修法: 老板 nova 上 hardcode byCoords(719, 2138), 不用 V4 dump 错位坐标
-  //   备注: 跨机型要重测, 但老板 nova (1080x2153) 是当前唯一目标
-  const ok = await click.byCoords(719, 2138);
+  // V32.36.30 老板 09-20 装机实测 - 修法 (老板拍板 B 方案):
+  //   老板 11:10 nova 实测 dump 显示 "报备" 按钮 bounds=[129,2122][768,2153], center=(449, 2138)
+  //   V32.36.26 hardcode byCoords(719, 2138) 是错的, 跟老板 nova 不同界面不一致
+  //   修法: 用 getAllTextNodes dump 找带 Button className 的"报备"节点
+  //   (老板 nova dump 显示 "报备" Button resource-id='a3809cf8--u-wave-btn', class='android.widget.Button')
+  //   不再 hardcode 物理坐标, 通用性更好
+  let ok = false;
+  try {
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    // V32.36.30 找带 Button class 的 "报备" 节点 (排除 "我要报备" / "我的报备" / "报备信息" 等 tab/text)
+    const reportBtn = nodes.find((n: any) =>
+      n?.text === '报备' &&  // 精确匹配, 避免 "我要报备" / "我的报备"
+      (n?.className === 'android.widget.Button' || n?.clickable === true) &&
+      n.centerX > 0 && n.centerY > 0
+    );
+    if (reportBtn) {
+      logger.info('保利:步骤5', `dump 找到 "报备" Button @ (${reportBtn.centerX}, ${reportBtn.centerY})`);
+      ok = await click.byNode(reportBtn);
+    } else {
+      logger.warn('保利:步骤5', `dump 没找到带 Button 的 "报备", 兜底 hardcode byCoords(449, 2138)`);
+      ok = await click.byCoords(449, 2138);  // V32.36.30 兜底 (老板 nova 11:10 dump 实测)
+    }
+  } catch (e) {
+    logger.warn('保利:步骤5', `dump 异常: ${e}, 兜底 byCoords(449, 2138)`);
+    ok = await click.byCoords(449, 2138);
+  }
   if (!ok) {
     logger.info('保利:步骤5', '点报备失败');
     return false;
