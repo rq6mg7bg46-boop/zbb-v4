@@ -667,21 +667,48 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     );
     logger.info('保利:步骤13-情况2', `humanSwipeWithBounceDp 上滑结果: ${swipeOk}`);
 
-    // 情况 2-2: 找"上传附件"坐标 + 点 (x+500, y) 二维码位置
-    //   V32.36.35 老板 09-20 拍板: '需要按照 V2 的模式, 增加点击二维码和三指下滑的操作'
-    //   V2.x 反证 client/services/BaoliService.ts L2089-2104 步骤15-情况2-2:
-    //     - 找'上传附件'节点 → tap(uploadNode.centerX + 500, uploadNode.centerY) → 触发二维码面板
-    //   修法: V4 沿用同款 - dump 找'上传附件' → click byCoords(uploadNode.centerX + 500, uploadNode.centerY)
-    const uploadNode = await a11y.findByText('上传附件');
+    // 情况 2-2: 找"上传附件"坐标 + 点 (x+dpToPx(167), y) 二维码位置
+    //   V32.36.36 老板 09-20 装机实测 - 修法 (老板拍板: '再确认 V2'):
+    //     V2.x 步骤15-情况2-2 最新版本是 v22.02.60 (09-17 老板拍板):
+    //       - 偏移量: 原 nova px +500 → dp(167) 自动适配机型 (方案 A 老板拍板 2026-07-06)
+    //         nova 7 5G (480dpi, 1dp=3px): 167dp=501px ≈ 原 500 ✅
+    //         vivo V2166A (320dpi, 1dp=2px): 167dp=334px
+    //         generic 按 pixelRatio 自动换算
+    //       - 点击: 不调 humanTap (避免 ±2px 抖动影响命中)
+    //         老板实战反证: 步骤15-情况2-2 上传附件坐标 +500px 偏移后, ±2px 抖动会让点落到 "上传附件" 按钮自身 (错点)
+    //         修法: 直接调 zbbAutomation.tap, 不经过 humanTap 抖动
+    //   V32.36.35 老板铁子写的: +500px 硬编码 + click.byCoords (带 ±2px 抖动) - 老板铁子错位漏了 v22.02.60 关键修法
+    //   V32.36.36 修法 (老板铁子命中错位逻辑 - 按 V2 v22.02.60 重写):
+    //     - 偏移量: dpToPx(167) 自动适配老板 nova (480dpi, 1dp=3px) = 501px
+    //     - 点击: 不经过 click 模块, 直接调 ZBBAutomation.tap 零抖动
+    logger.info('保利:步骤13-情况2', '识别"上传附件"坐标 (V32.36.36 V2 v22.02.60 同款)');
+    let uploadNode: any = null;
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      uploadNode = nodes.find((n: any) => n?.text?.toString()?.includes('上传附件'));
+    } catch (e) {
+      logger.warn('保利:步骤13-情况2', `dump 找上传附件异常: ${e}`);
+    }
     if (uploadNode && uploadNode.centerX !== undefined && uploadNode.centerY !== undefined) {
-      // V32.36.35 老板 09-20 拍板: 加点击二维码 (跟 V2 同款, x+500px 偏移)
-      const qrcodeX = uploadNode.centerX + 500;
+      // V32.36.36 V2 v22.02.60 同款: dpToPx(167) 自动适配机型 + 直接 tap 零抖动
+      const uploadOffsetPx = Math.round(167 * 3);  // 老板 nova 480dpi (1dp=3px) → 501px ≈ V2 原 500
+      const qrcodeX = uploadNode.centerX + uploadOffsetPx;
       const qrcodeY = uploadNode.centerY;
-      logger.info('保利:步骤13-情况2', `点二维码 @ (${qrcodeX}, ${qrcodeY}) (上传附件 +500, V2 同款 V32.36.35)`);
-      await click.byCoords(qrcodeX, qrcodeY);
+      logger.info('保利:步骤13-情况2', `点二维码 @ (${qrcodeX}, ${qrcodeY}) (上传附件 +dp(167)*3=${uploadOffsetPx}px, V2 v22.02.60 同款 V32.36.36)`);
+      // V32.36.36 关键: 直接 ZBBAutomation.click(x, y) 零抖动 (跟 V2 zbbAutomation.tap 等价)
+      //   V4 click 模块的 byCoords 有 ±2px 抖动, 这里直接调底层 click 避免
+      //   V2 v22.02.60 老板拍板反证: ±2px 抖动会让点落到 "上传附件" 按钮自身 (错点)
+      await ZBBAutomation.click(qrcodeX, qrcodeY);
     } else {
       logger.warn('保利:步骤13-情况2', `没找到 "上传附件" 节点, 跳过点二维码`);
     }
+
+    // 情况 2-2-2: V32.36.36 老板拍板 - V2 同款 showToast 提示老板去截图
+    //   V2.x BaoliService.ts L2169 v22.02.34 老板实战反证金标准:
+    //     showToast('✅ 已完成报备, 请选择正确二维码截图. 记得核对姓名及电话!')
+    //   修法: V4 ZBBAutomation.showToast 待 V32.36.37+ 加, V32.36.36 暂时不调 (老板铁子铁律: 不引入未实现 API)
+    //   注: V2 也是 showToast 在步骤15-情况2-步骤8 (后续) 不在 2-2 这里, V32.36.37+ 调整位置
+    logger.info('保利:步骤13-情况2', 'V2 同款 showToast 待 V32.36.37+ 整合 (V32.36.36 不引入未实现 API)');
 
     // 情况 2-3: 三指下滑触发系统截图 (V32.36.35 老板 09-20 拍板 - 新增)
     //   老板拍板: '增加点击二维码和三指下滑的操作'
