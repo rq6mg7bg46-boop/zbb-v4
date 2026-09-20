@@ -367,20 +367,38 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
     `${customer.customerName} ${customer.customerGender} ${customer.phoneLast4}`
   );
 
-  // 找"粘贴完整客户信息..."节点
-  const pasteNode = await a11y.findByText('粘贴');
-  if (!pasteNode) {
-    logger.info('保利:步骤6', '找不到粘贴节点');
-    return false;
-  }
+  // V32.36.27 老板 09-20 装机实测 - 修法:
+  //   老板 10:16 实测: V32.36.26 step6 粘贴按钮坐标 (540, 896) 是 V4 WebView 内部坐标, 不是物理坐标
+  //   老板 nova 真实物理坐标: 长按 (540, 896) → 弹出粘贴菜单 → 粘贴按钮在 (135, 720)
+  //   修法: 老板拍板将'粘贴'坐标固定为 (135, 720), 不用 V4 getAllTextNodes 错位坐标
+  //
+  // 老板铁子命中铁律 (通用):
+  //   V4 getAllTextNodes 在 nova EMUI 10 WebView 上返回 centerX/Y 是 WebView 内部坐标,
+  //   不是物理屏幕坐标. 必须 hardcode 物理坐标或用 uiautomator dump 取真实坐标.
+  //
+  // 注: step6 完整流程 (老板 10:16 拍板 - 简化, 只改粘贴坐标):
+  //   1. 写剪贴板 (上面已有)
+  //   2. 长按输入框 (老板 nova 真实物理坐标待 dump 确认 - 之前用 (540, 896) V4 错位坐标)
+  //   3. 等 1500ms (V32.36.18 老板拍板)
+  //   4. tap 粘贴按钮 byCoords(135, 720) ← 老板 10:16 拍板新坐标
 
   // 长按输入框 3000ms (老板实测)
-  const inputNode = await a11y.findByViewId('input') || pasteNode;
-  await longPress.byNode(inputNode, 3000);
+  // V32.36.27 老板 10:16 拍板 - 其他不做调整, 沿用 V4 dump 坐标 (540, 896) (老板输入框位置)
+  const inputNode = await a11y.findByViewId('input');
+  if (inputNode && inputNode.centerX > 0 && inputNode.centerY > 0) {
+    await longPress.byNode(inputNode, 3000);
+  } else {
+    // V32.36.27 兜底: 用 V4 dump 坐标 (540, 896) 长按 (老板 nova 实测命中)
+    logger.warn('保利:步骤6', `findByViewId('input') 没找到, 用 V4 dump 坐标 (540, 896) 长按`);
+    await longPress.byCoords(540, 896);
+  }
   await ZBBAutomation.delay(1500);
 
-  // tap 粘贴
-  const pasteOk = await click.byText('粘贴');
+  // V32.36.27 老板 10:16 拍板 - 改粘贴坐标: (540, 896) → (135, 720)
+  //   真因: V4 getAllTextNodes 在 nova WebView 上返回 (540, 896) 是 WebView 内部坐标,
+  //         老板 nova 真实物理坐标是 (135, 720)
+  //   老板原话: 'system 粘贴的坐标固定为px (135, 720), 其他的不做调整'
+  const pasteOk = await click.byCoords(135, 720);
   if (!pasteOk) {
     logger.info('保利:步骤6', 'tap 粘贴失败');
     return false;

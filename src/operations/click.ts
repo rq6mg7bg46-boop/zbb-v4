@@ -196,3 +196,4 @@ export async function byCoords(
 }
 
 export const click = { byText, byNode, byId, byCoords };
+export default click;
