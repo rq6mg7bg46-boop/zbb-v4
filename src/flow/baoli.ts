@@ -543,39 +543,68 @@ async function step11ClickReport(): Promise<boolean> {
 }
 
 // ============================================================
-// 步骤 12: 等待报备结果 (V2.x 步骤 14)
+// 步骤 12: 等待报备结果 (V2.x 步骤 14, 老板 09-20 拍板简化)
+// V32.36.33 老板 09-20 装机实测 - 修法:
+//   老板 11:35 实测: V4 step12 循环 15s 每 500ms 调 judge.isScreenText('报备成功'/'重号')
+//     - 进入结果界面了, 但 judge.isScreenText 调 getAllTextNodes dump 在 WebView 上有问题
+//     - V4 dump 漏掉了结果页'防截客中' / '上传附件' / '疑似重号' 文字
+//     - 15s 一直 false → step12 返回 false → runBaoliRound 报错
+//   老板拍板: '学习 V2 的操作逻辑, 对比 V4 的逻辑. 目标:安装 V4 的架构, 实现 V2 的操作逻辑'
+//   修法: step12 改成 V2.x 同款 - 一次性 delay (3500-5000ms) pGammaDelay, 然后进 step13 检测
 // ============================================================
 async function step12WaitResult(): Promise<boolean> {
   logger.info('保利:步骤12', '等待报备结果...');
 
-  // 等"报备成功"或"重号"出现
-  const start = Date.now();
-  while (Date.now() - start < 15000) {
-    if (await judge.isScreenText('报备成功')) return true;
-    if (await judge.isScreenText('重号')) return true;
-    await ZBBAutomation.delay(500);
-  }
+  // V32.36.33 老板 09-20 拍板: 一次性 pGammaDelay(3500, 5000) 等结果页渲染
+  //   跟 V2.x BaoliService.ts L1519-1521 v19.75 (老板拍板 3500-5000ms) 一致
+  //   真因: V4 之前循环 15s 每 500ms 调 isScreenText 在 WebView 上 getAllTextNodes dump 有问题
+  //         老板实测: 进入结果界面了但没检测到 → 直接报错
+  //         实际 V2.x 一次 delay 让结果页渲染完, 然后步骤15 一次性 dump 节点判断
+  const delayMs = 3500 + Math.floor(Math.random() * 1500);  // 3500-5000ms (V2.x pGammaDelay)
+  logger.info('保利:步骤12', `等结果页渲染 ${delayMs}ms (V32.36.33 跟 V2.x pGammaDelay 一致)`);
+  await ZBBAutomation.delay(delayMs);
 
-  logger.info('保利:步骤12', '超时 15s');
-  return false;
+  // V32.36.33 step12 不再做"循环等结果", 直接返回 true 让 step13 检测
+  //   step13DetectResult 才是真判定 (跟 V2.x 步骤15 detectResult 对齐)
+  logger.info('保利:步骤12', '✓ 等待完成, 进入步骤13 检测结果');
+  return true;
 }
 
 // ============================================================
-// 步骤 13: 检测报备结果 (V2.x 步骤 15)
-// 实测: 情况 1=重号 → 老板介入, 情况 2=成功 → 上滑 + 上传附件 + 等截图
+// 步骤 13: 检测报备结果 (V2.x 步骤 15, 老板 09-20 拍板对齐 V2)
+// V32.36.33 修法: 一次性 dump + 多节点双匹配判定 (跟 V2.x detectResult 对齐)
 // ============================================================
 async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮)...`);
 
-  // 情况 1: 重号
-  if (await judge.isScreenText('重号')) {
-    logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
-    orchestrator.send('BAOLI_INTERVENE'); // 老板介入
+  // V32.36.33 老板 09-20 拍板: 一次性 dump + 多节点匹配 (跟 V2.x BaoliService.ts L1536-1580 一致)
+  //   V2.x 实战反证金标准 (08-12 老板拍板 B 修法 v2):
+  //     - 报备成功 = '防截客中' (结果页顶部 banner) + '上传附件' (结果页底部按钮) 双节点
+  //     - 疑似重号 = '疑似重号' 或 '重复'
+  //   V4 之前用 '报备成功'/'重号' 单词判定 → 漏报 → 30s 超时误报
+  let nodes: any[] = [];
+  try {
+    nodes = await ZBBAutomation.getAllTextNodes();
+  } catch (e) {
+    logger.warn('保利:步骤13', `dump 异常: ${e}`);
     return false;
   }
 
-  // 情况 2: 成功
-  if (await judge.isScreenText('报备成功')) {
+  // 情况 1: 疑似重号
+  const repeatNode = nodes.find((n: any) =>
+    n?.text?.toString()?.includes('疑似重号') || n?.text?.toString()?.includes('重复')
+  );
+  if (repeatNode) {
+    logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
+    orchestrator.send('BAOLI_INTERVENE');
+    return false;
+  }
+
+  // 情况 2: 报备成功 (V2.x 老板实战反证金标准 B 修法 v2 - 多节点双匹配)
+  const hasFangJieKe = nodes.some(n => n?.text?.toString()?.includes('防截客中'));
+  const hasShangChuanFuJian = nodes.some(n => n?.text?.toString()?.includes('上传附件'));
+  if (hasFangJieKe && hasShangChuanFuJian) {
+    logger.info('保利:步骤13-情况2', `报备成功 (双节点匹配: 防截客中=${hasFangJieKe}, 上传附件=${hasShangChuanFuJian})`);
     logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
 
     // 情况 2-1: 上滑屏幕 (V32.36.11 老板 09-02 修, 改 humanSwipeWithBounceDp)
