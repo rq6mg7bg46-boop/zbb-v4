@@ -130,7 +130,7 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
 
   // 步骤 8: 选择报备项目 (再确认一次, V2.x BaoliService.ts:118-119 反证金标准: projectName 跟 round 对应)
   const projectName = round === 1 ? PROJECT_NAME_ROUND_1 : PROJECT_NAME_ROUND_2;
-  const step8 = await step8SelectProject(projectName);
+  const step8 = await step8SelectProject(projectName, round);
   if (!step8) return false;
 
   // 步骤 9: 点确认
@@ -508,18 +508,20 @@ async function step7SelectInstallment(): Promise<boolean> {
 // ============================================================
 // 步骤 8: 选择报备项目 (V2.x 步骤 10, 再确认一次)
 // ============================================================
-async function step8SelectProject(projectName: string): Promise<boolean> {
-  logger.info('保利:步骤8', `选择报备项目: ${projectName}...`);
-  // V32.36.40 老板 09-20 装机实测 - 修法 (老板拍板):
-  //   老板 17:01 实测: 第一轮 '保利缦城和颂' @ (540, 1919), 第二轮 '保利山水和颂' @ (540, 2159)
-  //   老板拍板: '调整为查找2次, 每次间隔1-2S间的随机时间, 找不到使用兜底坐标'
-  //   修法: 跟 V32.36.32 step6 / V32.36.34 step7 思路一致
-  //     - 第一次 dump 找 projectName (用 getAllTextNodes 跳过 a11y dump 卡死)
-  //     - 找不到 → 等 1000-2000ms 随机 → 再 dump
-  //     - 还找不到 → 兜底 hardcode byCoords(540, 1919) (老板 nova 17:01 第一轮实测命中)
-  //   注: 兜底用第一轮坐标 570, 因为第一轮跟 round 1 都用 projectName='缦城和颂',
-  //        第二轮项目在不同 Y 位置 (老板 nova 17:02 实测 2159),
-  //        但 540 是居中 X, 1919 在屏中下部, 大多数项目都接近这里
+async function step8SelectProject(projectName: string, round: 1 | 2): Promise<boolean> {
+  logger.info('保利:步骤8', `选择报备项目 (第 ${round} 轮): ${projectName}...`);
+  // V32.36.41 老板 09-20 装机实测 - 修法 (老板拍板 2 轮 2 个兜底坐标):
+  //   老板 17:01/17:02 实测:
+  //     - 第 1 轮 '保利缦城和颂' @ (540, 1919)
+  //     - 第 2 轮 '保利山水和颂' @ (540, 2159)
+  //   老板拍板: '这是 2 轮, 是 2 个兜底坐标. 你现在设置了几个?'
+  //   V32.36.40 老板铁子错位: 只设了 1 个兜底 (540, 1919), 第二轮会点错位置
+  //   修法: step8 加 round 参数, 根据 round 选不同兜底坐标
+  //     - round=1 → 兜底 byCoords(540, 1919) (老板 nova 17:01 实测)
+  //     - round=2 → 兜底 byCoords(540, 2159) (老板 nova 17:02 实测)
+  //   循环逻辑跟 V32.36.32 step6 / V32.36.34 step7 / V32.36.40 step8 一致
+  const fallbackX = 540;
+  const fallbackY = round === 1 ? 1919 : 2159;  // V32.36.41 老板拍板 2 个兜底坐标
   let foundNode: any = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     if (attempt > 1) {
@@ -553,9 +555,10 @@ async function step8SelectProject(projectName: string): Promise<boolean> {
   if (foundNode) {
     ok = await click.byNode(foundNode);
   } else {
-    // V32.36.40 兜底: hardcode byCoords(540, 1919) (老板 nova 17:01 第一轮实测命中坐标)
-    logger.warn('保利:步骤8', `2 次都没找到, 兜底 hardcode byCoords(540, 1919) (老板 nova 17:01 实测)`);
-    ok = await click.byCoords(540, 1919);
+    // V32.36.41 老板拍板 - 2 轮 2 个兜底坐标 (跟 V32.36.40 老板铁子只 1 个错位修法):
+    //   round=1 -> (540, 1919), round=2 -> (540, 2159)
+    logger.warn('保利:步骤8', `2 次都没找到, 兜底 hardcode byCoords(${fallbackX}, ${fallbackY}) (老板 nova 17:01/17:02 第 ${round} 轮实测)`);
+    ok = await click.byCoords(fallbackX, fallbackY);
   }
 
   if (!ok) {
