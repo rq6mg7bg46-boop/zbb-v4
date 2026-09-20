@@ -769,6 +769,14 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       //   老板问: '修复失败, 查找原因'
       //   老板铁子反证: bounds 字段可能也丢了, 或 V32.36.38b native 端 type='image' 节点根本没有 bounds
       //   修法: 加诊断 log 输出第一个 Image 节点的所有 keys, 确认到底丢了哪些字段
+      // V32.36.47 老板 09-20 装机实测 - 修法 (老板铁子命中错位, 诊断 log 暴露新 bug):
+      //   老板 nova 18:09:47 log 首个 Image 节点 keys: ["clickable","centerX","centerY","type","className","text"]
+      //   老板 nova 18:09:47 log 首个 Image 节点数据: {"clickable":false,"centerX":-210,"centerY":344,"type":"image","className":"android.widget.Image","text":""}
+      //   老板铁子命中错位: centerX=-210 是负数, Image 节点不在屏幕可见区域 (viewpager offscreen / 隐藏)
+      //   真因 1: V32.36.46 build 没装到 nova (老板 nova 还是 V32.36.45 APK, native 字段没生效)
+      //   真因 2: 不可见 Image 节点 (centerX<0) 也被算入候选
+      //   修法: 1. TS 端过滤掉 centerX<0 || centerY<0 || centerX>screenWidth 的不可见节点
+      //         2. 保留 V32.36.46 native 字段 imageWidth/Height (等老板 nova 装 V32.36.46 APK 后验)
       if (images.length > 0) {
         const sample = images[0] as any;
         const keys = Object.keys(sample);
@@ -795,7 +803,20 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       //     - 1 优先级: imageWidth/imageHeight/imageTop (V32.36.46 native top-level Int)
       //     - 2 fallback: width/height (V32.36.38b 嵌套 map)
       //     - 3 fallback: bounds.right/left/bottom/top (V32.36.44 推算)
+      //
+      // V32.36.47 老板 09-20 装机实测 - 修法 (老板铁子命中错位 - 诊断 log 暴露新 bug):
+      //   老板 nova 18:09:47 log: 首个 Image centerX=-210 (负数, 不可见)
+      //   真因: viewpager offscreen / 隐藏 Image 节点, 跟 screen 无关
+      //   修法: 过滤 centerX < 0 || centerY < 0 || centerX > screenWidth || centerY > screenHeight
+      //   V32.36.45 老板铁子错位: 没过滤负坐标, 老板 nova 25 个 Image 里有不可见节点
+      //   V32.36.47 老板铁子反证金标准: 修过滤逻辑
+      const screenW = screenWidthDp() * 3;  // nova 480dpi = 1dp=3px
+      const screenH = screenHeightDp() * 3;
       const qrCandidates = images.filter((n: any) => {
+        // V32.36.47 过滤掉不可见的 Image 节点 (centerX/Y 异常)
+        if (typeof n.centerX === 'number' && (n.centerX < 0 || n.centerX > screenW)) return false;
+        if (typeof n.centerY === 'number' && (n.centerY < 0 || n.centerY > screenH)) return false;
+
         // V32.36.46 优先用 top-level Int 字段 (RN bridge 友好)
         let w = (n as any).imageWidth ?? 0;
         let h = (n as any).imageHeight ?? 0;
@@ -820,7 +841,7 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
         const isRightSize = w >= 50 && w <= 300 && h >= 50 && h <= 300;
         return isSquareLike && isRightSize;
       });
-      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300): ${qrCandidates.length} 个 (V32.36.46 top-level Int)`);
+      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300 + 可见过滤): ${qrCandidates.length} 个 (V32.36.47)`);
 
       // 老板反证金标准 #3: 按 Y 升序排序 (bounds.top 越小越靠上 = 最新报备)
       // V32.36.46 优先 imageTop (top-level Int), fallback bounds.top
