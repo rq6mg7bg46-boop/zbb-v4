@@ -362,25 +362,13 @@ async function step5ClickReportButton(): Promise<boolean> {
 async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> {
   logger.info('保利:步骤6', '长按输入框 + 粘贴客户信息...');
 
-  // 写剪贴板
-  await ZBBAutomation.setClipboardText(
-    `${customer.customerName} ${customer.customerGender} ${customer.phoneLast4}`
-  );
-
-  // V32.36.27 老板 09-20 装机实测 - 修法:
-  //   老板 10:16 实测: V32.36.26 step6 粘贴按钮坐标 (540, 896) 是 V4 WebView 内部坐标, 不是物理坐标
-  //   老板 nova 真实物理坐标: 长按 (540, 896) → 弹出粘贴菜单 → 粘贴按钮在 (135, 720)
-  //   修法: 老板拍板将'粘贴'坐标固定为 (135, 720), 不用 V4 getAllTextNodes 错位坐标
-  //
-  // 老板铁子命中铁律 (通用):
-  //   V4 getAllTextNodes 在 nova EMUI 10 WebView 上返回 centerX/Y 是 WebView 内部坐标,
-  //   不是物理屏幕坐标. 必须 hardcode 物理坐标或用 uiautomator dump 取真实坐标.
-  //
-  // 注: step6 完整流程 (老板 10:16 拍板 - 简化, 只改粘贴坐标):
-  //   1. 写剪贴板 (上面已有)
-  //   2. 长按输入框 (老板 nova 真实物理坐标待 dump 确认 - 之前用 (540, 896) V4 错位坐标)
-  //   3. 等 1500ms (V32.36.18 老板拍板)
-  //   4. tap 粘贴按钮 byCoords(135, 720) ← 老板 10:16 拍板新坐标
+  // V32.36.28 老板 09-20 装机实测 - 修法 (老板拍板简化):
+  //   老板原话: '学习 V2 的逻辑, 这里直接使用剪切板的内容, 不需要使用其他数据'
+  //   真因: 千机端 stepCopyPhoneNumber 已经在前面流程把完整客户信息写入剪贴板
+  //         保利端不需要再拼接 customerName/gender/phoneLast4 (容易出错 + 跟剪贴板内容不一致)
+  //   修法: 删掉 ZBBAutomation.setClipboardText(...), 沿用千机端写入的剪贴板内容
+  //         跟 V2.x BaoliService.ts L807 老板实战反证金标准一致:
+  //           '剪贴板由千机端写入, 保利端只管粘贴'
 
   // 长按输入框 3000ms (老板实测)
   // V32.36.27 老板 10:16 拍板 - 其他不做调整, 沿用 V4 dump 坐标 (540, 896) (老板输入框位置)
@@ -395,9 +383,7 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   await ZBBAutomation.delay(1500);
 
   // V32.36.27 老板 10:16 拍板 - 改粘贴坐标: (540, 896) → (135, 720)
-  //   真因: V4 getAllTextNodes 在 nova WebView 上返回 (540, 896) 是 WebView 内部坐标,
-  //         老板 nova 真实物理坐标是 (135, 720)
-  //   老板原话: 'system 粘贴的坐标固定为px (135, 720), 其他的不做调整'
+  // V32.36.28 老板 09-20 拍板 - 直接粘贴 (不写剪贴板), 沿用千机端写入的内容
   const pasteOk = await click.byCoords(135, 720);
   if (!pasteOk) {
     logger.info('保利:步骤6', 'tap 粘贴失败');
@@ -406,7 +392,7 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
 
   // 等粘贴菜单 (500ms 动画)
   await ZBBAutomation.delay(500);
-  logger.info('保利:步骤6', '✓ 客户信息已粘贴');
+  logger.info('保利:步骤6', '✓ 客户信息已粘贴 (V32.36.28 沿用千机端剪贴板内容)');
   return true;
 }
 
