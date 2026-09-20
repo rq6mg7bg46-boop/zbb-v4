@@ -390,14 +390,37 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   //         跟 V2.x BaoliService.ts L807 老板实战反证金标准一致:
   //           '剪贴板由千机端写入, 保利端只管粘贴'
 
-  // 长按输入框 3000ms (老板实测)
-  // V32.36.27 老板 10:16 拍板 - 其他不做调整, 沿用 V4 dump 坐标 (540, 896) (老板输入框位置)
-  const inputNode = await a11y.findByViewId('input');
+  // V32.36.32 老板 09-20 装机实测 - 修法 (老板拍板):
+  //   老板 11:30 实测 log: findByViewId('input') 没找到, 直接用 hardcode (540, 896)
+  //   老板拍板: '这里调整为等待1-2S间的随机时间, 先查找2次, 间隔1-2S的随机时间,
+  //            第二次找不到再使用固定坐标'
+  //   修法: 跟 V32.36.19 step4 加循环 3 次间隔 2-3s 思路一致
+  //     - 第一次前等 1000-2000ms 随机
+  //     - dump 找 findByViewId('input')
+  //     - 找不到 → 等 1000-2000ms 随机 → 再 dump
+  //     - 还找不到 → 兜底 hardcode (540, 896) (老板 nova 实测命中)
+  let inputNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+    logger.info('保利:步骤6', `第 ${attempt}/2 次查找 input 前等 ${wait}ms (老板 09-20 拍板 1-2s 随机)`);
+    await ZBBAutomation.delay(wait);
+
+    inputNode = await a11y.findByViewId('input');
+    if (inputNode && inputNode.centerX > 0 && inputNode.centerY > 0) {
+      logger.info('保利:步骤6', `第 ${attempt}/2 次找到 "输入框" viewId @ (${inputNode.centerX}, ${inputNode.centerY})`);
+      break;
+    } else {
+      logger.warn('保利:步骤6', `第 ${attempt}/2 次没找到 viewId="input"`);
+      if (attempt === 2) {
+        logger.warn('保利:步骤6', `2 次都没找到, 兜底 hardcode byCoords(540, 896) (老板 nova 实测)`);
+      }
+    }
+  }
+
   if (inputNode && inputNode.centerX > 0 && inputNode.centerY > 0) {
     await longPress.byNode(inputNode, 3000);
   } else {
-    // V32.36.27 兜底: 用 V4 dump 坐标 (540, 896) 长按 (老板 nova 实测命中)
-    logger.warn('保利:步骤6', `findByViewId('input') 没找到, 用 V4 dump 坐标 (540, 896) 长按`);
+    // V32.36.32 兜底: 用 V4 dump 坐标 (540, 896) 长按 (老板 nova 实测命中)
     await longPress.byCoords(540, 896);
   }
   await ZBBAutomation.delay(1500);
