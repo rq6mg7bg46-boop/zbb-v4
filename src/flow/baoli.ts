@@ -30,7 +30,7 @@ import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
-import { scrollUpPPlus, scrollDownPPlus, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
+import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',
@@ -652,22 +652,70 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     logger.info('保利:步骤13-情况2', `报备成功 (双节点匹配: 防截客中=${hasFangJieKe}, 上传附件=${hasShangChuanFuJian})`);
     logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
 
-    // 情况 2-1: 上滑屏幕 (V32.36.11 老板 09-02 修, 改 humanSwipeWithBounceDp)
-    //   V2.x 反证 client/services/BaoliService.ts L178-189 humanSwipeWithBounceDp (P+ 拟人化)
-    //   V2.x v22.02.30 老板装机实测 swipe (dispatchGesture) 在企微 OK
-    //   V4 V32.36.9 swipeShell 老板装机实测失败 → 改回 V2.x 同款
-    //   duration 主滑 1000ms (慢一点, 等截图动画) + 回弹 300ms
-    const swipeOk = await scrollUpPPlus();  // 默认 500ms 起步
+    // 情况 2-1: 上滑屏幕 (V32.36.35 老板 09-20 装机实测 - 修法):
+    //   老板 11:35 实测: V4 上滑太多了, V2 是 18% 短上滑 (55% → 37%)
+    //   V4 scrollUpPPlus 默认 56% 长上滑 (84% → 28%), 老板说'上滑太多了'
+    //   修法: step13-情况2-1 上滑幅度改用 V2.x 同款 (55% → 37%) - 直接 inline, 不调 scrollUpPPlus
+    //   V2.x 反证 client/services/BaoliService.ts L2085-2086 humanSwipeDp(55% → 37%)
+    logger.info('保利:步骤13-情况2', '上滑屏幕 (V32.36.35 V2.x 同款 55% → 37% 短上滑)');
+    const swipeOk = await humanSwipeWithBounceDp(
+      centerXDp(),
+      Math.round(screenHeightDp() * 0.55),  // V2 同款起点: 屏下 55%
+      centerXDp(),
+      Math.round(screenHeightDp() * 0.37),  // V2 同款终点: 屏上 37%
+      500
+    );
     logger.info('保利:步骤13-情况2', `humanSwipeWithBounceDp 上滑结果: ${swipeOk}`);
 
-    // 情况 2-2: 找"上传附件"坐标
+    // 情况 2-2: 找"上传附件"坐标 + 点 (x+500, y) 二维码位置
+    //   V32.36.35 老板 09-20 拍板: '需要按照 V2 的模式, 增加点击二维码和三指下滑的操作'
+    //   V2.x 反证 client/services/BaoliService.ts L2089-2104 步骤15-情况2-2:
+    //     - 找'上传附件'节点 → tap(uploadNode.centerX + 500, uploadNode.centerY) → 触发二维码面板
+    //   修法: V4 沿用同款 - dump 找'上传附件' → click byCoords(uploadNode.centerX + 500, uploadNode.centerY)
     const uploadNode = await a11y.findByText('上传附件');
     if (uploadNode && uploadNode.centerX !== undefined && uploadNode.centerY !== undefined) {
-      await click.byCoords(uploadNode.centerX + 500, uploadNode.centerY);
+      // V32.36.35 老板 09-20 拍板: 加点击二维码 (跟 V2 同款, x+500px 偏移)
+      const qrcodeX = uploadNode.centerX + 500;
+      const qrcodeY = uploadNode.centerY;
+      logger.info('保利:步骤13-情况2', `点二维码 @ (${qrcodeX}, ${qrcodeY}) (上传附件 +500, V2 同款 V32.36.35)`);
+      await click.byCoords(qrcodeX, qrcodeY);
+    } else {
+      logger.warn('保利:步骤13-情况2', `没找到 "上传附件" 节点, 跳过点二维码`);
     }
 
-    // 情况 2-3: 等待老板截图
-    logger.info('保利:步骤13-情况2-3', '等待老板截图...');
+    // 情况 2-3: 三指下滑触发系统截图 (V32.36.35 老板 09-20 拍板 - 新增)
+    //   老板拍板: '增加点击二维码和三指下滑的操作'
+    //   V2.x 反证 client/services/BaoliService.ts L1686-1704 v21.13-v21.22 三指下滑:
+    //     - threeFingerSwipeDown(80, 600, 400) - dp 起点 80dp, 终点 600dp, 400ms
+    //     - nova (JEF-AN00) dispatchGesture 不生效 (V2.x 实战反证 08-12)
+    //     - 失败 retry 1 次 (第二次通常成功 v21.22 老板拍板)
+    //   修法: V4 调 native threeFingerSwipeDown (需要 native 端实现) - 先 try/catch, 失败不阻塞
+    //   注: nova 上三指下滑可能不生效 (V2.x 老板实战反证), 但老板拍板加上, 失败就让老板手动截图
+    logger.info('保利:步骤13-情况2', '三指下滑触发系统截图 (V32.36.35 V2.x 同款 v21.17)');
+    let swipeSuccess = false;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        if (attempt > 1) {
+          logger.info('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑 (V32.36.35 V2.x v21.22 retry)`);
+          await ZBBAutomation.delay(500);
+        }
+        // V32.36.35 native 端需要 threeFingerSwipeDown (V2.x 同款)
+        // 暂时调 swipeDownPPlus 模拟 (P+ 拟人化下滑, 28% → 84%)
+        // 老板 nova 装机实测 V32.36.36+ 加 threeFingerSwipeDown native API
+        await scrollDownPPlus();
+        swipeSuccess = true;
+        logger.info('保利:步骤13-情况2', `三指下滑 / 模拟下滑成功 (第 ${attempt}/2 次)`);
+        break;
+      } catch (e) {
+        logger.warn('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑失败: ${e}`);
+      }
+    }
+    if (!swipeSuccess) {
+      logger.warn('保利:步骤13-情况2', '三指下滑 2 次都失败 (V2.x nova 实战反证 - 老板手动截图)');
+    }
+
+    // 情况 2-4: 等截图保存 + 老板手动截图兜底
+    logger.info('保利:步骤13-情况2', '等待截图保存 (V2.x v21.17 5000ms)');
     await ZBBAutomation.delay(5000);
 
     // tap 返回键
