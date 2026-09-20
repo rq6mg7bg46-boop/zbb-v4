@@ -765,6 +765,17 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       );
       logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点`);
 
+      // V32.36.45 老板 09-20 装机实测 - 诊断 log (老板铁子命中错位, V32.36.44 用 bounds 推算还是 0 个):
+      //   老板问: '修复失败, 查找原因'
+      //   老板铁子反证: bounds 字段可能也丢了, 或 V32.36.38b native 端 type='image' 节点根本没有 bounds
+      //   修法: 加诊断 log 输出第一个 Image 节点的所有 keys, 确认到底丢了哪些字段
+      if (images.length > 0) {
+        const sample = images[0] as any;
+        const keys = Object.keys(sample);
+        logger.info('保利:步骤13-情况2', `首个 Image 节点 keys: ${JSON.stringify(keys)}`);
+        logger.info('保利:步骤13-情况2', `首个 Image 节点数据: ${JSON.stringify(sample).substring(0, 300)}`);
+      }
+
       // V32.36.39 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
       //   老板铁子错位: 用 40-100 固定尺寸过滤, 老板 nova 实际二维码 144x141 (列表页 84x87 / 结果页 144x141)
       //   真实情况: 不同页面二维码尺寸差异大, 固定范围会漏
