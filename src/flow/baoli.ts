@@ -450,9 +450,54 @@ async function step7SelectInstallment(): Promise<boolean> {
   const step6ToStep7Delay = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
   logger.info('保利:步骤7', `step6 完成 → step7 前等 ${step6ToStep7Delay}ms (老板 09-20 拍板 1-2s 随机)`);
   await ZBBAutomation.delay(step6ToStep7Delay);
-  const ok = await click.byText('请选择分期');
+
+  // V32.36.34 老板 09-20 装机实测 - 修法 (老板拍板):
+  //   老板 11:35 实测: 找到 "请选择分期" @ (520, 605), 但希望加 2 次循环兜底机制
+  //   老板原话: '这一步加一个机制: 先查找2次, 间隔1-2S间的随机时间, 中不到使用固定坐标兜底'
+  //   修法: 跟 V32.36.32 step6 输入框查找 2 次循环 1-2s 随机思路一致
+  //     - 第一次 dump 找 '请选择分期' (用 getAllTextNodes 跳过 a11y dump 卡死)
+  //     - 找不到 → 等 1000-2000ms 随机 → 再 dump
+  //     - 还找不到 → 兜底 hardcode byCoords(519, 607) (老板 nova 11:35 实测命中坐标)
+  let foundNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      // 第 2 次前等 1-2s 随机
+      const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+      logger.info('保利:步骤7', `第 ${attempt}/2 次查找 "请选择分期" 前等 ${wait}ms (老板 09-20 拍板 1-2s 随机)`);
+      await ZBBAutomation.delay(wait);
+    } else {
+      logger.info('保利:步骤7', `第 ${attempt}/2 次查找 "请选择分期"...`);
+    }
+
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      const node = nodes.find((n: any) =>
+        n?.text?.toString()?.includes('请选择分期') &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (node) {
+        logger.info('保利:步骤7', `第 ${attempt}/2 次找到 "请选择分期" @ (${node.centerX}, ${node.centerY})`);
+        foundNode = node;
+        break;
+      } else {
+        logger.warn('保利:步骤7', `第 ${attempt}/2 次没找到 "请选择分期"`);
+      }
+    } catch (e) {
+      logger.warn('保利:步骤7', `第 ${attempt}/2 次 dump 异常: ${e}`);
+    }
+  }
+
+  let ok = false;
+  if (foundNode) {
+    ok = await click.byNode(foundNode);
+  } else {
+    // V32.36.34 兜底: hardcode byCoords(519, 607) (老板 nova 11:35 实测命中坐标)
+    logger.warn('保利:步骤7', `2 次都没找到, 兜底 hardcode byCoords(519, 607) (老板 nova 11:35 实测)`);
+    ok = await click.byCoords(519, 607);
+  }
+
   if (!ok) {
-    logger.info('保利:步骤7', '找不到分期选项');
+    logger.info('保利:步骤7', '点分期失败');
     return false;
   }
   await ZBBAutomation.delay(1500);
