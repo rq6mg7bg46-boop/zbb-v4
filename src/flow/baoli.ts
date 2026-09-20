@@ -694,19 +694,22 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       );
       logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点`);
 
-      // 老板反证金标准 #2: 尺寸过滤 40-100px (二维码尺寸, 排除 banner 小图)
-      //   老板 nova dump: Image #1 39x51 宽<40 排除, Image #2/#3 84x87 保留
+      // V32.36.39 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
+      //   老板铁子错位: 用 40-100 固定尺寸过滤, 老板 nova 实际二维码 144x141 (列表页 84x87 / 结果页 144x141)
+      //   真实情况: 不同页面二维码尺寸差异大, 固定范围会漏
+      //   修法: aspect ratio (宽高比) 0.85-1.15 接近正方形 (二维码特征) + 尺寸 50-300 宽松范围
       const qrCandidates = images.filter((n: any) => {
-        // V4 native getAllTextNodes 返回 centerX/centerY, 但没暴露 bounds (老板铁子要查)
-        // 用 centerX/centerY 反推 bounds (center ± 尺寸/2)
-        // 老板 nova dump: 84x87 二维码, center 在 (954, 1199), bounds=[912,1156][996,1243]
-        // width = right - left = 996-912 = 84, height = 1243-1156 = 87
-        // 暂时用 w/h 属性 (V4 native 节点结构要看实际返回)
-        const w = (n as any).width || (n as any).bounds?.right - (n as any).bounds?.left;
-        const h = (n as any).height || (n as any).bounds?.bottom - (n as any).bounds?.top;
-        return w >= 40 && w <= 100 && h >= 40 && h <= 100;
+        const w = (n as any).width ?? 0;
+        const h = (n as any).height ?? 0;
+        if (w === 0 || h === 0) return false;  // 排除占位
+        // 二维码特征: 接近正方形 (aspect ratio 0.85-1.15)
+        const aspectRatio = w / h;
+        const isSquareLike = aspectRatio >= 0.85 && aspectRatio <= 1.15;
+        // 尺寸范围: 50-300 px (二维码通常 84-200)
+        const isRightSize = w >= 50 && w <= 300 && h >= 50 && h <= 300;
+        return isSquareLike && isRightSize;
       });
-      logger.info('保利:步骤13-情况2', `二维码候选 (尺寸 40-100): ${qrCandidates.length} 个`);
+      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300): ${qrCandidates.length} 个`);
 
       // 老板反证金标准 #3: 按 Y 升序排序 (bounds.top 越小越靠上 = 最新报备)
       qrCandidates.sort((a: any, b: any) => {
