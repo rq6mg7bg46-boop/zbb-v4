@@ -2739,16 +2739,18 @@ class AccessibilityServiceImpl : AccessibilityService() {
             // 避免重复: interactive/text/desc 都返回过, 重新检查 type 跟 Image 兼容不
             // Image 节点 text="" contentDesc="" isInteractive=false, 上面三个都不会 add
             // 这里补一个 type='image' 节点给 TS 端过滤
-            val bounds = android.graphics.Rect()
-            node.getBoundsInScreen(bounds)
+            // V32.36.38b 修法: 复用 outer scope 的 bounds (L2680) 不要再 declare 局部变量
+            //   Kotlin Rect.right/left/bottom/top 是 property 不是 function - 用 .right 不是 .right()
+            val imageW = bounds.right - bounds.left   // Kotlin Rect.right 是 Int property
+            val imageH = bounds.bottom - bounds.top
             result.add(mapOf(
                 "text" to "",
                 "centerX" to centerX,
                 "centerY" to centerY,
                 "type" to "image",
                 "className" to className,
-                "width" to (bounds.right() - bounds.left()),   // TS 端过滤二维码尺寸用
-                "height" to (bounds.bottom() - bounds.top()),  // TS 端过滤二维码尺寸用
+                "width" to imageW,    // TS 端过滤二维码尺寸用
+                "height" to imageH,   // TS 端过滤二维码尺寸用
                 "clickable" to node.isClickable
             ))
         }
