@@ -667,40 +667,67 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     );
     logger.info('保利:步骤13-情况2', `humanSwipeWithBounceDp 上滑结果: ${swipeOk}`);
 
-    // 情况 2-2: 找"上传附件"坐标 + 点 (x+dpToPx(167), y) 二维码位置
-    //   V32.36.36 老板 09-20 装机实测 - 修法 (老板拍板: '再确认 V2'):
-    //     V2.x 步骤15-情况2-2 最新版本是 v22.02.60 (09-17 老板拍板):
-    //       - 偏移量: 原 nova px +500 → dp(167) 自动适配机型 (方案 A 老板拍板 2026-07-06)
-    //         nova 7 5G (480dpi, 1dp=3px): 167dp=501px ≈ 原 500 ✅
-    //         vivo V2166A (320dpi, 1dp=2px): 167dp=334px
-    //         generic 按 pixelRatio 自动换算
-    //       - 点击: 不调 humanTap (避免 ±2px 抖动影响命中)
-    //         老板实战反证: 步骤15-情况2-2 上传附件坐标 +500px 偏移后, ±2px 抖动会让点落到 "上传附件" 按钮自身 (错点)
-    //         修法: 直接调 zbbAutomation.tap, 不经过 humanTap 抖动
-    //   V32.36.35 老板铁子写的: +500px 硬编码 + click.byCoords (带 ±2px 抖动) - 老板铁子错位漏了 v22.02.60 关键修法
-    //   V32.36.36 修法 (老板铁子命中错位逻辑 - 按 V2 v22.02.60 重写):
-    //     - 偏移量: dpToPx(167) 自动适配老板 nova (480dpi, 1dp=3px) = 501px
-    //     - 点击: 不经过 click 模块, 直接调 ZBBAutomation.tap 零抖动
-    logger.info('保利:步骤13-情况2', '识别"上传附件"坐标 (V32.36.36 V2 v22.02.60 同款)');
-    let uploadNode: any = null;
+    // 情况 2-2: 找 Y 值最小的二维码 (V32.36.37 老板 09-20 新逻辑, 老板反证金标准)
+    //   老板 09-20 拍板: 'V2 老逻辑错了, 用新逻辑 - 找所有 Image 节点 + Y 升序 + 点第一个'
+    //   V32.36.35 + V32.36.36 错位 (老板铁子): 用 V2 老逻辑 'text.includes(上传附件)' + +dp(167) 偏移
+    //     - V2 v22.02.60 老板反证: 二维码 (636, 791) vs 上传附件 (290, 512) 不在同一水平, +500px 偏错
+    //   V32.36.37 新逻辑 (老板反证金标准):
+    //     1. dump getAllTextNodes 拿所有节点
+    //     2. 过滤 className='android.widget.Image' + 尺寸 40-100px (二维码尺寸)
+    //     3. 按 bounds.top 升序排序 (Y 最小 = 最新报备 = 最顶部)
+    //     4. 点第一个的 centerX/centerY (零抖动, 不偏移)
+    //   老板 nova 09-20 11:30 dump 验证: 3 个 Image 节点
+    //     - Image #1 (banner): [999,319][1038,370] 39x51 (宽<40 不过滤)
+    //     - Image #2 (新报备 11:51:21): [912,1156][996,1243] 84x87 ✅
+    //     - Image #3 (旧报备 11:35:26): [912,1918][996,2005] 84x87 ✅
+    //   按 Y 排序后: #2 是第一个 (Y 最小), 应该点 #2 的 centerX=954, centerY=1199
+    logger.info('保利:步骤13-情况2', 'V32.36.37 老板新逻辑 - 找 Y 最小 Image 二维码');
+    let qrClicked = false;
     try {
-      const nodes = await ZBBAutomation.getAllTextNodes();
-      uploadNode = nodes.find((n: any) => n?.text?.toString()?.includes('上传附件'));
+      const allNodes = await ZBBAutomation.getAllTextNodes();
+
+      // 老板反证金标准 #1: 过滤 className='android.widget.Image' (跟 V4 native 一致)
+      const images = allNodes.filter((n: any) =>
+        n?.className?.toString() === 'android.widget.Image'
+      );
+      logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点`);
+
+      // 老板反证金标准 #2: 尺寸过滤 40-100px (二维码尺寸, 排除 banner 小图)
+      //   老板 nova dump: Image #1 39x51 宽<40 排除, Image #2/#3 84x87 保留
+      const qrCandidates = images.filter((n: any) => {
+        // V4 native getAllTextNodes 返回 centerX/centerY, 但没暴露 bounds (老板铁子要查)
+        // 用 centerX/centerY 反推 bounds (center ± 尺寸/2)
+        // 老板 nova dump: 84x87 二维码, center 在 (954, 1199), bounds=[912,1156][996,1243]
+        // width = right - left = 996-912 = 84, height = 1243-1156 = 87
+        // 暂时用 w/h 属性 (V4 native 节点结构要看实际返回)
+        const w = (n as any).width || (n as any).bounds?.right - (n as any).bounds?.left;
+        const h = (n as any).height || (n as any).bounds?.bottom - (n as any).bounds?.top;
+        return w >= 40 && w <= 100 && h >= 40 && h <= 100;
+      });
+      logger.info('保利:步骤13-情况2', `二维码候选 (尺寸 40-100): ${qrCandidates.length} 个`);
+
+      // 老板反证金标准 #3: 按 Y 升序排序 (bounds.top 越小越靠上 = 最新报备)
+      qrCandidates.sort((a: any, b: any) => {
+        const aH = a.height ?? 0;
+        const bH = b.height ?? 0;
+        return (a.centerY - aH / 2) - (b.centerY - bH / 2);
+      });
+
+      // 老板反证金标准 #4: 点第一个 (Y 最小 = 最新报备), 零抖动
+      if (qrCandidates.length > 0) {
+        const firstQr = qrCandidates[0];
+        logger.info('保利:步骤13-情况2', `Y 最小二维码 @ (${firstQr.centerX}, ${firstQr.centerY}) (老板反证金标准最新报备)`);
+        await ZBBAutomation.click(firstQr.centerX, firstQr.centerY);  // 零抖动
+        qrClicked = true;
+      } else {
+        logger.warn('保利:步骤13-情况2', '没找到二维码候选, 跳过点二维码');
+      }
     } catch (e) {
-      logger.warn('保利:步骤13-情况2', `dump 找上传附件异常: ${e}`);
+      logger.warn('保利:步骤13-情况2', `dump 找二维码异常: ${e}`);
     }
-    if (uploadNode && uploadNode.centerX !== undefined && uploadNode.centerY !== undefined) {
-      // V32.36.36 V2 v22.02.60 同款: dpToPx(167) 自动适配机型 + 直接 tap 零抖动
-      const uploadOffsetPx = Math.round(167 * 3);  // 老板 nova 480dpi (1dp=3px) → 501px ≈ V2 原 500
-      const qrcodeX = uploadNode.centerX + uploadOffsetPx;
-      const qrcodeY = uploadNode.centerY;
-      logger.info('保利:步骤13-情况2', `点二维码 @ (${qrcodeX}, ${qrcodeY}) (上传附件 +dp(167)*3=${uploadOffsetPx}px, V2 v22.02.60 同款 V32.36.36)`);
-      // V32.36.36 关键: 直接 ZBBAutomation.click(x, y) 零抖动 (跟 V2 zbbAutomation.tap 等价)
-      //   V4 click 模块的 byCoords 有 ±2px 抖动, 这里直接调底层 click 避免
-      //   V2 v22.02.60 老板拍板反证: ±2px 抖动会让点落到 "上传附件" 按钮自身 (错点)
-      await ZBBAutomation.click(qrcodeX, qrcodeY);
-    } else {
-      logger.warn('保利:步骤13-情况2', `没找到 "上传附件" 节点, 跳过点二维码`);
+
+    if (!qrClicked) {
+      logger.warn('保利:步骤13-情况2', '二维码点击失败, 但继续流程');
     }
 
     // 情况 2-2-2: V32.36.36 老板拍板 - V2 同款 showToast 提示老板去截图
