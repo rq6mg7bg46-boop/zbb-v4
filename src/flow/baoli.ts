@@ -401,6 +401,12 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
 // ============================================================
 async function step7SelectInstallment(): Promise<boolean> {
   logger.info('保利:步骤7', '点请选择分期...');
+  // V32.36.29 老板 09-20 装机实测 - 修法:
+  //   老板 11:01 实测: step6 粘贴完成后立刻 step7, 间隔 0s, 分期页面还没渲染完
+  //   修法: step6 → step7 加 1-2s 随机 delay (老板 09-20 拍板)
+  const step6ToStep7Delay = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+  logger.info('保利:步骤7', `step6 完成 → step7 前等 ${step6ToStep7Delay}ms (老板 09-20 拍板 1-2s 随机)`);
+  await ZBBAutomation.delay(step6ToStep7Delay);
   const ok = await click.byText('请选择分期');
   if (!ok) {
     logger.info('保利:步骤7', '找不到分期选项');
