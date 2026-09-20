@@ -848,8 +848,46 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
     logger.info('保利:步骤13-情况2', '等待截图保存 (V2.x v21.17 5000ms)');
     await ZBBAutomation.delay(5000);
 
-    // tap 返回键
-    await pressKey.back();
+    // V32.36.43 老板 09-20 装机实测 - 修法 (老板拍板 B):
+    //   老板问: 'tap 返回键 返回的是哪个界面?'
+    //   老板铁子反证: 报备结果页 → pressKey.back() → 项目详情页 (跟 V2.x v22.02.24 反证金标准一致)
+    //                  但 V32.36.42 第二轮逻辑假设'页面已经在项目详情页', 如果多按返回键会跳出项目页
+    //   修法: 按返回键 + dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
+    //     - 最多按 2 次 (防跳出项目页)
+    //     - 每次按完 dump 验证, 没找到项目页 → 退出 (让 V32.36.42 第二轮 fail 报错)
+    //   V2.x 反证金标准: v22.02.24 (08-12 老板拍板) - '不按返回键, 让用户在保利小程序继续操作下一轮'
+    //                    但 V32.36.42 第二轮需要页面在项目详情页, 所以保留按返回键 (跟 V2.x 不同)
+    let onProjectPage = false;
+    for (let backCount = 1; backCount <= 3; backCount++) {
+      await pressKey.back();
+      await ZBBAutomation.delay(1000);
+
+      // dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
+      let checkNodes: any[] = [];
+      try {
+        checkNodes = await ZBBAutomation.getAllTextNodes();
+      } catch (e) {
+        logger.warn('保利:步骤13-情况2', `dump 验证项目页异常: ${e}`);
+      }
+      const hasReportBtn = checkNodes.some((n: any) =>
+        n?.text?.toString()?.includes('报备')
+      );
+      const hasProjectName = checkNodes.some((n: any) =>
+        n?.text?.toString()?.includes('缦城和颂') ||
+        n?.text?.toString()?.includes('山水和颂') ||
+        n?.text?.toString()?.includes('和煦')
+      );
+      if (hasReportBtn && hasProjectName) {
+        onProjectPage = true;
+        logger.info('保利:步骤13-情况2', `✓ 按返回键 ${backCount} 次后到达项目详情页 (V32.36.43 老板拍板 B)`);
+        break;
+      } else {
+        logger.warn('保利:步骤13-情况2', `按返回键 ${backCount} 次, 未到项目详情页 (报备按钮=${hasReportBtn}, 项目名=${hasProjectName})`);
+      }
+    }
+    if (!onProjectPage) {
+      logger.warn('保利:步骤13-情况2', '按 3 次返回键都没到项目详情页 (V32.36.43 老板拍板 B - 让 V32.36.42 第二轮 fail)');
+    }
 
     return true;
   }
