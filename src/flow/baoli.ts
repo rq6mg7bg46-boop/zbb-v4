@@ -481,9 +481,40 @@ async function step10SmartRecognition(): Promise<boolean> {
 // ============================================================
 async function step11ClickReport(): Promise<boolean> {
   logger.info('保利:步骤11', '点报备...');
-  const ok = await click.byText('报备');
-  if (!ok) return false;
-  await ZBBAutomation.delay(2000);
+  // V32.36.31 老板 09-20 装机实测 - 修法 (老板拍板 B 方案, 跟 step5 同款):
+  //   老板 nova 实测: step11 提交页的"报备"按钮跟 step5 一样是 Button class
+  //   V32.36.30 step5 修法已验: dump 找 Button + 兜底 hardcode
+  //   老板说"步骤11也需要调整" - 跟 step5 同款修法
+  //   修法: 用 getAllTextNodes dump 找带 Button className 的"报备"节点
+  //   找不到 → 兜底 hardcode byCoords(449, 2138) (跟 step5 兜底一致, 老板 nova 11:10 dump 实测)
+  let ok = false;
+  try {
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    const reportBtn = nodes.find((n: any) =>
+      n?.text === '报备' &&
+      (n?.className === 'android.widget.Button' || n?.clickable === true) &&
+      n.centerX > 0 && n.centerY > 0
+    );
+    if (reportBtn) {
+      logger.info('保利:步骤11', `dump 找到 "报备" Button @ (${reportBtn.centerX}, ${reportBtn.centerY})`);
+      ok = await click.byNode(reportBtn);
+    } else {
+      logger.warn('保利:步骤11', `dump 没找到带 Button 的 "报备", 兜底 hardcode byCoords(449, 2138)`);
+      ok = await click.byCoords(449, 2138);  // V32.36.31 兜底 (跟 V32.36.30 step5 一致)
+    }
+  } catch (e) {
+    logger.warn('保利:步骤11', `dump 异常: ${e}, 兜底 byCoords(449, 2138)`);
+    ok = await click.byCoords(449, 2138);
+  }
+  if (!ok) {
+    logger.info('保利:步骤11', '点报备失败');
+    return false;
+  }
+  // V32.36.31 老板 09-20 装机实测: delay 2000 可能不够, 老板说 step11 也需要调整
+  //   跟 step5 同款, 加 3000-4000ms 拟人化随机延迟
+  const pageDelay = 3000 + Math.floor(Math.random() * 1000);
+  logger.info('保利:步骤11', `点完报备后等 ${pageDelay}ms (V32.36.31 等页面渲染)`);
+  await ZBBAutomation.delay(pageDelay);
   logger.info('保利:步骤11', '✓ 已点报备');
   return true;
 }
