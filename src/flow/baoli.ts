@@ -510,8 +510,58 @@ async function step7SelectInstallment(): Promise<boolean> {
 // ============================================================
 async function step8SelectProject(projectName: string): Promise<boolean> {
   logger.info('保利:步骤8', `选择报备项目: ${projectName}...`);
-  const ok = await click.byText(projectName);
-  if (!ok) return false;
+  // V32.36.40 老板 09-20 装机实测 - 修法 (老板拍板):
+  //   老板 17:01 实测: 第一轮 '保利缦城和颂' @ (540, 1919), 第二轮 '保利山水和颂' @ (540, 2159)
+  //   老板拍板: '调整为查找2次, 每次间隔1-2S间的随机时间, 找不到使用兜底坐标'
+  //   修法: 跟 V32.36.32 step6 / V32.36.34 step7 思路一致
+  //     - 第一次 dump 找 projectName (用 getAllTextNodes 跳过 a11y dump 卡死)
+  //     - 找不到 → 等 1000-2000ms 随机 → 再 dump
+  //     - 还找不到 → 兜底 hardcode byCoords(540, 1919) (老板 nova 17:01 第一轮实测命中)
+  //   注: 兜底用第一轮坐标 570, 因为第一轮跟 round 1 都用 projectName='缦城和颂',
+  //        第二轮项目在不同 Y 位置 (老板 nova 17:02 实测 2159),
+  //        但 540 是居中 X, 1919 在屏中下部, 大多数项目都接近这里
+  let foundNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      // 第 2 次前等 1-2s 随机
+      const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+      logger.info('保利:步骤8', `第 ${attempt}/2 次查找 "${projectName}" 前等 ${wait}ms (老板 09-20 拍板 1-2s 随机)`);
+      await ZBBAutomation.delay(wait);
+    } else {
+      logger.info('保利:步骤8', `第 ${attempt}/2 次查找 "${projectName}"...`);
+    }
+
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      const node = nodes.find((n: any) =>
+        n?.text?.toString()?.includes(projectName) &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (node) {
+        logger.info('保利:步骤8', `第 ${attempt}/2 次找到 "${projectName}" @ (${node.centerX}, ${node.centerY})`);
+        foundNode = node;
+        break;
+      } else {
+        logger.warn('保利:步骤8', `第 ${attempt}/2 次没找到 "${projectName}"`);
+      }
+    } catch (e) {
+      logger.warn('保利:步骤8', `第 ${attempt}/2 次 dump 异常: ${e}`);
+    }
+  }
+
+  let ok = false;
+  if (foundNode) {
+    ok = await click.byNode(foundNode);
+  } else {
+    // V32.36.40 兜底: hardcode byCoords(540, 1919) (老板 nova 17:01 第一轮实测命中坐标)
+    logger.warn('保利:步骤8', `2 次都没找到, 兜底 hardcode byCoords(540, 1919) (老板 nova 17:01 实测)`);
+    ok = await click.byCoords(540, 1919);
+  }
+
+  if (!ok) {
+    logger.info('保利:步骤8', '选项目失败');
+    return false;
+  }
   await ZBBAutomation.delay(1500);
   logger.info('保利:步骤8', '✓ 已选项目');
   return true;
