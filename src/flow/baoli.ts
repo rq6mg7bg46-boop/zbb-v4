@@ -1009,47 +1009,46 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
     //   V2.x 反证金标准: v22.02.24 (08-12 老板拍板) - '不按返回键, 让用户在保利小程序继续操作下一轮'
     //                    但 V32.36.42 第二轮需要页面在项目详情页, 所以保留按返回键 (跟 V2.x 不同)
     //
-    // V32.36.53 老板 09-21 拍板 - 修法 (老板铁子反证金标准):
-    //   老板问: '只有在第二轮截图完成后才执行, 现在是这个逻辑吗?'
-    //   老板铁子命中错位: V4 V32.36.43 当前两轮都执行按返回键, 但 V32.36.42 第二轮假设'已在项目详情页'
-    //   老板铁子反证金标准: 第一轮不需要按返回键 (流程结束就退出, 让 V32.36.42 第二轮接管)
-    //                     第二轮按返回键 (报备结果页 → 项目详情页 → 步骤14 接管)
-    //   修法: round===1 不执行 step13-2-5 按返回键 (让 runBaoliRound return 后自然退出)
-    //         round===2 执行 step13-2-5 + 步骤14 链路
-    if (round === 2) {
-      let onProjectPage = false;
-      for (let backCount = 1; backCount <= 3; backCount++) {
-        await pressKey.back();
-        await ZBBAutomation.delay(1000);
+    // V32.36.54 老板 09-21 拍板 - 修法 (老板铁子反证金标准 - 修正 V32.36.53 错误):
+    //   老板问: '第一轮要按返回键 (现在没按), 但不执行步骤14!'
+    //   老板铁子命中错位: V32.36.53 把第一轮改成不按返回键, 跟老板拍板新逻辑冲突
+    //   老板铁子反证金标准: V32.36.43 老板拍板 B '两轮都按返回键' 仍然有效
+    //                     区别: 步骤14 只在 round=2 step13完成后调用 (第一轮不调)
+    //   修法 (老板铁子反证金标准): 恢复 V32.36.43 两轮都按返回键 + dump 验证项目详情页
+    //     - 第一轮按返回键 + dump 验证 (跟 V32.36.43 一致)
+    //     - 第二轮按返回键 + dump 验证 (跟 V32.36.43 一致)
+    //     - 第一轮不调步骤14 (V32.36.53 老板拍板)
+    //     - 第二轮调步骤14 (V32.36.53 老板拍板)
+    let onProjectPage = false;
+    for (let backCount = 1; backCount <= 3; backCount++) {
+      await pressKey.back();
+      await ZBBAutomation.delay(1000);
 
-        // dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
-        let checkNodes: any[] = [];
-        try {
-          checkNodes = await ZBBAutomation.getAllTextNodes();
-        } catch (e) {
-          logger.warn('保利:步骤13-情况2', `dump 验证项目页异常: ${e}`);
-        }
-        const hasReportBtn = checkNodes.some((n: any) =>
-          n?.text?.toString()?.includes('报备')
-        );
-        const hasProjectName = checkNodes.some((n: any) =>
-          n?.text?.toString()?.includes('缦城和颂') ||
-          n?.text?.toString()?.includes('山水和颂') ||
-          n?.text?.toString()?.includes('和煦')
-        );
-        if (hasReportBtn && hasProjectName) {
-          onProjectPage = true;
-          logger.info('保利:步骤13-情况2', `✓ 第2轮按返回键 ${backCount} 次后到达项目详情页 (V32.36.53 老板拍板)`);
-          break;
-        } else {
-          logger.warn('保利:步骤13-情况2', `按返回键 ${backCount} 次, 未到项目详情页 (报备按钮=${hasReportBtn}, 项目名=${hasProjectName})`);
-        }
+      // dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
+      let checkNodes: any[] = [];
+      try {
+        checkNodes = await ZBBAutomation.getAllTextNodes();
+      } catch (e) {
+        logger.warn('保利:步骤13-情况2', `dump 验证项目页异常: ${e}`);
       }
-      if (!onProjectPage) {
-        logger.warn('保利:步骤13-情况2', '按 3 次返回键都没到项目详情页 (V32.36.53 让步骤14 fail)');
+      const hasReportBtn = checkNodes.some((n: any) =>
+        n?.text?.toString()?.includes('报备')
+      );
+      const hasProjectName = checkNodes.some((n: any) =>
+        n?.text?.toString()?.includes('缦城和颂') ||
+        n?.text?.toString()?.includes('山水和颂') ||
+        n?.text?.toString()?.includes('和煦')
+      );
+      if (hasReportBtn && hasProjectName) {
+        onProjectPage = true;
+        logger.info('保利:步骤13-情况2', `✓ 第${round}轮按返回键 ${backCount} 次后到达项目详情页 (V32.36.54 老板拍板恢复 V32.36.43)`);
+        break;
+      } else {
+        logger.warn('保利:步骤13-情况2', `按返回键 ${backCount} 次, 未到项目详情页 (报备按钮=${hasReportBtn}, 项目名=${hasProjectName})`);
       }
-    } else {
-      logger.info('保利:步骤13-情况2', `第1轮不按返回键 (V32.36.53 老板拍板 - 让 runBaoliRound 自然退出)`);
+    }
+    if (!onProjectPage) {
+      logger.warn('保利:步骤13-情况2', `按 3 次返回键都没到项目详情页 (V32.36.54 - 第${round}轮 - 步骤14 ${round === 2 ? '会fail' : '不调用'})`);
     }
 
     return true;
