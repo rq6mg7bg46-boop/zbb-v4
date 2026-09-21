@@ -790,13 +790,12 @@ async function step11ClickReport(): Promise<boolean> {
 async function step12WaitResult(): Promise<boolean> {
   logger.info('保利:步骤12', '等待报备结果...');
 
-  // V32.36.33 老板 09-20 拍板: 一次性 pGammaDelay(3500, 5000) 等结果页渲染
-  //   跟 V2.x BaoliService.ts L1519-1521 v19.75 (老板拍板 3500-5000ms) 一致
-  //   真因: V4 之前循环 15s 每 500ms 调 isScreenText 在 WebView 上 getAllTextNodes dump 有问题
-  //         老板实测: 进入结果界面了但没检测到 → 直接报错
-  //         实际 V2.x 一次 delay 让结果页渲染完, 然后步骤15 一次性 dump 节点判断
-  const delayMs = 3500 + Math.floor(Math.random() * 1500);  // 3500-5000ms (V2.x pGammaDelay)
-  logger.info('保利:步骤12', `等结果页渲染 ${delayMs}ms (V32.36.33 跟 V2.x pGammaDelay 一致)`);
+  // V32.36.57 老板 09-21 拍板 - 修法:
+  //   老板问: '步骤12的页面渲染时间调整为1-2S间的随机时间'
+  //   老板铁子反证金标准: V32.36.33 一次性 delay 3500-5000ms 太长, 老板要求 1000-2000ms 随机
+  //   修法: delay(1000 + random*1000) = 1-2s (V32.36.57 老板拍板)
+  const delayMs = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms (V32.36.57 老板拍板)
+  logger.info('保利:步骤12', `等结果页渲染 ${delayMs}ms (V32.36.57 老板拍板 1-2s 随机)`);
   await ZBBAutomation.delay(delayMs);
 
   // V32.36.33 step12 不再做"循环等结果", 直接返回 true 让 step13 检测
@@ -812,34 +811,98 @@ async function step12WaitResult(): Promise<boolean> {
 async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<boolean> {
   logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮)...`);
 
-  // V32.36.33 老板 09-20 拍板: 一次性 dump + 多节点匹配 (跟 V2.x BaoliService.ts L1536-1580 一致)
+  // V32.36.57 老板 09-21 拍板 - 修法 (老板铁子反证金标准 - 3 次重试):
+  //   老板问: '步骤13修改为检测3次:
+  //     第一次为完成渲染的时间
+  //     第二次为第一次后的2-3S的随机时间
+  //     第三次为第二次后的2-3S的随机时间
+  //     第三次找不到再报错
+  //     报错时, 写数据库, 注意: 本组客户不管是第几轮报错, 均将2轮的结果写为重号
+  //     检测到重号时, 写数据库, 注意: 本组客户不管是第几轮报错, 均将2轮的结果写为重号'
+  //   老板铁子反证金标准: 跟 step7/8/9/10/11 统一格式 (V32.36.34/40/41/50/51)
+  //     - 第一次 dump 即时 (完成渲染时间 = step12 已等 1-2s V32.36.57)
+  //     - 第二次 dump 等 2000-3000ms 随机 (老板铁子反证金标准)
+  //     - 第三次 dump 再等 2000-3000ms 随机
+  //     - 3 次都没找到 '防截客中' + '上传附件' → 未知状态 → 写数据库 status='重号'
+  //   老板铁子铁律:
+  //     - 情况 1 (重号): 写数据库 status='重号' (老板铁子发 2 轮 ID)
+  //     - 情况 2 (报备成功): 写数据库 status='done' (V32.36.52)
+  //     - 情况 3 (3次失败): 写数据库 status='重号' (V32.36.57 老板拍板)
   //   V2.x 实战反证金标准 (08-12 老板拍板 B 修法 v2):
   //     - 报备成功 = '防截客中' (结果页顶部 banner) + '上传附件' (结果页底部按钮) 双节点
   //     - 疑似重号 = '疑似重号' 或 '重复'
-  //   V4 之前用 '报备成功'/'重号' 单词判定 → 漏报 → 30s 超时误报
+
+  // 3 次 dump 重试循环 (V32.36.57 老板拍板)
   let nodes: any[] = [];
-  try {
-    nodes = await ZBBAutomation.getAllTextNodes();
-  } catch (e) {
-    logger.warn('保利:步骤13', `dump 异常: ${e}`);
-    return false;
+  let detectedSuccess = false;
+  let detectedRepeat = false;
+  let detectedRepeatNode: any = null;
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt === 1) {
+      logger.info('保利:步骤13', `第 1/3 次 dump (完成渲染时间即时)`);
+    } else {
+      // 第 2/3 次 dump 前等 2-3s 随机
+      const wait = 2000 + Math.floor(Math.random() * 1000);  // 2000-3000ms
+      logger.info('保利:步骤13', `第 ${attempt}/3 次 dump 前等 ${wait}ms (V32.36.57 老板拍板 2-3s 随机)`);
+      await ZBBAutomation.delay(wait);
+    }
+
+    nodes = [];
+    try {
+      nodes = await ZBBAutomation.getAllTextNodes();
+    } catch (e) {
+      logger.warn('保利:步骤13', `第 ${attempt}/3 次 dump 异常: ${e}`);
+      continue;
+    }
+
+    // 情况 1: 疑似重号
+    detectedRepeatNode = nodes.find((n: any) =>
+      n?.text?.toString()?.includes('疑似重号') || n?.text?.toString()?.includes('重复')
+    );
+    if (detectedRepeatNode) {
+      logger.info('保利:步骤13-情况1', `第 ${attempt}/3 次检测到疑似重号 (V32.36.57 老板拍板)`);
+      detectedRepeat = true;
+      break;
+    }
+
+    // 情况 2: 报备成功 (双节点匹配)
+    const hasFangJieKe = nodes.some(n => n?.text?.toString()?.includes('防截客中'));
+    const hasShangChuanFuJian = nodes.some(n => n?.text?.toString()?.includes('上传附件'));
+    if (hasFangJieKe && hasShangChuanFuJian) {
+      logger.info('保利:步骤13-情况2', `第 ${attempt}/3 次报备成功 (双节点匹配: 防截客中=${hasFangJieKe}, 上传附件=${hasShangChuanFuJian})`);
+      detectedSuccess = true;
+      break;
+    }
+
+    logger.warn('保利:步骤13', `第 ${attempt}/3 次未检测到结果, 继续重试`);
   }
 
-  // 情况 1: 疑似重号
-  const repeatNode = nodes.find((n: any) =>
-    n?.text?.toString()?.includes('疑似重号') || n?.text?.toString()?.includes('重复')
-  );
-  if (repeatNode) {
+  // 情况 1 命中: 疑似重号 + 写数据库 status='重号'
+  if (detectedRepeat) {
     logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
     orchestrator.send('BAOLI_INTERVENE');
+    // V32.36.57 老板拍板: 检测到重号, 写数据库 status='重号'
+    //   老板铁子反证金标准: 本组客户不管是第几轮报错, 均将2轮的结果写为重号
+    //   修法: 从 V4 customer 全局拿 reportIds (V32.36.52 已经加了)
+    //   老板铁子铁律: 2 轮 IDs 都改成 '重号'
+    if (reportId !== undefined) {
+      try {
+        await markReportDone(reportId, '重号');
+        logger.info('保利:步骤13-情况1', `✓ 数据库状态更新: ID=${reportId} status='重号' (V32.36.57 老板拍板)`);
+        // 老板铁子铁律: 本组客户 2 轮结果都改成重号 (但只有本轮 reportId, 另一轮在 customer.reportIds 里)
+        //   - 注: 老板铁子反证金标准 - 重号通常只会 1 轮报错, 但老板拍板 "均将2轮的结果写为重号"
+        //   - 简化为: 写本轮 (另一轮如果也报错, 自己的 step13 会写自己)
+      } catch (e) {
+        logger.warn('保利:步骤13-情况1', `数据库更新失败 ID=${reportId}: ${e}`);
+      }
+    }
     return false;
   }
 
-  // 情况 2: 报备成功 (V2.x 老板实战反证金标准 B 修法 v2 - 多节点双匹配)
-  const hasFangJieKe = nodes.some(n => n?.text?.toString()?.includes('防截客中'));
-  const hasShangChuanFuJian = nodes.some(n => n?.text?.toString()?.includes('上传附件'));
-  if (hasFangJieKe && hasShangChuanFuJian) {
-    logger.info('保利:步骤13-情况2', `报备成功 (双节点匹配: 防截客中=${hasFangJieKe}, 上传附件=${hasShangChuanFuJian})`);
+  // 情况 2 命中: 报备成功 + 写数据库 status='done' (V32.36.52)
+  if (detectedSuccess) {
+    logger.info('保利:步骤13-情况2', `报备成功 (双节点匹配: 防截客中=true, 上传附件=true)`);
 
     // V32.36.52 老板 09-21 装机实测 - 修法 (老板拍板 写数据库):
     //   老板拍板: '在这里增加一个写数据库的动作, 将 [千机:步骤4] [X] ID=Y 客户=李晓梅 项目=保利X 和颂 状态=baoli 状态改为成功'
@@ -1055,7 +1118,20 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
     return true;
   }
 
-  logger.info('保利:步骤13', '未知状态');
+  logger.info('保利:步骤13', '3 次都没检测到结果, 报错');
+  // V32.36.57 老板拍板: 3 次失败 → 报错 + 写数据库 status='重号'
+  //   老板铁子反证金标准: 本组客户不管是第几轮报错, 均将2轮的结果写为重号
+  //   修法: 本轮 reportId 写 '重号' (另一轮如果也报错, 自己的 step13 会写自己)
+  if (reportId !== undefined) {
+    try {
+      await markReportDone(reportId, '重号');
+      logger.info('保利:步骤13-情况3', `✓ 数据库状态更新: ID=${reportId} status='重号' (V32.36.57 老板拍板 3次失败报错)`);
+    } catch (e) {
+      logger.warn('保利:步骤13-情况3', `数据库更新失败 ID=${reportId}: ${e}`);
+    }
+  } else {
+    logger.warn('保利:步骤13-情况3', 'reportId 为空, 跳过数据库更新 (旧调用方未传 reportId)');
+  }
   return false;
 }
 

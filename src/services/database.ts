@@ -154,8 +154,10 @@ export async function getRecentReports(limit: number = 3): Promise<any[]> {
 
 /**
  * 标记 report 完成
+ * 🆕 V32.36.57 老板 09-21 拍板: status 增加 '重号' 字面字符串 (老板要求写数据库用 '重号' 不是 'failed')
+ *   V2.x BaoliService 反证金标准: status='重号' 用于疑似重号 + 检测失败的情况
  */
-export async function markReportDone(id: number, status: 'done' | 'failed' = 'done'): Promise<void> {
+export async function markReportDone(id: number, status: 'done' | 'failed' | '重号' = 'done'): Promise<void> {
   const db = await ensureDb();
   await db.runAsync(`UPDATE reports SET status=? WHERE id=?`, status, id);
 }
