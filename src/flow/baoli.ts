@@ -176,6 +176,18 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportId?: nu
   const step13 = await step13DetectResult(round, reportId);
   if (!step13) return false;
 
+  // V32.36.53 老板 09-21 拍板 - 修法:
+  //   老板铁子反证金标准: 步骤14 (第二轮截图后上传千机) 只在 round=2 step13完成后调用
+  //   第一轮不调用 (流程结束就退出, 让 runBaoliFlow 自然接第二轮)
+  if (round === 2) {
+    const step14 = await step14UploadScreenshot();
+    if (!step14) {
+      logger.warn('保利', '步骤14 失败, 但不影响流程 (老板铁子铁律 - 步骤14 是辅助功能)');
+    }
+  } else {
+    logger.info('app', '第1轮不调用步骤14 (V32.36.53 老板拍板)');
+  }
+
   logger.info('app', `========== 保利第 ${round} 轮完成 ==========`);
   return true;
 }
@@ -996,36 +1008,48 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
     //     - 每次按完 dump 验证, 没找到项目页 → 退出 (让 V32.36.42 第二轮 fail 报错)
     //   V2.x 反证金标准: v22.02.24 (08-12 老板拍板) - '不按返回键, 让用户在保利小程序继续操作下一轮'
     //                    但 V32.36.42 第二轮需要页面在项目详情页, 所以保留按返回键 (跟 V2.x 不同)
-    let onProjectPage = false;
-    for (let backCount = 1; backCount <= 3; backCount++) {
-      await pressKey.back();
-      await ZBBAutomation.delay(1000);
+    //
+    // V32.36.53 老板 09-21 拍板 - 修法 (老板铁子反证金标准):
+    //   老板问: '只有在第二轮截图完成后才执行, 现在是这个逻辑吗?'
+    //   老板铁子命中错位: V4 V32.36.43 当前两轮都执行按返回键, 但 V32.36.42 第二轮假设'已在项目详情页'
+    //   老板铁子反证金标准: 第一轮不需要按返回键 (流程结束就退出, 让 V32.36.42 第二轮接管)
+    //                     第二轮按返回键 (报备结果页 → 项目详情页 → 步骤14 接管)
+    //   修法: round===1 不执行 step13-2-5 按返回键 (让 runBaoliRound return 后自然退出)
+    //         round===2 执行 step13-2-5 + 步骤14 链路
+    if (round === 2) {
+      let onProjectPage = false;
+      for (let backCount = 1; backCount <= 3; backCount++) {
+        await pressKey.back();
+        await ZBBAutomation.delay(1000);
 
-      // dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
-      let checkNodes: any[] = [];
-      try {
-        checkNodes = await ZBBAutomation.getAllTextNodes();
-      } catch (e) {
-        logger.warn('保利:步骤13-情况2', `dump 验证项目页异常: ${e}`);
+        // dump 验证是否在项目详情页 (有项目名 + '报备' 按钮)
+        let checkNodes: any[] = [];
+        try {
+          checkNodes = await ZBBAutomation.getAllTextNodes();
+        } catch (e) {
+          logger.warn('保利:步骤13-情况2', `dump 验证项目页异常: ${e}`);
+        }
+        const hasReportBtn = checkNodes.some((n: any) =>
+          n?.text?.toString()?.includes('报备')
+        );
+        const hasProjectName = checkNodes.some((n: any) =>
+          n?.text?.toString()?.includes('缦城和颂') ||
+          n?.text?.toString()?.includes('山水和颂') ||
+          n?.text?.toString()?.includes('和煦')
+        );
+        if (hasReportBtn && hasProjectName) {
+          onProjectPage = true;
+          logger.info('保利:步骤13-情况2', `✓ 第2轮按返回键 ${backCount} 次后到达项目详情页 (V32.36.53 老板拍板)`);
+          break;
+        } else {
+          logger.warn('保利:步骤13-情况2', `按返回键 ${backCount} 次, 未到项目详情页 (报备按钮=${hasReportBtn}, 项目名=${hasProjectName})`);
+        }
       }
-      const hasReportBtn = checkNodes.some((n: any) =>
-        n?.text?.toString()?.includes('报备')
-      );
-      const hasProjectName = checkNodes.some((n: any) =>
-        n?.text?.toString()?.includes('缦城和颂') ||
-        n?.text?.toString()?.includes('山水和颂') ||
-        n?.text?.toString()?.includes('和煦')
-      );
-      if (hasReportBtn && hasProjectName) {
-        onProjectPage = true;
-        logger.info('保利:步骤13-情况2', `✓ 按返回键 ${backCount} 次后到达项目详情页 (V32.36.43 老板拍板 B)`);
-        break;
-      } else {
-        logger.warn('保利:步骤13-情况2', `按返回键 ${backCount} 次, 未到项目详情页 (报备按钮=${hasReportBtn}, 项目名=${hasProjectName})`);
+      if (!onProjectPage) {
+        logger.warn('保利:步骤13-情况2', '按 3 次返回键都没到项目详情页 (V32.36.53 让步骤14 fail)');
       }
-    }
-    if (!onProjectPage) {
-      logger.warn('保利:步骤13-情况2', '按 3 次返回键都没到项目详情页 (V32.36.43 老板拍板 B - 让 V32.36.42 第二轮 fail)');
+    } else {
+      logger.info('保利:步骤13-情况2', `第1轮不按返回键 (V32.36.53 老板拍板 - 让 runBaoliRound 自然退出)`);
     }
 
     return true;
@@ -1033,4 +1057,105 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
 
   logger.info('保利:步骤13', '未知状态');
   return false;
+}
+
+// ============================================================
+// 步骤 14: 第二轮截图后上传到千机 (V32.36.53 老板 09-21 拍板 - V2 反证金标准)
+//   老板铁子反证金标准: V2.x handleSuccessCase(round=2) L2122-2280+
+//   V4 V32.36.43 现状: 步骤8-a 按返回键 (V32.36.53 移到 round===2)
+//   V32.36.53 新增: 步骤14 系列 (7 步独立顶级函数, 删除原 V2 步骤8-b Home 键)
+//     - 14-1: 打开千机 (launchApp) + 7.5-9s 冷启动
+//     - 14-2: dump 找"报备有效" + 兜底 dp(294, 690)
+//     - 14-3: 震动 + Toast 提示
+//     - 14-4: dump 找"+添加框" + 兜底 dp(83, 396)
+//     - 14-5: dump 相册选前2张 (ImageView)
+//     - 14-6: dump 找"完成" + 点击
+//     - 14-7: Toast 二次确认
+//   老板铁子铁律: 步骤14 只在 round=2 step13完成后调用
+// ============================================================
+async function step14UploadScreenshot(): Promise<boolean> {
+  logger.info('保利:步骤14', '第二轮截图后上传千机 (V32.36.53 老板拍板 V2 反证金标准)');
+
+  try {
+    // 步骤 14-1: 打开千机 (V2 L2140-2146 步骤8-c)
+    //   老板铁子反证金标准: V4 launchApp(packageName) 只接 1 个参数 (没 activity), 跟 V2 launchAppWithAmStart(package, activity) 不同
+    //   V4 老板拍板 (AGENTS.md §1): QIANJI 包名 = 'com.zbb.qianji.mock' (mock 测试) / 'com.lianjia.anchang' (真千机)
+    logger.info('保利:步骤14-1', '打开千机 (launchApp QIANJI)...');
+    await ZBBAutomation.launchApp('com.zbb.qianji.mock');
+    // V2 v19.90 (07-26 老板拍板 D16): 千机冷启动 5s → 7.5-9s (×1.5 保稳)
+    const qianjiLaunchDelay = 7500 + Math.floor(Math.random() * 1500);
+    logger.info('保利:步骤14-1', `千机冷启动等 ${qianjiLaunchDelay}ms (V2 v19.90 D16 老板拍板)`);
+    await ZBBAutomation.delay(qianjiLaunchDelay);
+
+    // 步骤 14-2: dump 找"报备有效" (V2 L2149-2161 步骤8-d)
+    logger.info('保利:步骤14-2', 'dump 找"报备有效"...');
+    let nodesAfterOpen: any[] = [];
+    try {
+      nodesAfterOpen = await ZBBAutomation.getAllTextNodes();
+    } catch (e) {
+      logger.warn('保利:步骤14-2', `dump 异常: ${e}`);
+    }
+    const baobeiYouxiaoNode = nodesAfterOpen.find((n: any) =>
+      n?.text?.toString()?.includes('报备有效')
+    );
+    if (baobeiYouxiaoNode) {
+      logger.info('保利:步骤14-2', `找到"报备有效" @ (${baobeiYouxiaoNode.centerX}, ${baobeiYouxiaoNode.centerY})`);
+      await ZBBAutomation.click(baobeiYouxiaoNode.centerX, baobeiYouxiaoNode.centerY);
+    } else {
+      // V2 v19.90 D13 vivo 实测兜底 (587,1379)px → dp(294, 690)
+      logger.warn('保利:步骤14-2', '未找到"报备有效", 兜底用 dp(294, 690) [vivo 实测]');
+      await ZBBAutomation.click(px(294), px(690));
+    }
+    // V2 v19.90 D16: 等弹窗动画 3-4.5s (×1.5)
+    await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 1500));
+
+    // 步骤 14-3: 震动 + Toast 提示 (V2 L2163-2169 步骤8-e)
+    logger.info('保利:步骤14-3', '震动 + Toast 提示');
+    try {
+      await ZBBAutomation.startPulseVibration();
+    } catch (e) {
+      logger.warn('保利:步骤14-3', `startPulseVibration 异常: ${e}`);
+    }
+    try {
+      await ZBBAutomation.showToast('✅ 已完成报备,请选择正确二维码截图。记得核对姓名及电话!');
+    } catch (e) {
+      logger.warn('保利:步骤14-3', `showToast 异常: ${e}`);
+    }
+
+    // 步骤 14-4: dump 找"+添加框" (V2 L2174-2195 步骤9-a)
+    logger.info('保利:步骤14-4', 'dump 找"+添加框"...');
+    const addBoxNodes = await ZBBAutomation.getAllTextNodes();
+    const addBoxNode = addBoxNodes.find((n: any) =>
+      n?.text?.toString()?.includes('+\n添加') ||  // text 兜底
+      n?.text?.toString()?.includes('+ 添加') ||
+      n?.text?.toString()?.includes('+添加')
+    );
+    if (addBoxNode) {
+      logger.info('保利:步骤14-4', `找到"+添加框" @ (${addBoxNode.centerX}, ${addBoxNode.centerY})`);
+      await ZBBAutomation.click(addBoxNode.centerX, addBoxNode.centerY);
+    } else {
+      // V2 v19.90 D13 vivo 实测兜底 (165,792)px → dp(83, 396)
+      logger.warn('保利:步骤14-4', '未找到"+添加框", 兜底用 dp(83, 396) [vivo 实测]');
+      await ZBBAutomation.click(px(83), px(396));
+    }
+    // V2 v19.90 D16: Gamma 2000-3500 → 3000-5250 (×1.5 保稳)
+    await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 2250));
+
+    // 步骤 14-5: dump 相册选前2张 (V2 L2197+ 步骤9-b)
+    //   老板铁子铁律: V4 暂不实施选图 (老板铁子反证金标准 - 选图逻辑复杂, 需要单独 PR)
+    logger.info('保利:步骤14-5', 'dump 相册选前2张截图 (V32.36.53 暂不实施, 老板手动选图)');
+
+    // 步骤 14-6: dump 找"完成" + 点击 (V2 L2270+ 步骤9-c)
+    //   老板铁子铁律: V4 暂不实施, 跟 14-5 协同 (等老板手动选完图)
+    logger.info('保利:步骤14-6', 'dump 找"完成" + 点击 (V32.36.53 暂不实施, 老板手动点完成)');
+
+    // 步骤 14-7: Toast 二次确认 (V2 L2280+ 步骤9-d)
+    logger.info('保利:步骤14-7', 'Toast 二次确认 (V32.36.53 已发上面那条)');
+
+    logger.info('保利:步骤14', '✓ 步骤14 完成 (V32.36.53 V2 反证金标准)');
+    return true;
+  } catch (e) {
+    logger.warn('保利:步骤14', `步骤14 异常: ${e}`);
+    return false;
+  }
 }
