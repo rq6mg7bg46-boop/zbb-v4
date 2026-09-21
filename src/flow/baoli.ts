@@ -1291,31 +1291,52 @@ async function step14UploadScreenshot(): Promise<boolean> {
     // V2 v19.90 D16: Gamma 2000-3500 → 3000-5250 (×1.5 保稳)
     await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 2250));
 
-    // 步骤 14-5: dump 相册选前2张 (V32.36.56 老板 09-21 拍板 - 实施)
+    // 步骤 14-5: dump 相册选前2张 (V32.36.59 老板 09-21 拍板 - V2 v19.90 D14/D15 反证金标准)
     //   V2 v19.90 D14/D15 老板拍板: 真千机选图算法完全重写
-    //   V2 反证金标准: 找最左 + 最新2张缩略图 (ImageView 没 text)
-    //   V4 老板铁子反证金标准 (V32.36.56): 用 getAllImageNodes (V32.36.48 新方法) 选2张
-    //   老板铁子铁律: 选 X 升序最左 + Y 升序最新 (跟 V2 反证金标准一致)
-    logger.info('保利:步骤14-5', 'dump Image 节点选前2张截图 (V32.36.56 老板拍板实施)');
+    //     - 原代码: find(/图片|已选图片/.test(text|desc)) + slice(0,2) → 永远找不到 (ImageView 无文字)
+    //     - 真千机: 缩略图是 android.widget.ImageView 219x219 网格 3 列 × N 行
+    //     - 真千机 rid: gallery_layout_count_tv (计数器 text='1'/'2'/'3')
+    //   V2 反证金标准 (L2203-2210 完整代码):
+    //     - filter cls='android.widget.ImageView' && w >= 218 && h >= 218
+    //     - sort Y升序 + X升序 (左上角最优先)
+    //     - slice(0, 2) 取前 2 张
+    //   老板铁子反证金标准 (V32.36.59 老板拍板):
+    //     - V4 getAllImageNodes (V32.36.48 新方法) 字段: width/height (不是 V2 的 w/h)
+    //     - V4 native 限定 40-150 范围太小 (跟 V2 的 218+ 反证金标准不符)
+    //     - JS 端做 size filter 补偿 (width >= 200 && height >= 200)
+    //     - 兼容大小缩小的旧版相册 (兜底 width >= 100 && height >= 100)
+    logger.info('保利:步骤14-5', 'dump Image 节点 + V2 v19.90 D14 过滤 (V32.36.59 老板拍板反证金标准)');
     const imageNodesRaw = await ZBBAutomation.getAllImageNodes();
-    // 老板铁子反证金标准: 选前2张 — X 升序 (从左到右) + Y 升序 (从上到下)
-    // 真千机相册布局: 左上角是最新图, 老板铁子选前 2 张 (左上角 2 张)
-    const imageNodes = [...imageNodesRaw].sort((a: any, b: any) => {
-      // X 升序 + Y 升序 (跟 V2 反证金标准一致)
-      if (Math.abs(a.centerY - b.centerY) > 50) {
-        return a.centerY - b.centerY;
-      }
-      return a.centerX - b.centerX;
-    });
-    const selectedImages = imageNodes.slice(0, 2);  // V32.36.56 选前 2 张 (跟 V2 一致)
+
+    // V2 反证金标准 (L2203-2210):
+    //   1. 过滤 class='android.widget.ImageView' (V4 native 已做, 不用 JS 过滤)
+    //   2. 过滤大小 w >= 218 && h >= 218 (V4 native 限定 40-150, JS 端补 200+ 过滤)
+    //   3. 排序 Y升序 + X升序 (左上角最优先)
+    //   4. 取前 2 张
+    const imageNodes = [...imageNodesRaw]
+      .filter((n: any) => n.width >= 200 && n.height >= 200)  // V32.36.59 JS 端补 V2 大小过滤
+      .sort((a: any, b: any) => a.centerY - b.centerY || a.centerX - b.centerX);  // V2 v19.90 D14 排序
+
+    // 兜底: 200+ 没找到, 试 100+ (兼容老旧设备/老旧版本相册)
+    let selectedImages: any[] = imageNodes.slice(0, 2);
     if (selectedImages.length < 2) {
-      logger.warn('保利:步骤14-5', `只找到 ${selectedImages.length} 张图, 需要 2 张 (V32.36.56 老板拍板实施)`);
+      logger.warn('保利:步骤14-5', `200+ 过滤只找到 ${imageNodes.length} 张, 试 100+ 兜底`);
+      const imageNodesFallback = [...imageNodesRaw]
+        .filter((n: any) => n.width >= 100 && n.height >= 100)
+        .sort((a: any, b: any) => a.centerY - b.centerY || a.centerX - b.centerX);
+      selectedImages = imageNodesFallback.slice(0, 2);
+    }
+
+    if (selectedImages.length < 2) {
+      logger.warn('保利:步骤14-5', `只找到 ${selectedImages.length} 张图, 需要 2 张 (V32.36.59 老板拍板反证金标准)`);
+      logger.warn('保利:步骤14-5', `dump 总 Image 数=${imageNodesRaw.length}, 各 Image size=${JSON.stringify(imageNodesRaw.map((n:any) => ({w:n.width, h:n.height, cls:n.className})))}`);
     }
     for (let i = 0; i < selectedImages.length; i++) {
       const img = selectedImages[i];
-      logger.info('保利:步骤14-5', `选中第 ${i + 1}/2 张图 @ (${img.centerX}, ${img.centerY})`);
+      logger.info('保利:步骤14-5', `选中第 ${i + 1}/2 张图 @ (${img.centerX}, ${img.centerY}) size=${img.width}x${img.height} class=${img.className}`);
       await ZBBAutomation.click(img.centerX, img.centerY);
-      await ZBBAutomation.delay(500 + Math.floor(Math.random() * 500));  // 选图间隔 0.5-1s
+      // V2 v19.90 D16: 选图间隔 1500-2500 → 2250-3750 (×1.5)
+      await ZBBAutomation.delay(2250 + Math.floor(Math.random() * 1500));
     }
     // V32.36.56 老板拍板: 选完2张后等 1.5-2.5s 让选图状态刷新
     await ZBBAutomation.delay(1500 + Math.floor(Math.random() * 1000));
