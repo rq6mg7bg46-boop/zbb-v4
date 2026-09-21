@@ -29,6 +29,7 @@ import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
+import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
@@ -59,9 +60,13 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
   //   - 优势: 状态机转换统一在 runZbbWorkflow, baoli.ts 纯端逻辑
   // orchestrator.send 已删除 (08-30 端路由设计)
 
+  // 🆕 V32.36.52 老板 09-21 拍板: 从 customer 拿 reportIds (千机端写库后传的)
+  const reportIds = customer.reportIds;
+  logger.info('保利', `V32.36.52 reportIds=${JSON.stringify(reportIds)} (千机端写库后传的)`);
+
   try {
-    // 第一轮报备
-    const round1Ok = await runBaoliRound(customer, 1);
+    // 第一轮报备 (reportId = reportIds[0] 缦城和颂)
+    const round1Ok = await runBaoliRound(customer, 1, reportIds?.[0]);
     if (!round1Ok) {
       logger.info('保利', '第一轮报备失败 → 弹窗等老板');
       // 🆕 V32.36.3: 端失败统一弹窗 + 进 UserIntervention (非 Error 状态)
@@ -72,8 +77,8 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       return false;
     }
 
-    // 第二轮报备
-    const round2Ok = await runBaoliRound(customer, 2);
+    // 第二轮报备 (reportId = reportIds[1] 山水和颂)
+    const round2Ok = await runBaoliRound(customer, 2, reportIds?.[1]);
     if (!round2Ok) {
       logger.info('保利', '第二轮报备失败 → 弹窗等老板');
       // 🆕 V32.36.3: 同上
@@ -97,8 +102,8 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
 // ============================================================
 // 保利单轮 (第一轮 + 第二轮 都调这个, round 区分)
 // ============================================================
-async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<boolean> {
-  logger.info('app', `========== 保利第 ${round} 轮开始 ==========`);
+async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportId?: number): Promise<boolean> {
+  logger.info('app', `========== 保利第 ${round} 轮开始 (reportId=${reportId ?? 'none'}) ==========`);
 
   // V32.36.42 老板 09-20 装机实测 - 修法 (老板拍板 简单方案):
   //   老板 16:25:48 实测: 第一轮完成后第二轮又从打开企业微信开始, 浪费 ~10-15s
@@ -168,7 +173,7 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2): Promise<bool
   if (!step12) return false;
 
   // 步骤 13: 检测报备结果
-  const step13 = await step13DetectResult(round);
+  const step13 = await step13DetectResult(round, reportId);
   if (!step13) return false;
 
   logger.info('app', `========== 保利第 ${round} 轮完成 ==========`);
@@ -791,7 +796,7 @@ async function step12WaitResult(): Promise<boolean> {
 // 步骤 13: 检测报备结果 (V2.x 步骤 15, 老板 09-20 拍板对齐 V2)
 // V32.36.33 修法: 一次性 dump + 多节点双匹配判定 (跟 V2.x detectResult 对齐)
 // ============================================================
-async function step13DetectResult(round: 1 | 2): Promise<boolean> {
+async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<boolean> {
   logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮)...`);
 
   // V32.36.33 老板 09-20 拍板: 一次性 dump + 多节点匹配 (跟 V2.x BaoliService.ts L1536-1580 一致)
@@ -822,7 +827,23 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
   const hasShangChuanFuJian = nodes.some(n => n?.text?.toString()?.includes('上传附件'));
   if (hasFangJieKe && hasShangChuanFuJian) {
     logger.info('保利:步骤13-情况2', `报备成功 (双节点匹配: 防截客中=${hasFangJieKe}, 上传附件=${hasShangChuanFuJian})`);
-    logger.info('保利:步骤13-情况2', '报备成功, 上滑 + 等截图');
+
+    // V32.36.52 老板 09-21 装机实测 - 修法 (老板拍板 写数据库):
+    //   老板拍板: '在这里增加一个写数据库的动作, 将 [千机:步骤4] [X] ID=Y 客户=李晓梅 项目=保利X 和颂 状态=baoli 状态改为成功'
+    //   老板反证金标准: step13-情况2 报备成功后, 把对应的 report ID 状态从 pending 改成 done
+    //   修法: 用 markReportDone(id, 'done') (V4 database.ts:158 已有函数)
+    //     - runBaoliRound 接受 reportId 参数 (从 runBaoliFlow 传过来)
+    //     - step13-情况2 报备成功后调 markReportDone(reportId, 'done')
+    if (reportId !== undefined) {
+      try {
+        await markReportDone(reportId, 'done');
+        logger.info('保利:步骤13-情况2', `✓ 数据库状态更新: ID=${reportId} status=done (V32.36.52 老板拍板)`);
+      } catch (e) {
+        logger.warn('保利:步骤13-情况2', `数据库更新失败 ID=${reportId}: ${e}`);
+      }
+    } else {
+      logger.warn('保利:步骤13-情况2', 'reportId 为空, 跳过数据库更新 (旧调用方未传 reportId)');
+    }
 
     // 情况 2-1: 上滑屏幕 (V32.36.35 老板 09-20 装机实测 - 修法):
     //   老板 11:35 实测: V4 上滑太多了, V2 是 18% 短上滑 (55% → 37%)

@@ -50,6 +50,10 @@ export interface CustomerInfo {
   projectName: string;        // 报备项目 (例: 保利缦城和颂)
   projectType: string;        // 🆕 08-25 改 string (支持保利/越秀/招商等)
   propertyType: string;       // 物业类型 (例: 住宅)
+  // 🆕 V32.36.52 老板 09-21 拍板: 千机端写库后传给 baoli 用于 step13-情况2 改 status
+  //   保利双写返回 [id1, id2] -> 给 baoli
+  //   单写 (越秀/招商) 不传, 暂不实现
+  reportIds?: [number, number]; // 千机端 writeReport 返回的 IDs (保利双写)
   reportTime: string;         // 报备提交时间 (例: 2026/08/14 13:12)
   expectedVisitTime: string;  // 预计到访时间 (例: 2026-08-14 13:52)
   agent: string;              // 经纪人姓名 (例: 陈建行)
@@ -403,10 +407,23 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     logger.info('千机:步骤4', `✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
     // 写库 (缺口2: 保利双写 / 其他单写)
     const writeResult = await stepWriteToReports(varB);
+    let reportIds: [number, number] | undefined;
     if (Array.isArray(writeResult)) {
-      logger.info('千机:步骤4', `保利双写: ID=${writeResult.join(',')}`);
+      // V32.36.52 老板 09-21 拍板: 保利双写返回 [id1, id2], 传给 baoli 用于 step13-情况2 改 status
+      reportIds = writeResult as [number, number];
+      logger.info('千机:步骤4', `保利双写: ID=${writeResult.join(',')} → 传给 baoli 用于 step13-情况2 markReportDone`);
     } else {
-      logger.info('千机:步骤4', `单写: ID=${writeResult}`);
+      // V32.36.52 老板 09-21 拍板: 单写返回单 id (越秀/招商), 传给对应端 (暂不实现, 老板铁子铁律)
+      logger.info('千机:步骤4', `单写: ID=${writeResult} → 单写客户不传 reportIds (待 yuexiu/zhaoshang 端适配)`);
+    }
+
+    // 🆕 V32.36.52 老板 09-21 装机实测 - 修法 (老板拍板 写数据库):
+    //   老板拍板: '在这里增加一个写数据库的动作, 将 [千机:步骤4] [X] ID=Y 客户=李晓梅 项目=保利X 和颂 状态=baoli 状态改为成功'
+    //   老板反证金标准: step13-情况2 报备成功后, 把对应的 report ID 状态从 pending 改成 done
+    //   修法: 千机端把 writeResult 传给 baoli (新增 reportIds 字段给 varB)
+    if (reportIds) {
+      varB.reportIds = reportIds;
+      logger.info('千机:步骤4', `V32.36.52 reportIds 传给 baoli: ${JSON.stringify(reportIds)}`);
     }
 
     // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID DESC)
