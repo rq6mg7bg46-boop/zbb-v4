@@ -30,6 +30,7 @@ import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
 import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
+import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
@@ -1076,15 +1077,51 @@ async function step14UploadScreenshot(): Promise<boolean> {
   logger.info('保利:步骤14', '第二轮截图后上传千机 (V32.36.53 老板拍板 V2 反证金标准)');
 
   try {
-    // 步骤 14-1: 打开千机 (V2 L2140-2146 步骤8-c)
-    //   老板铁子反证金标准: V4 launchApp(packageName) 只接 1 个参数 (没 activity), 跟 V2 launchAppWithAmStart(package, activity) 不同
-    //   V4 老板拍板 (AGENTS.md §1): QIANJI 包名 = 'com.zbb.qianji.mock' (mock 测试) / 'com.lianjia.anchang' (真千机)
-    logger.info('保利:步骤14-1', '打开千机 (launchApp QIANJI)...');
-    await ZBBAutomation.launchApp('com.zbb.qianji.mock');
-    // V2 v19.90 (07-26 老板拍板 D16): 千机冷启动 5s → 7.5-9s (×1.5 保稳)
-    const qianjiLaunchDelay = 7500 + Math.floor(Math.random() * 1500);
-    logger.info('保利:步骤14-1', `千机冷启动等 ${qianjiLaunchDelay}ms (V2 v19.90 D16 老板拍板)`);
-    await ZBBAutomation.delay(qianjiLaunchDelay);
+    // 步骤 14-1: 打开千机 (跟 V4 千机-步骤1 stepOpenQianji 完全一致)
+    //   老板铁子反证金标准 (V32.36.55 老板 09-21 拍板):
+    //     - 用 launchAppWithAmStart (V2.x 实测, V4 native 已实现 AccessibilityServiceImpl.kt:2149)
+    //     - 用 qianjiPackage() / qianjiMainActivity() env 函数 (跟 BuildConfig 同步)
+    //     - try-catch + 1 次重试 (V2 v22.02.32 实测)
+    //     - fallback launchApp (兼容 mock 模式)
+    //   老板铁子铁律: 跟千机-步骤1 完全一致, 避免 launchApp 失败 (V32.36.53 launchApp 返回 false bug)
+    logger.info('保利:步骤14-1', '打开千机 (跟千机-步骤1 一致 launchAppWithAmStart)...');
+
+    // 🆕 V32.36.55: 跟千机-步骤1 一致 - 用 env 函数取包名 + mainActivity
+    const qianjiPkg = qianjiPackage();
+    const qianjiAct = qianjiMainActivity();
+    logger.info('保利:步骤14-1', `package=${qianjiPkg}, mainActivity=${qianjiAct}`);
+
+    // 🆕 V32.36.55: 跟千机-步骤1 一致 - 优先 launchAppWithAmStart, fallback launchApp
+    // @ts-ignore - launchAppWithAmStart 是 V2.x 实测, V4 native 已实现
+    const launchWithAm = (ZBBAutomation as any).launchAppWithAmStart
+      ?? (ZBBAutomation as any).launchApp; // fallback 到旧 launchApp (兼容 mock)
+
+    let launched = false;
+    try {
+      launched = await launchWithAm(qianjiPkg, qianjiAct);
+      if (launched) {
+        logger.info('保利:步骤14-1', '千机已启动, 等待界面加载...');
+        // V2 v19.90 (07-26 老板拍板 D16): 千机冷启动 5s → 7.5-9s (×1.5 保稳)
+        await ZBBAutomation.delay(7500 + Math.floor(Math.random() * 1500));
+      } else {
+        throw new Error('千机启动失败 (launchWithAm 返回 false)');
+      }
+    } catch (error) {
+      // 🆕 V32.36.55: 跟千机-步骤1 一致 - 重试 1 次 (V2 v22.02.32 实测)
+      logger.warn('保利:步骤14-1', `启动失败, 准备重试: ${error}`);
+      await ZBBAutomation.delay(1000);
+      try {
+        launched = await launchWithAm(qianjiPkg, qianjiAct);
+        if (!launched) throw new Error('千机启动失败 (重试)');
+        await ZBBAutomation.delay(7500 + Math.floor(Math.random() * 1500));
+      } catch (retryError) {
+        logger.warn('保利:步骤14-1', `重试也失败, 跳过步骤14: ${retryError}`);
+        // 老板铁子铁律: 步骤14 是辅助功能, 失败不影响流程
+        return false;
+      }
+    }
+
+    logger.info('保利:步骤14-1', '✓ 千机已打开 (V32.36.55 跟千机-步骤1 一致)');
 
     // 步骤 14-2: dump 找"报备有效" (V2 L2149-2161 步骤8-d)
     logger.info('保利:步骤14-2', 'dump 找"报备有效"...');
