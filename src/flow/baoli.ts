@@ -1101,8 +1101,8 @@ async function step14UploadScreenshot(): Promise<boolean> {
       launched = await launchWithAm(qianjiPkg, qianjiAct);
       if (launched) {
         logger.info('保利:步骤14-1', '千机已启动, 等待界面加载...');
-        // V2 v19.90 (07-26 老板拍板 D16): 千机冷启动 5s → 7.5-9s (×1.5 保稳)
-        await ZBBAutomation.delay(7500 + Math.floor(Math.random() * 1500));
+        // V32.36.56 老板 09-21 拍板 - 修法: 14-1 时间间隔 7.5-9s → 2-3s (老板铁子反证金标准 - 老板手动模式已开, 不需要等冷启动)
+        await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));  // 2-3s (V32.36.56 老板拍板)
       } else {
         throw new Error('千机启动失败 (launchWithAm 返回 false)');
       }
@@ -1113,7 +1113,8 @@ async function step14UploadScreenshot(): Promise<boolean> {
       try {
         launched = await launchWithAm(qianjiPkg, qianjiAct);
         if (!launched) throw new Error('千机启动失败 (重试)');
-        await ZBBAutomation.delay(7500 + Math.floor(Math.random() * 1500));
+        // V32.36.56 老板 09-21 拍板 - 修法: 14-1 retry 时间间隔也改成 2-3s (跟首次一致)
+        await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
       } catch (retryError) {
         logger.warn('保利:步骤14-1', `重试也失败, 跳过步骤14: ${retryError}`);
         // 老板铁子铁律: 步骤14 是辅助功能, 失败不影响流程
@@ -1177,16 +1178,63 @@ async function step14UploadScreenshot(): Promise<boolean> {
     // V2 v19.90 D16: Gamma 2000-3500 → 3000-5250 (×1.5 保稳)
     await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 2250));
 
-    // 步骤 14-5: dump 相册选前2张 (V2 L2197+ 步骤9-b)
-    //   老板铁子铁律: V4 暂不实施选图 (老板铁子反证金标准 - 选图逻辑复杂, 需要单独 PR)
-    logger.info('保利:步骤14-5', 'dump 相册选前2张截图 (V32.36.53 暂不实施, 老板手动选图)');
+    // 步骤 14-5: dump 相册选前2张 (V32.36.56 老板 09-21 拍板 - 实施)
+    //   V2 v19.90 D14/D15 老板拍板: 真千机选图算法完全重写
+    //   V2 反证金标准: 找最左 + 最新2张缩略图 (ImageView 没 text)
+    //   V4 老板铁子反证金标准 (V32.36.56): 用 getAllImageNodes (V32.36.48 新方法) 选2张
+    //   老板铁子铁律: 选 X 升序最左 + Y 升序最新 (跟 V2 反证金标准一致)
+    logger.info('保利:步骤14-5', 'dump Image 节点选前2张截图 (V32.36.56 老板拍板实施)');
+    const imageNodesRaw = await ZBBAutomation.getAllImageNodes();
+    // 老板铁子反证金标准: 选前2张 — X 升序 (从左到右) + Y 升序 (从上到下)
+    // 真千机相册布局: 左上角是最新图, 老板铁子选前 2 张 (左上角 2 张)
+    const imageNodes = [...imageNodesRaw].sort((a: any, b: any) => {
+      // X 升序 + Y 升序 (跟 V2 反证金标准一致)
+      if (Math.abs(a.centerY - b.centerY) > 50) {
+        return a.centerY - b.centerY;
+      }
+      return a.centerX - b.centerX;
+    });
+    const selectedImages = imageNodes.slice(0, 2);  // V32.36.56 选前 2 张 (跟 V2 一致)
+    if (selectedImages.length < 2) {
+      logger.warn('保利:步骤14-5', `只找到 ${selectedImages.length} 张图, 需要 2 张 (V32.36.56 老板拍板实施)`);
+    }
+    for (let i = 0; i < selectedImages.length; i++) {
+      const img = selectedImages[i];
+      logger.info('保利:步骤14-5', `选中第 ${i + 1}/2 张图 @ (${img.centerX}, ${img.centerY})`);
+      await ZBBAutomation.click(img.centerX, img.centerY);
+      await ZBBAutomation.delay(500 + Math.floor(Math.random() * 500));  // 选图间隔 0.5-1s
+    }
+    // V32.36.56 老板拍板: 选完2张后等 1.5-2.5s 让选图状态刷新
+    await ZBBAutomation.delay(1500 + Math.floor(Math.random() * 1000));
 
-    // 步骤 14-6: dump 找"完成" + 点击 (V2 L2270+ 步骤9-c)
-    //   老板铁子铁律: V4 暂不实施, 跟 14-5 协同 (等老板手动选完图)
-    logger.info('保利:步骤14-6', 'dump 找"完成" + 点击 (V32.36.53 暂不实施, 老板手动点完成)');
+    // 步骤 14-6: dump 找"完成" + 点击 (V32.36.56 老板 09-21 拍板 - 实施)
+    //   老板铁子反证金标准: dump 找"完成"按钮 (跟 step14-2 "报备有效" 同款格式)
+    //   兜底: 老板 nova 实测 (后续铁子从 nova log 反查)
+    logger.info('保利:步骤14-6', 'dump 找"完成" + 点击 (V32.36.56 老板拍板实施)');
+    const finishNodes = await ZBBAutomation.getAllTextNodes();
+    const finishNode = finishNodes.find((n: any) =>
+      n?.text?.toString()?.trim() === '完成' ||  // text 严格匹配
+      n?.text?.toString()?.trim() === '上传'
+    );
+    if (finishNode) {
+      logger.info('保利:步骤14-6', `找到"完成/上传" @ (${finishNode.centerX}, ${finishNode.centerY})`);
+      await ZBBAutomation.click(finishNode.centerX, finishNode.centerY);
+    } else {
+      // 老板铁子铁律: 兜底 hardcode (老板 nova 实测后填)
+      // 暂时用千机底部"完成"按钮兜底坐标 (老板铁子反证金标准 - 待老板 nova 实测)
+      logger.warn('保利:步骤14-6', '未找到"完成/上传", 兜底用 px(540, 2200) [千机底部]');
+      await ZBBAutomation.click(540, 2200);
+    }
+    // V32.36.56 老板拍板: 等 2-3s 让"完成"按钮响应
+    await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
 
-    // 步骤 14-7: Toast 二次确认 (V2 L2280+ 步骤9-d)
-    logger.info('保利:步骤14-7', 'Toast 二次确认 (V32.36.53 已发上面那条)');
+    // 步骤 14-7: Toast 二次确认 (V32.36.56 老板 09-21 拍板 - 实施)
+    logger.info('保利:步骤14-7', 'Toast 二次确认 (V32.36.56 老板拍板实施)');
+    try {
+      await ZBBAutomation.showToast('✅ 已选择 2 张截图并上传');
+    } catch (e) {
+      logger.warn('保利:步骤14-7', `showToast 异常: ${e}`);
+    }
 
     logger.info('保利:步骤14', '✓ 步骤14 完成 (V32.36.53 V2 反证金标准)');
     return true;
