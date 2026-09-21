@@ -1560,6 +1560,41 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
         }
     }
 
+    // 🆕 V32.36.48 (09-21 老板 nova 装机实测 - 老板铁子反证金标准):
+    //   老板 nova 9:45:27 log: V32.36.38b isImage 返回 type='image' 但 centerX=-210 (错的)
+    //   修法 (老板铁子反证金标准): 新增独立 getAllImageNodes (native + bridge), 重新走自己的 rect 避开 bug
+    @ReactMethod
+    fun getAllImageNodes(promise: Promise) {
+        val service = AccessibilityServiceImpl.instance
+        if (service == null) {
+            promise.reject("ERROR", "AccessibilityService 未运行")
+            return
+        }
+
+        mainHandler.post {
+            try {
+                val nodes = service.getAllImageNodes()
+                val result = Arguments.createArray()
+
+                nodes.forEach { node ->
+                    val map = Arguments.createMap()
+                    map.putDouble("centerX", (node["centerX"] as? Double) ?: 0.0)
+                    map.putDouble("centerY", (node["centerY"] as? Double) ?: 0.0)
+                    map.putInt("width", (node["width"] as? Int) ?: 0)
+                    map.putInt("height", (node["height"] as? Int) ?: 0)
+                    map.putInt("top", (node["top"] as? Int) ?: 0)
+                    map.putInt("bottom", (node["bottom"] as? Int) ?: 0)
+                    map.putString("className", node["className"] as? String ?: "")
+                    result.pushMap(map)
+                }
+
+                promise.resolve(result)
+            } catch (e: Exception) {
+                promise.reject("ERROR", e.message)
+            }
+        }
+    }
+
     @ReactMethod
     fun waitForElement(text: String?, viewId: String?, timeout: Double?, promise: Promise) {
         val service = AccessibilityServiceImpl.instance

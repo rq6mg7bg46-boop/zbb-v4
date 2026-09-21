@@ -2662,6 +2662,72 @@ class AccessibilityServiceImpl : AccessibilityService() {
         return result
     }
 
+    // 🆕 V32.36.48 (09-21 老板 nova 装机实测 - 老板铁子反证金标准):
+    //   老板 nova 9:45:27 log: V32.36.38b isImage 返回 type='image' 但 centerX=-210 (错的)
+    //   老板反证金标准: V4 native 现有 collectTextNodesRecursive 加 isImage 返回有问题 (centerX 算错)
+    //   E470 adb dump 实测: Image #2 [912,1195][996,1282] centerX=954, centerY=1238 (对的)
+    //   修法 (老板铁子反证金标准): 新增独立 getAllImageNodes(), 重新走自己的 recursion,
+    //     用自己的 rect (跟 V32.36.38b isImage 用 outer bounds 不一样), 避开 bug
+    //   老板铁子铁律: 不修 collectTextNodesRecursive 旧逻辑, 加新方法
+    fun getAllImageNodes(): List<Map<String, Any>> {
+        val result = mutableListOf<Map<String, Any>>()
+        val rootNode = rootInActiveWindow ?: return result
+
+        try {
+            collectImageNodesRecursive(rootNode, result, mutableSetOf())
+        } catch (e: Exception) {
+            Log.e(TAG, "获取 Image 节点失败: ${e.message}")
+        } finally {
+            rootNode.recycle()
+        }
+
+        Log.d(TAG, "getAllImageNodes 返回 ${result.size} 个节点")
+        return result
+    }
+
+    private fun collectImageNodesRecursive(
+        node: AccessibilityNodeInfo,
+        result: MutableList<Map<String, Any>>,
+        visited: MutableSet<Int>
+    ) {
+        // 防止重复访问
+        if (node.hashCode() in visited) return
+        visited.add(node.hashCode())
+
+        val className = node.className?.toString() ?: ""
+        val rect = android.graphics.Rect()
+        node.getBoundsInScreen(rect)
+
+        // 只收 Image 节点 (老板铁子反证金标准 - 跟 V32.36.38b isImage 区分)
+        if (className == "android.widget.Image" || className.endsWith(".ImageView")) {
+            val w = rect.width()
+            val h = rect.height()
+            // 老板铁子铁律: 自己的 rect, 不用 outer scope 的 bounds
+            // 老板 E470 adb dump 实测: Image #2 84x87, Image #3 64x87 - 用 40-150 范围
+            if (w in 40..150 && h in 40..150) {
+                result.add(mapOf(
+                    "centerX" to rect.centerX().toDouble(),
+                    "centerY" to rect.centerY().toDouble(),
+                    "width" to w,
+                    "height" to h,
+                    "top" to rect.top,
+                    "bottom" to rect.bottom,
+                    "className" to className
+                ))
+            }
+        }
+
+        // 递归子节点
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            try {
+                collectImageNodesRecursive(child, result, visited)
+            } finally {
+                child.recycle()
+            }
+        }
+    }
+
     private fun collectTextNodesRecursive(
         node: AccessibilityNodeInfo,
         result: MutableList<Map<String, Any>>,

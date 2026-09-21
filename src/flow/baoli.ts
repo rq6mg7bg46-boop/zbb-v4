@@ -758,30 +758,23 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       const allNodes = await ZBBAutomation.getAllTextNodes();
 
       // 老板反证金标准 #1: 过滤 className='android.widget.Image' 或 type='image' (V32.36.38 native 扩展)
-      const images = allNodes.filter((n: any) =>
-        n?.className?.toString() === 'android.widget.Image' ||
-        n?.className?.toString().endsWith('.ImageView') ||
-        n?.type === 'image'  // V32.36.38 native 端用 type='image' 标记
-      );
-      logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点`);
+      // V32.36.48 老板 09-20 装机实测 - 修法 (老板铁子反证金标准):
+      //   老板 nova 9:45:27 log: V32.36.38b isImage 返回 type='image' 但 centerX=-210 (错的)
+      //   老板铁子反证金标准: V4 native 现有 collectTextNodesRecursive 加 isImage 返回有问题 (centerX 算错)
+      //   修法: 不用 getAllTextNodes 过滤 type='image', 改用新方法 getAllImageNodes
+      //   E470 adb dump 实测: Image #2 [912,1195][996,1282] centerX=954, centerY=1238 (对的)
+      const imageNodesRaw = await ZBBAutomation.getAllImageNodes();
+      const images = imageNodesRaw;
+      logger.info('保利:步骤13-情况2', `dump 找到 ${images.length} 个 Image 节点 (V32.36.48 getAllImageNodes)`);
 
       // V32.36.45 老板 09-20 装机实测 - 诊断 log (老板铁子命中错位, V32.36.44 用 bounds 推算还是 0 个):
-      //   老板问: '修复失败, 查找原因'
-      //   老板铁子反证: bounds 字段可能也丢了, 或 V32.36.38b native 端 type='image' 节点根本没有 bounds
-      //   修法: 加诊断 log 输出第一个 Image 节点的所有 keys, 确认到底丢了哪些字段
-      // V32.36.47 老板 09-20 装机实测 - 修法 (老板铁子命中错位, 诊断 log 暴露新 bug):
-      //   老板 nova 18:09:47 log 首个 Image 节点 keys: ["clickable","centerX","centerY","type","className","text"]
-      //   老板 nova 18:09:47 log 首个 Image 节点数据: {"clickable":false,"centerX":-210,"centerY":344,"type":"image","className":"android.widget.Image","text":""}
-      //   老板铁子命中错位: centerX=-210 是负数, Image 节点不在屏幕可见区域 (viewpager offscreen / 隐藏)
-      //   真因 1: V32.36.46 build 没装到 nova (老板 nova 还是 V32.36.45 APK, native 字段没生效)
-      //   真因 2: 不可见 Image 节点 (centerX<0) 也被算入候选
-      //   修法: 1. TS 端过滤掉 centerX<0 || centerY<0 || centerX>screenWidth 的不可见节点
-      //         2. 保留 V32.36.46 native 字段 imageWidth/Height (等老板 nova 装 V32.36.46 APK 后验)
+      //   老板铁子反证金标准: 老板 nova 9:45:27 log 显示旧 getAllTextNodes 返回 centerX=-210 (不可见)
+      //   V32.36.48 新 getAllImageNodes 用自己的 rect, 应该返回真实 centerX=954
       if (images.length > 0) {
-        const sample = images[0] as any;
-        const keys = Object.keys(sample);
-        logger.info('保利:步骤13-情况2', `首个 Image 节点 keys: ${JSON.stringify(keys)}`);
-        logger.info('保利:步骤13-情况2', `首个 Image 节点数据: ${JSON.stringify(sample).substring(0, 300)}`);
+        const sample = images[0];
+        logger.info('保利:步骤13-情况2', `首个 Image 节点数据: ${JSON.stringify(sample)}`);
+      } else {
+        logger.warn('保利:步骤13-情况2', 'V32.36.48 getAllImageNodes 0 个候选 (跟 E470 adb dump 不一致 - 待排查)');
       }
 
       // V32.36.44 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
@@ -795,61 +788,16 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
       //     - height = bounds.bottom - bounds.top
       //   老板铁子铁律: 不依赖 RN bridge 序列化的未声明字段, 用已声明的 bounds 推算
       //
-      // V32.36.46 老板 09-20 装机实测 - 修法 (老板铁子命中错位):
-      //   V32.36.44 用 bounds 还是 0 个 -> bounds 嵌套 map 也丢了
-      //   修法 (老板铁子反证金标准): 用 V32.36.46 native 端 top-level Int 字段 imageWidth/imageHeight
-      //     - native 端把 width/height 转成 imageWidth/imageHeight (top-level Int 不嵌套)
-      //     - 排序也用 imageTop (top-level Int)
-      //     - 1 优先级: imageWidth/imageHeight/imageTop (V32.36.46 native top-level Int)
-      //     - 2 fallback: width/height (V32.36.38b 嵌套 map)
-      //     - 3 fallback: bounds.right/left/bottom/top (V32.36.44 推算)
-      //
-      // V32.36.47 老板 09-20 装机实测 - 修法 (老板铁子命中错位 - 诊断 log 暴露新 bug):
-      //   老板 nova 18:09:47 log: 首个 Image centerX=-210 (负数, 不可见)
-      //   真因: viewpager offscreen / 隐藏 Image 节点, 跟 screen 无关
-      //   修法: 过滤 centerX < 0 || centerY < 0 || centerX > screenWidth || centerY > screenHeight
-      //   V32.36.45 老板铁子错位: 没过滤负坐标, 老板 nova 25 个 Image 里有不可见节点
-      //   V32.36.47 老板铁子反证金标准: 修过滤逻辑
-      const screenW = screenWidthDp() * 3;  // nova 480dpi = 1dp=3px
-      const screenH = screenHeightDp() * 3;
-      const qrCandidates = images.filter((n: any) => {
-        // V32.36.47 过滤掉不可见的 Image 节点 (centerX/Y 异常)
-        if (typeof n.centerX === 'number' && (n.centerX < 0 || n.centerX > screenW)) return false;
-        if (typeof n.centerY === 'number' && (n.centerY < 0 || n.centerY > screenH)) return false;
+      // V32.36.48 老板 09-20 装机实测 - 修法 (老板铁子反证金标准):
+      //   native 端 getAllImageNodes 已经过滤 40-150 范围, TS 端不再过滤 width/height
+      //   只按 Y 升序排序 + 取第一个
+      //   修法 (老板铁子反证金标准): 跟 V32.36.37 老板新逻辑一致 (Y 最小 = 最新报备)
+      const qrCandidates = images;
+      logger.info('保利:步骤13-情况2', `二维码候选 (native 已过滤 40-150): ${qrCandidates.length} 个`);
 
-        // V32.36.46 优先用 top-level Int 字段 (RN bridge 友好)
-        let w = (n as any).imageWidth ?? 0;
-        let h = (n as any).imageHeight ?? 0;
-        if (w === 0 || h === 0) {
-          // fallback 1: V32.36.38b 嵌套 map 字段
-          w = (n as any).width ?? 0;
-          h = (n as any).height ?? 0;
-        }
-        if (w === 0 || h === 0) {
-          // fallback 2: V32.36.44 bounds 推算
-          const bounds = (n as any).bounds;
-          if (bounds && typeof bounds === 'object') {
-            w = (bounds.right ?? 0) - (bounds.left ?? 0);
-            h = (bounds.bottom ?? 0) - (bounds.top ?? 0);
-          }
-        }
-        if (w === 0 || h === 0) return false;  // 排除占位
-        // 二维码特征: 接近正方形 (aspect ratio 0.85-1.15)
-        const aspectRatio = w / h;
-        const isSquareLike = aspectRatio >= 0.85 && aspectRatio <= 1.15;
-        // 尺寸范围: 50-300 px (二维码通常 84-200)
-        const isRightSize = w >= 50 && w <= 300 && h >= 50 && h <= 300;
-        return isSquareLike && isRightSize;
-      });
-      logger.info('保利:步骤13-情况2', `二维码候选 (aspect 0.85-1.15 + 尺寸 50-300 + 可见过滤): ${qrCandidates.length} 个 (V32.36.47)`);
-
-      // 老板反证金标准 #3: 按 Y 升序排序 (bounds.top 越小越靠上 = 最新报备)
-      // V32.36.46 优先 imageTop (top-level Int), fallback bounds.top
-      qrCandidates.sort((a: any, b: any) => {
-        const aTop = (a as any).imageTop ?? (a as any).bounds?.top ?? a.centerY;
-        const bTop = (b as any).imageTop ?? (b as any).bounds?.top ?? b.centerY;
-        return aTop - bTop;
-      });
+      // 老板反证金标准 #3: 按 Y 升序排序 (top 越小越靠上 = 最新报备)
+      // V32.36.48 老板铁子反证金标准: 用 top 字段, 不用 imageTop (新方法已直接返回 top)
+      qrCandidates.sort((a: any, b: any) => (a.top ?? 0) - (b.top ?? 0));
 
       // 老板反证金标准 #4: 点第一个 (Y 最小 = 最新报备), 零抖动
       if (qrCandidates.length > 0) {

@@ -120,6 +120,20 @@ export interface ZBBAutomationModule {
   extractScreenContent(type: 'phone' | 'name' | 'all'): Promise<ExtractContentResult>;
   screenshotForOcr(): Promise<string>;
   getAllTextNodes(): Promise<A11yNode[]>; // 🆕 08-24 加 contentDesc 字段 (千机端 80% 节点 text="", 必须靠 contentDesc 识别)
+  // 🆕 V32.36.48 (09-21 老板 nova 装机实测 - 老板铁子反证金标准):
+  //   老板 nova 9:45:27 log: V32.36.38b isImage 返回 type='image' 但 centerX=-210 (错的)
+  //   修法 (老板铁子反证金标准): 新增独立 getAllImageNodes (native + bridge), 重新走自己的 rect 避开 bug
+  //   E470 adb dump 实测: Image #2 [912,1195][996,1282] centerX=954, centerY=1238 (对的)
+  //   老板铁子反证金标准: V32.36.37+38+39+44+46+47 全部用 getAllTextNodes 过滤 type='image' 是错的, 因为 centerX 是负数
+  getAllImageNodes(): Promise<Array<{
+    centerX: number;
+    centerY: number;
+    width: number;
+    height: number;
+    top: number;
+    bottom: number;
+    className: string;
+  }>>;
   recognizeTextWithPosition(): Promise<OcrResult[]>;
   setOcrOptions(usePreprocessing: boolean, useCorrection: boolean): void;
 
