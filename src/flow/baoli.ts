@@ -66,8 +66,8 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
   logger.info('保利', `V32.36.52 reportIds=${JSON.stringify(reportIds)} (千机端写库后传的)`);
 
   try {
-    // 第一轮报备 (reportId = reportIds[0] 缦城和颂)
-    const round1Ok = await runBaoliRound(customer, 1, reportIds?.[0]);
+    // 第一轮报备 (reportIds = [id1, id2])
+    const round1Ok = await runBaoliRound(customer, 1, reportIds);
     if (!round1Ok) {
       logger.info('保利', '第一轮报备失败 → 弹窗等老板');
       // 🆕 V32.36.3: 端失败统一弹窗 + 进 UserIntervention (非 Error 状态)
@@ -78,8 +78,8 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       return false;
     }
 
-    // 第二轮报备 (reportId = reportIds[1] 山水和颂)
-    const round2Ok = await runBaoliRound(customer, 2, reportIds?.[1]);
+    // 第二轮报备 (reportIds = [id1, id2])
+    const round2Ok = await runBaoliRound(customer, 2, reportIds);
     if (!round2Ok) {
       logger.info('保利', '第二轮报备失败 → 弹窗等老板');
       // 🆕 V32.36.3: 同上
@@ -103,8 +103,12 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
 // ============================================================
 // 保利单轮 (第一轮 + 第二轮 都调这个, round 区分)
 // ============================================================
-async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportId?: number): Promise<boolean> {
-  logger.info('app', `========== 保利第 ${round} 轮开始 (reportId=${reportId ?? 'none'}) ==========`);
+async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportIds?: [number, number]): Promise<boolean> {
+  // 🆕 V32.36.58 老板 09-21 拍板: 接受 [id1, id2] 数组 (而不是单个 ID)
+  //   老板拍板: '2轮中任何一轮出错, 均需将2个ID的值写为重号'
+  //   老板铁子反证金标准: step13 需要拿到 2 个 ID 才能同时改
+  const reportId = reportIds?.[round - 1];
+  logger.info('app', `========== 保利第 ${round} 轮开始 (reportIds=${JSON.stringify(reportIds)}, 本轮ID=${reportId}) ==========`);
 
   // V32.36.42 老板 09-20 装机实测 - 修法 (老板拍板 简单方案):
   //   老板 16:25:48 实测: 第一轮完成后第二轮又从打开企业微信开始, 浪费 ~10-15s
@@ -174,7 +178,8 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportId?: nu
   if (!step12) return false;
 
   // 步骤 13: 检测报备结果
-  const step13 = await step13DetectResult(round, reportId);
+  // V32.36.58 老板 09-21 拍板: 传 [id1, id2] 数组, 让 step13 写数据库时同时改 2 个 ID
+  const step13 = await step13DetectResult(round, reportIds);
   if (!step13) return false;
 
   // V32.36.53 老板 09-21 拍板 - 修法:
@@ -808,8 +813,15 @@ async function step12WaitResult(): Promise<boolean> {
 // 步骤 13: 检测报备结果 (V2.x 步骤 15, 老板 09-20 拍板对齐 V2)
 // V32.36.33 修法: 一次性 dump + 多节点双匹配判定 (跟 V2.x detectResult 对齐)
 // ============================================================
-async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<boolean> {
-  logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮)...`);
+async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): Promise<boolean> {
+  // 🆕 V32.36.58 老板 09-21 拍板 - 修法:
+  //   老板拍板: '2轮是串行的, 第一轮出错就不会跑第二轮; 第二轮出错, 第一轮的结果要与第二轮保持一致.
+  //              因此, 2轮中任何一轮出错, 均需将2个ID的值写为重号'
+  //   老板铁子反证金标准: V32.36.57 只写本轮 reportId, 不满足老板拍板
+  //                     需要传 2 轮 IDs, 任意轮出错都把 2 个 ID 都写成 '重号'
+  //   V32.36.58 修法: 接受 [id1, id2] 数组, 写数据库时同时改 2 个 ID
+  const reportId = reportIds?.[round - 1];  // 当前轮对应的 ID (round=1 → reportIds[0], round=2 → reportIds[1])
+  logger.info('保利:步骤13', `检测报备结果 (第 ${round} 轮, reportIds=${JSON.stringify(reportIds)}, 本轮ID=${reportId})...`);
 
   // V32.36.57 老板 09-21 拍板 - 修法 (老板铁子反证金标准 - 3 次重试):
   //   老板问: '步骤13修改为检测3次:
@@ -882,19 +894,17 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
   if (detectedRepeat) {
     logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
     orchestrator.send('BAOLI_INTERVENE');
-    // V32.36.57 老板拍板: 检测到重号, 写数据库 status='重号'
-    //   老板铁子反证金标准: 本组客户不管是第几轮报错, 均将2轮的结果写为重号
-    //   修法: 从 V4 customer 全局拿 reportIds (V32.36.52 已经加了)
-    //   老板铁子铁律: 2 轮 IDs 都改成 '重号'
-    if (reportId !== undefined) {
-      try {
-        await markReportDone(reportId, '重号');
-        logger.info('保利:步骤13-情况1', `✓ 数据库状态更新: ID=${reportId} status='重号' (V32.36.57 老板拍板)`);
-        // 老板铁子铁律: 本组客户 2 轮结果都改成重号 (但只有本轮 reportId, 另一轮在 customer.reportIds 里)
-        //   - 注: 老板铁子反证金标准 - 重号通常只会 1 轮报错, 但老板拍板 "均将2轮的结果写为重号"
-        //   - 简化为: 写本轮 (另一轮如果也报错, 自己的 step13 会写自己)
-      } catch (e) {
-        logger.warn('保利:步骤13-情况1', `数据库更新失败 ID=${reportId}: ${e}`);
+    // V32.36.58 老板 09-21 拍板: 检测到重号, 写数据库 2 个 ID 都改成 status='重号'
+    //   老板铁子反证金标准: '2轮中任何一轮出错, 均需将2个ID的值写为重号'
+    //   修法: reportIds 是 [id1, id2] 数组, 同时写 2 个
+    if (reportIds !== undefined) {
+      for (const id of reportIds) {
+        try {
+          await markReportDone(id, '重号');
+          logger.info('保利:步骤13-情况1', `✓ 数据库状态更新: ID=${id} status='重号' (V32.36.58 老板拍板 2 轮均写重号)`);
+        } catch (e) {
+          logger.warn('保利:步骤13-情况1', `数据库更新失败 ID=${id}: ${e}`);
+        }
       }
     }
     return false;
@@ -1119,18 +1129,20 @@ async function step13DetectResult(round: 1 | 2, reportId?: number): Promise<bool
   }
 
   logger.info('保利:步骤13', '3 次都没检测到结果, 报错');
-  // V32.36.57 老板拍板: 3 次失败 → 报错 + 写数据库 status='重号'
-  //   老板铁子反证金标准: 本组客户不管是第几轮报错, 均将2轮的结果写为重号
-  //   修法: 本轮 reportId 写 '重号' (另一轮如果也报错, 自己的 step13 会写自己)
-  if (reportId !== undefined) {
-    try {
-      await markReportDone(reportId, '重号');
-      logger.info('保利:步骤13-情况3', `✓ 数据库状态更新: ID=${reportId} status='重号' (V32.36.57 老板拍板 3次失败报错)`);
-    } catch (e) {
-      logger.warn('保利:步骤13-情况3', `数据库更新失败 ID=${reportId}: ${e}`);
+  // V32.36.58 老板 09-21 拍板: 3 次失败 → 报错 + 写数据库 2 个 ID 都改成 status='重号'
+  //   老板铁子反证金标准: '2轮中任何一轮出错, 均需将2个ID的值写为重号'
+  //   修法: reportIds 是 [id1, id2] 数组, 同时写 2 个
+  if (reportIds !== undefined) {
+    for (const id of reportIds) {
+      try {
+        await markReportDone(id, '重号');
+        logger.info('保利:步骤13-情况3', `✓ 数据库状态更新: ID=${id} status='重号' (V32.36.58 老板拍板 3次失败 2轮均写重号)`);
+      } catch (e) {
+        logger.warn('保利:步骤13-情况3', `数据库更新失败 ID=${id}: ${e}`);
+      }
     }
   } else {
-    logger.warn('保利:步骤13-情况3', 'reportId 为空, 跳过数据库更新 (旧调用方未传 reportId)');
+    logger.warn('保利:步骤13-情况3', 'reportIds 为空, 跳过数据库更新 (旧调用方未传 reportIds)');
   }
   return false;
 }
