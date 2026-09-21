@@ -703,29 +703,47 @@ async function step10SmartRecognition(): Promise<boolean> {
 // ============================================================
 async function step11ClickReport(): Promise<boolean> {
   logger.info('保利:步骤11', '点报备...');
-  // V32.36.31 老板 09-20 装机实测 - 修法 (老板拍板 B 方案, 跟 step5 同款):
-  //   老板 nova 实测: step11 提交页的"报备"按钮跟 step5 一样是 Button class
-  //   V32.36.30 step5 修法已验: dump 找 Button + 兜底 hardcode
-  //   老板说"步骤11也需要调整" - 跟 step5 同款修法
-  //   修法: 用 getAllTextNodes dump 找带 Button className 的"报备"节点
-  //   找不到 → 兜底 hardcode byCoords(449, 2138) (跟 step5 兜底一致, 老板 nova 11:10 dump 实测)
-  let ok = false;
-  try {
-    const nodes = await ZBBAutomation.getAllTextNodes();
-    const reportBtn = nodes.find((n: any) =>
-      n?.text === '报备' &&
-      (n?.className === 'android.widget.Button' || n?.clickable === true) &&
-      n.centerX > 0 && n.centerY > 0
-    );
-    if (reportBtn) {
-      logger.info('保利:步骤11', `dump 找到 "报备" Button @ (${reportBtn.centerX}, ${reportBtn.centerY})`);
-      ok = await click.byNode(reportBtn);
+  // V32.36.51 老板 09-21 装机实测 - 修法 (老板拍板 跟 step7/8/9/10 同款统一格式):
+  //   老板 nova 10:52:42 实测: dump 找到 "报备" Button @ (448, 2180)
+  //   V32.36.31 之前: 1 次 dump + 兜底 (跟 step7/8/9/10 不一致)
+  //   老板拍板 A: '统一格式 (跟 step7/8/9/10 同款)'
+  //   修法:
+  //     1. 查找2次, 每次间隔 1-2S 间的随机时间
+  //     2. 第二次查找失败 → 兜底 hardcode byCoords(449, 2138) (V32.36.31 实测命中)
+  let foundNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      // 第 2 次前等 1-2s 随机
+      const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+      logger.info('保利:步骤11', `第 ${attempt}/2 次查找 "报备" 前等 ${wait}ms (V32.36.51 老板拍板 1-2s 随机)`);
+      await ZBBAutomation.delay(wait);
     } else {
-      logger.warn('保利:步骤11', `dump 没找到带 Button 的 "报备", 兜底 hardcode byCoords(449, 2138)`);
-      ok = await click.byCoords(449, 2138);  // V32.36.31 兜底 (跟 V32.36.30 step5 一致)
+      logger.info('保利:步骤11', `第 ${attempt}/2 次查找 "报备"...`);
     }
-  } catch (e) {
-    logger.warn('保利:步骤11', `dump 异常: ${e}, 兜底 byCoords(449, 2138)`);
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      const node = nodes.find((n: any) =>
+        n?.text === '报备' &&
+        (n?.className === 'android.widget.Button' || n?.clickable === true) &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (node) {
+        logger.info('保利:步骤11', `第 ${attempt}/2 次找到 "报备" Button @ (${node.centerX}, ${node.centerY})`);
+        foundNode = node;
+        break;
+      } else {
+        logger.warn('保利:步骤11', `第 ${attempt}/2 次没找到 "报备"`);
+      }
+    } catch (e) {
+      logger.warn('保利:步骤11', `第 ${attempt}/2 次 dump 异常: ${e}`);
+    }
+  }
+  let ok = false;
+  if (foundNode) {
+    ok = await click.byNode(foundNode);
+  } else {
+    // V32.36.51 兜底: hardcode byCoords(449, 2138) (V32.36.31 实测命中, 跟 V32.36.30 step5 一致)
+    logger.warn('保利:步骤11', `2 次都没找到, 兜底 hardcode byCoords(449, 2138) (V32.36.31 实测命中)`);
     ok = await click.byCoords(449, 2138);
   }
   if (!ok) {
