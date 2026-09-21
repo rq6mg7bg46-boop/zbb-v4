@@ -1247,21 +1247,46 @@ async function step14UploadScreenshot(): Promise<boolean> {
       logger.warn('保利:步骤14-3', `showToast 异常: ${e}`);
     }
 
-    // 步骤 14-4: dump 找"+添加框" (V2 L2174-2195 步骤9-a)
-    logger.info('保利:步骤14-4', 'dump 找"+添加框"...');
+    // 步骤 14-4: dump 找"+添加框" (V32.36.59 老板 09-21 拍板 - 修法)
+    //   老板 nova dump 09-21 16:49 反证金标准:
+    //     - 当前页面 = "请添加带看二维码" 弹窗
+    //     - 添加框 Button: content-desc="添加框, 点击进入相册"
+    //     - 子节点: text="+" (TextView) + text="添加" (TextView) — 两个独立 TextView
+    //     - resource-id 没有 tv_photo_add (mock 千机)
+    //   老板铁子命中错位: V32.36.56 用 `text?.includes('+\n添加')` 永远 false
+    //                     因为 '+' 和 '添加' 在两个独立 TextView 里, 不是 `\n` 拼接
+    //   修法: 改用 content-desc="添加框" 找 Button 节点 (V32.36.59 老板拍板)
+    logger.info('保利:步骤14-4', 'dump 找"添加框" Button (V32.36.59 老板拍板 content-desc 方案)...');
     const addBoxNodes = await ZBBAutomation.getAllTextNodes();
-    const addBoxNode = addBoxNodes.find((n: any) =>
-      n?.text?.toString()?.includes('+\n添加') ||  // text 兜底
-      n?.text?.toString()?.includes('+ 添加') ||
-      n?.text?.toString()?.includes('+添加')
+    // 老板铁子反证金标准 (V32.36.59 老板拍板): 找 content-desc 包含"添加框"的节点
+    //   mock 千机 content-desc = "添加框, 点击进入相册"
+    //   真千机 content-desc 老板铁子预测 = "添加框" 或类似
+    let addBoxNode: any = addBoxNodes.find((n: any) =>
+      n?.contentDesc?.toString()?.includes('添加框')
     );
+    // 兜底 1: content-desc 没找到, 用 text='添加' 找
+    if (!addBoxNode) {
+      addBoxNode = addBoxNodes.find((n: any) =>
+        n?.text?.toString()?.trim() === '添加' &&
+        n?.class?.toString()?.includes('Button')
+      );
+      if (addBoxNode) logger.info('保利:步骤14-4', 'content-desc 没找到, 兜底用 Button class');
+    }
+    // 兜底 2: text='+' 找
+    if (!addBoxNode) {
+      addBoxNode = addBoxNodes.find((n: any) =>
+        n?.text?.toString()?.trim() === '+' &&
+        n?.class?.toString()?.includes('Button')
+      );
+      if (addBoxNode) logger.info('保利:步骤14-4', 'content-desc + Button class 都没找到, 兜底用 text="+" Button');
+    }
     if (addBoxNode) {
-      logger.info('保利:步骤14-4', `找到"+添加框" @ (${addBoxNode.centerX}, ${addBoxNode.centerY})`);
+      logger.info('保利:步骤14-4', `找到"添加框" @ (${addBoxNode.centerX}, ${addBoxNode.centerY}) contentDesc=${addBoxNode.contentDesc}`);
       await ZBBAutomation.click(addBoxNode.centerX, addBoxNode.centerY);
     } else {
-      // V2 v19.90 D13 vivo 实测兜底 (165,792)px → dp(83, 396)
-      logger.warn('保利:步骤14-4', '未找到"+添加框", 兜底用 dp(83, 396) [vivo 实测]');
-      await ZBBAutomation.click(px(83), px(396));
+      // V32.36.59 老板拍板: 兜底坐标 hardcode (老板 nova dump 显示添加框 bounds="[90,1152][315,1386]" 中心点 (202, 1269))
+      logger.warn('保利:步骤14-4', 'content-desc + Button class 都没找到, 兜底用 px(202, 1269) [nova dump]');
+      await ZBBAutomation.click(202, 1269);
     }
     // V2 v19.90 D16: Gamma 2000-3500 → 3000-5250 (×1.5 保稳)
     await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 2250));
