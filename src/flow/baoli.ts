@@ -804,6 +804,13 @@ async function step13DetectResult(round: 1 | 2): Promise<boolean> {
         const firstQr = qrCandidates[0];
         logger.info('保利:步骤13-情况2', `Y 最小二维码 @ (${firstQr.centerX}, ${firstQr.centerY}) (老板反证金标准最新报备)`);
         await ZBBAutomation.click(firstQr.centerX, firstQr.centerY);  // 零抖动
+        // V32.36.49 老板 09-21 装机实测 - 修法 (老板拍板):
+        //   老板问: '点击二维码和三指下滑是同一时间进行的, 调整为, 点击二维码之后等待3-4S间的随机时间, 然后再执行三指下滑'
+        //   老板反证金标准: 之前 tap + 三指下滑之间没等, 太快了
+        //   修法: 点击二维码后等 3000-4000ms 随机, 再执行三指下滑
+        const qrWait = 3000 + Math.floor(Math.random() * 1000);  // 3000-4000ms
+        logger.info('保利:步骤13-情况2', `点击二维码后等 ${qrWait}ms (V32.36.49 老板拍板 3-4s 随机)`);
+        await ZBBAutomation.delay(qrWait);
         qrClicked = true;
       } else {
         logger.warn('保利:步骤13-情况2', '没找到二维码候选, 跳过点二维码');
