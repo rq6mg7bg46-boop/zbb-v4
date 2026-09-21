@@ -593,8 +593,51 @@ async function step8SelectProject(projectName: string, round: 1 | 2): Promise<bo
 // ============================================================
 async function step9ClickConfirm(): Promise<boolean> {
   logger.info('保利:步骤9', '点确认...');
-  const ok = await click.byText('确认');
-  if (!ok) return false;
+  // V32.36.50 老板 09-21 装机实测 - 修法 (老板拍板 跟 step7/8 同款):
+  //   老板反证金标准: 跟 step7/8 统一格式
+  //   老板 nova 10:52:37 实测: 找到 "确认" @ (958, 1496) → tap (958, 1497)
+  //   修法:
+  //     1. 查找2次, 每次间隔 1-2S 间的随机时间 (老板 09-20 拍板 step7 跟 step8 风格)
+  //     2. 第二次查找失败 → 兜底 hardcode byCoords(958, 1496) (老板 nova 10:52:37 实测)
+  let foundNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      // 第 2 次前等 1-2s 随机
+      const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+      logger.info('保利:步骤9', `第 ${attempt}/2 次查找 "确认" 前等 ${wait}ms (V32.36.50 老板拍板 1-2s 随机)`);
+      await ZBBAutomation.delay(wait);
+    } else {
+      logger.info('保利:步骤9', `第 ${attempt}/2 次查找 "确认"...`);
+    }
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      const node = nodes.find((n: any) =>
+        n?.text?.toString()?.includes('确认') &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (node) {
+        logger.info('保利:步骤9', `第 ${attempt}/2 次找到 "确认" @ (${node.centerX}, ${node.centerY})`);
+        foundNode = node;
+        break;
+      } else {
+        logger.warn('保利:步骤9', `第 ${attempt}/2 次没找到 "确认"`);
+      }
+    } catch (e) {
+      logger.warn('保利:步骤9', `第 ${attempt}/2 次 dump 异常: ${e}`);
+    }
+  }
+  let ok = false;
+  if (foundNode) {
+    ok = await click.byNode(foundNode);
+  } else {
+    // V32.36.50 兜底: hardcode byCoords(958, 1496) (老板 nova 10:52:37 实测命中)
+    logger.warn('保利:步骤9', `2 次都没找到, 兜底 hardcode byCoords(958, 1496) (老板 nova 10:52:37 实测)`);
+    ok = await click.byCoords(958, 1496);
+  }
+  if (!ok) {
+    logger.info('保利:步骤9', '点确认失败');
+    return false;
+  }
   await ZBBAutomation.delay(1500);
   logger.info('保利:步骤9', '✓ 已点确认');
   return true;
@@ -605,9 +648,49 @@ async function step9ClickConfirm(): Promise<boolean> {
 // ============================================================
 async function step10SmartRecognition(): Promise<boolean> {
   logger.info('保利:步骤10', '点智能识别...');
-  const ok = await click.byText('智能识别');
+  // V32.36.50 老板 09-21 装机实测 - 修法 (老板拍板 跟 step7/8 同款):
+  //   老板反证金标准: 跟 step7/8 统一格式
+  //   老板 nova 10:52:39 实测: 找到 "智能识别" @ (919, 1360) → tap (917, 1359)
+  //   修法:
+  //     1. 查找2次, 每次间隔 1-2S 间的随机时间 (老板 09-20 拍板 step7 跟 step8 风格)
+  //     2. 第二次查找失败 → 兜底 hardcode byCoords(919, 1360) (老板 nova 10:52:39 实测)
+  let foundNode: any = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (attempt > 1) {
+      // 第 2 次前等 1-2s 随机
+      const wait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+      logger.info('保利:步骤10', `第 ${attempt}/2 次查找 "智能识别" 前等 ${wait}ms (V32.36.50 老板拍板 1-2s 随机)`);
+      await ZBBAutomation.delay(wait);
+    } else {
+      logger.info('保利:步骤10', `第 ${attempt}/2 次查找 "智能识别"...`);
+    }
+    try {
+      const nodes = await ZBBAutomation.getAllTextNodes();
+      const node = nodes.find((n: any) =>
+        n?.text?.toString()?.includes('智能识别') &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (node) {
+        logger.info('保利:步骤10', `第 ${attempt}/2 次找到 "智能识别" @ (${node.centerX}, ${node.centerY})`);
+        foundNode = node;
+        break;
+      } else {
+        logger.warn('保利:步骤10', `第 ${attempt}/2 次没找到 "智能识别"`);
+      }
+    } catch (e) {
+      logger.warn('保利:步骤10', `第 ${attempt}/2 次 dump 异常: ${e}`);
+    }
+  }
+  let ok = false;
+  if (foundNode) {
+    ok = await click.byNode(foundNode);
+  } else {
+    // V32.36.50 兜底: hardcode byCoords(919, 1360) (老板 nova 10:52:39 实测命中)
+    logger.warn('保利:步骤10', `2 次都没找到, 兜底 hardcode byCoords(919, 1360) (老板 nova 10:52:39 实测)`);
+    ok = await click.byCoords(919, 1360);
+  }
   if (!ok) {
-    logger.info('保利:步骤10', '找不到智能识别');
+    logger.info('保利:步骤10', '点智能识别失败');
     return false;
   }
   await ZBBAutomation.delay(3000); // 等 OCR 跑完
