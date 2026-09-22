@@ -307,7 +307,9 @@ async function step4FindProject(projectName: string): Promise<boolean> {
   for (let attempt = 1; attempt <= 3; attempt++) {
     logger.info('保利:步骤4', `第 ${attempt}/3 次查找`);
 
-    // 1. V2.x v22.02.33 反证金标准: delay 3000ms 等节点树加载
+    // 1. V32.36.65 老板 09-22 拍板: 删 dump 节点列表打印 (噪音, 不需要调试信息)
+    // 之前 V32.36.11 调试铁律: dump 一次界面, 老板 log 能看到真实状态
+    // V32.36.65 老板拍板: 节点列表太长 (30+ 个), 看 log 没意义, 删掉
     if (attempt === 1) {
       // 第 1 次前等 3000ms (云和家小程序加载)
       await ZBBAutomation.delay(3000);
@@ -319,11 +321,12 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     }
 
     // 2. V32.36.11 调试铁律: dump 一次界面 (老板 log 能看到真实状态)
+    // V32.36.65 老板拍板: 删 dump 节点列表 (噪音), 只保留节点数
     const screenTexts = await judge.dumpScreenTexts(30);
-    if (screenTexts.length === 0) {
-      logger.info('保利:步骤4', '当前界面: [空]');
+    if (screenTexts.length > 0) {
+      logger.info('保利:步骤4', `dump 节点数: ${screenTexts.length} (V32.36.65 老板拍板: 删详细列表, 只显示节点数)`);
     } else {
-      screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
+      logger.info('保利:步骤4', 'dump 节点数: 0 [空]');
     }
 
     // 3. V32.36.63 老板 09-22 拍板 - 修法:
@@ -438,6 +441,13 @@ async function step5ClickReportButton(): Promise<boolean> {
 // (V2.x 步骤 7, 实测: 长按 3000ms + 等 1500ms + tap 粘贴)
 // ============================================================
 async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> {
+  // V32.36.65 老板 09-22 拍板: 步骤6 开始先打印当前界面 (方便老板看)
+  const step6StartTexts = await judge.dumpScreenTexts(30);
+  logger.info('保利:步骤6', `开始 (V32.36.65 老板拍板打印当前界面): dump 节点数=${step6StartTexts.length}`);
+  if (step6StartTexts.length > 0) {
+    // V32.36.65 老板拍板: 步骤6 步骤14-6 打印, 其他步骤不打印
+    step6StartTexts.forEach((t, idx) => logger.info('保利:步骤6', `  [${idx + 1}] ${t}`));
+  }
   logger.info('保利:步骤6', '长按输入框 + 粘贴客户信息...');
 
   // V32.36.28 老板 09-20 装机实测 - 修法 (老板拍板简化):
@@ -1386,7 +1396,13 @@ async function step14UploadScreenshot(): Promise<boolean> {
     //   老板 nova 10:33 实测: 步骤 14-6 实际节点是 "确认", 不是 "完成/上传"
     //   老板铁子反证金标准: V32.36.56/62 错位找 "完成/上传", 老板 nova 永远找不到
     //   修法: 改为找 "确认" (老板拍板实测), content-desc 找 "确认" 兜底
+    //   🆕 V32.36.65 老板 09-22 拍板: 点"确认"前先打印当前界面 (方便老板看)
     logger.info('保利:步骤14-6', 'dump 找"确认" + 点击 (V32.36.64 老板拍板)');
+    const step146StartTexts = await judge.dumpScreenTexts(30);
+    logger.info('保利:步骤14-6', `点前 dump 节点数=${step146StartTexts.length}`);
+    if (step146StartTexts.length > 0) {
+      step146StartTexts.forEach((t, idx) => logger.info('保利:步骤14-6', `  [${idx + 1}] ${t}`));
+    }
     const finishNodes = await ZBBAutomation.getAllTextNodes();
     let finishNode: any = finishNodes.find((n: any) =>
       n?.text?.toString()?.trim() === '确认' ||  // V32.36.64 老板拍板: 找"确认"
@@ -1406,6 +1422,18 @@ async function step14UploadScreenshot(): Promise<boolean> {
       // 兜底 hardcode (老板 nova 实测后填)
       logger.warn('保利:步骤14-6', '未找到"确认", 兜底用 px(540, 2200) [千机底部]');
       await ZBBAutomation.click(540, 2200);
+    }
+    // 🆕 V32.36.65 老板 09-22 拍板: 点"确认"后, 下滑屏幕刷新当前界面
+    //   老板铁子反证金标准: 千机列表通常有分页或延迟, 不下滑可能漏看新客户
+    //   修法: 上滑后等 1-2s, 让界面刷新
+    logger.info('保利:步骤14-6', '下滑屏幕刷新当前界面 (V32.36.65 老板拍板)');
+    await ZBBAutomation.swipe(540, 1800, 540, 800, 500);  // 从下往上滑 (刷新)
+    await ZBBAutomation.delay(1000 + Math.floor(Math.random() * 1000));  // 1-2s 随机
+    // 打印刷新后界面
+    const step146AfterTexts = await judge.dumpScreenTexts(30);
+    logger.info('保利:步骤14-6', `刷新后 dump 节点数=${step146AfterTexts.length}`);
+    if (step146AfterTexts.length > 0) {
+      step146AfterTexts.forEach((t, idx) => logger.info('保利:步骤14-6', `  [${idx + 1}] ${t}`));
     }
     // V32.36.56 老板拍板: 等 2-3s 让"完成"按钮响应
     await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
