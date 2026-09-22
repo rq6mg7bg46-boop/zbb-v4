@@ -1365,7 +1365,18 @@ async function step14UploadScreenshot(): Promise<boolean> {
     logger.info('保利:步骤14-2', 'dump 找"报备有效" (V32.36.74 老板拍板 findWithRecovery 上滑重试)...');
     let baobeiYouxiaoNode: any = null;
     try {
-      baobeiYouxiaoNode = await findWithRecovery(
+      // 🆕 V32.36.78 老板 09-22 拍板 - 修法 (老板铁子反证金标准 - 真根因):
+      //   V32.36.74~77 baobeiYouxiaoNode = await findWithRecovery(...) 是错的!
+      //   findWithRecovery 返回 boolean, 赋值给 baobeiYouxiaoNode 会**覆盖** finder 内部赋值的节点对象
+      //   执行顺序:
+      //     1) finder 第 1 次命中: baobeiYouxiaoNode = 节点对象 (含 centerX=854)
+      //     2) finder 返 true, findWithRecovery 返 true (boolean)
+      //     3) 外层 baobeiYouxiaoNode = true → 覆盖! 节点对象丢了
+      //     4) 后续 baobeiYouxiaoNode.centerX = true.centerX = undefined
+      //   老板 nova 16:47 log 反证: (undefined, undefined) 跟 V32.36.73 单次 dump 成功的差异,
+      //     不在 A11y 抢树, 不在节点 bounds, 而在 V32.36.74 引入的赋值覆盖 bug
+      //   修法: 外层只 await 不接返回值, 节点对象由 finder 内部赋值
+      await findWithRecovery(
         '保利:步骤14-2:报备有效',
         async () => {
           // findWithRecovery 要求 finder 返回 boolean
