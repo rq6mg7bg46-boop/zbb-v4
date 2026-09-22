@@ -1042,9 +1042,23 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
       const qrCandidates = images;
       logger.info('保利:步骤13-情况2', `二维码候选 (native 已过滤 40-150): ${qrCandidates.length} 个`);
 
-      // 老板反证金标准 #3: 按 Y 升序排序 (top 越小越靠上 = 最新报备)
-      // V32.36.48 老板铁子反证金标准: 用 top 字段, 不用 imageTop (新方法已直接返回 top)
-      qrCandidates.sort((a: any, b: any) => (a.top ?? 0) - (b.top ?? 0));
+      // 老板反证金标准 #3: 按 X 值最大 + Y 值最小排序 (老板 09-22 nova 实测反证金标准)
+      // V32.36.37 旧逻辑: Y 升序排序 (top 越小越靠上 = 最新报备)
+      //   老板铁子反证金标准 - 老板铁子命中错位 (再次 - 关键):
+      //   老板 nova 11:15 实测: 最新报备二维码在屏幕右上角 (X 大, Y 小)
+      //   V32.36.37 'Y 最小' 只能保证在顶部, 但不一定在最右
+      //   老板拍板: '点击 x 值最大, y 值最小 的二维码' (屏幕右上角)
+      // V32.36.71 老板 09-22 拍板 - 修法:
+      //   排序规则: X 值最大 + Y 值最小
+      //   老板铁子反证金标准: 真千机的'最新报备'二维码固定在屏幕右上角
+      //   修法: 按 (x 值越大, y 值越小) 排序, 取第一个
+      qrCandidates.sort((a: any, b: any) => {
+        // 主要排序: X 值越大越优先 (老板铁子反证金标准 - 屏幕右上角)
+        // 兜底: X 相等时, Y 值越小越优先 (老板铁子反证金标准)
+        const xDiff = (b.centerX ?? 0) - (a.centerX ?? 0);  // X 降序 (老板拍板 - X 最大优先)
+        if (xDiff !== 0) return xDiff;
+        return (a.centerY ?? 0) - (b.centerY ?? 0);  // Y 升序 (X 相同时, Y 最小优先)
+      });
 
       // 🆕 V32.36.70 老板 09-22 拍板 - 打印前 5 个二维码候选 (方便老板看 log 调试)
       const top5 = qrCandidates.slice(0, 5);
@@ -1052,10 +1066,10 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
         logger.info('保利:步骤13-情况2', `二维码候选[${idx + 1}/5] @ (${qr.centerX}, ${qr.centerY}) size=${qr.width}x${qr.height} top=${qr.top}`);
       });
 
-      // 老板反证金标准 #4: 点第一个 (Y 最小 = 最新报备), 零抖动
+      // 老板反证金标准 #4: 点第一个 (X 最大, Y 最小 = 屏幕右上角最新报备), 零抖动
       if (qrCandidates.length > 0) {
         const firstQr = qrCandidates[0];
-        logger.info('保利:步骤13-情况2', `Y 最小二维码 @ (${firstQr.centerX}, ${firstQr.centerY}) (老板反证金标准最新报备)`);
+        logger.info('保利:步骤13-情况2', `X 最大+Y 最小二维码 @ (${firstQr.centerX}, ${firstQr.centerY}) (V32.36.71 老板拍板屏幕右上角最新报备)`);
         await ZBBAutomation.click(firstQr.centerX, firstQr.centerY);  // 零抖动
         // V32.36.49 老板 09-21 装机实测 - 修法 (老板拍板):
         //   老板问: '点击二维码和三指下滑是同一时间进行的, 调整为, 点击二维码之后等待3-4S间的随机时间, 然后再执行三指下滑'
