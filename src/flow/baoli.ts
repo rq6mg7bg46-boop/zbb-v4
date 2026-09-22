@@ -322,9 +322,13 @@ async function step4FindProject(projectName: string): Promise<boolean> {
 
     // 2. V32.36.11 调试铁律: dump 一次界面 (老板 log 能看到真实状态)
     // V32.36.65 老板拍板: 删 dump 节点列表 (噪音), 只保留节点数
+    // V32.36.66 老板 09-22 拍板 - 撤销 V32.36.65: 恢复详细节点列表打印
+    //   老板 nova 11:09 实测: dump 只看到 5 个节点 (没加载完), 老板需要看具体哪些节点
+    //   修法: 恢复完整节点列表, 老板 log 能看清是缺哪些节点
     const screenTexts = await judge.dumpScreenTexts(30);
     if (screenTexts.length > 0) {
-      logger.info('保利:步骤4', `dump 节点数: ${screenTexts.length} (V32.36.65 老板拍板: 删详细列表, 只显示节点数)`);
+      logger.info('保利:步骤4', `dump 节点数: ${screenTexts.length} (V32.36.66 老板拍板恢复详细列表)`);
+      screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
     } else {
       logger.info('保利:步骤4', 'dump 节点数: 0 [空]');
     }
