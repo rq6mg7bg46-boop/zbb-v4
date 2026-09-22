@@ -339,6 +339,17 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     //    🆕 V32.36.63 老板 nova 10:25 实测: 当客户换项目时, 项目名 '郑州保利山水和颂' 不一定在结果页
     //         但价格节点 '16500-19500' 总在 (老板拍板兜底)
     //         老板原话: '如果没有找到郑州保利山水和颂, 但找到了 16500-19500, 就点击 16500-19500, 然后继续执行步骤5'
+    // 🆕 V32.36.73 老板 09-22 拍板 - 修法 (方案 B, 老板铁子反证金标准 - 老板 nova 13:13 实测):
+    //   老板 nova 13:13 实测反馈: 步骤 4 在'搜索页' (有'请输入项目名称' 搜索框 + '暂无数据')
+    //   不是楼盘列表页, 价格节点兜底不适用
+    //   老板拍板方案 B:
+    //     1. 点击'请输入项目名称' 搜索框 + 等 3s
+    //     2. 输入'郑州保利山水和颂' 文本
+    //     3. 查找并点击'郑州保利山水和颂'
+    //     4. 继续执行步骤 5
+    //   老板铁子反证金标准 - 老板铁子命中错位 (再次 - 关键):
+    //     V32.36.63 价格兜底只对'楼盘列表页'有效, 搜索页 (老板 nova 13:13) 没项目列表
+    //   修法: 在 V32.36.63 价格兜底后加 V32.36.73 搜索框兜底
     const nodes = await ZBBAutomation.getAllTextNodes();
     let projectEntry: any = nodes.find((n: any) => n.text === '郑州保利山水和颂');
 
@@ -352,6 +363,50 @@ async function step4FindProject(projectName: string): Promise<boolean> {
       });
       if (projectEntry) {
         logger.info('保利:步骤4', `✓ V32.36.63 兜底找到价格节点"${projectEntry.text}" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+      }
+    }
+
+    // ★ V32.36.73 老板拍板方案 B: 搜索框兜底 (老板 nova 13:13 实测 - '请输入项目名称' 搜索页)
+    if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
+      logger.warn('保利:步骤4', `第 ${attempt}/3 次未找到项目名 + 价格, 试搜索框兜底 (V32.36.73 老板拍板方案 B)`);
+      // 1. 找搜索框节点 (text='请输入项目名称')
+      const searchBox = nodes.find((n: any) =>
+        n?.text?.toString()?.includes('请输入项目名称') &&
+        n.centerX > 0 && n.centerY > 0
+      );
+      if (searchBox) {
+        logger.info('保利:步骤4', `✓ V32.36.73 找到搜索框"请输入项目名称" @ (${searchBox.centerX}, ${searchBox.centerY})`);
+        // 2. 点击搜索框 + 等 3s (老板拍板方案 B 步骤 1)
+        await ZBBAutomation.click(searchBox.centerX ?? 0, searchBox.centerY ?? 0);
+        await ZBBAutomation.delay(3000);
+        // 3. 输入'郑州保利山水和颂' (老板拍板方案 B 步骤 2)
+        await ZBBAutomation.setClipboardText('郑州保利山水和颂');
+        // V2 v19.x 老板拍板: 长按 + 粘贴 (跟步骤 6 同款)
+        await longPress.byCoords(searchBox.centerX ?? 0, searchBox.centerY ?? 0, 3000);
+        await ZBBAutomation.delay(1500);
+        const pasteNodes = await ZBBAutomation.getAllTextNodes();
+        const pasteNode = pasteNodes.find((n: any) =>
+          n?.text?.toString()?.trim() === '粘贴' ||
+          n?.contentDesc?.toString()?.trim() === '粘贴'
+        );
+        if (pasteNode) {
+          logger.info('保利:步骤4', `V32.36.73 找到"粘贴" @ (${pasteNode.centerX}, ${pasteNode.centerY})`);
+          await click.byNode(pasteNode);
+        } else {
+          // 兜底: hardcode 点击粘贴 (老板拍板实测)
+          await click.byCoords(135, 720);
+        }
+        await ZBBAutomation.delay(2000);  // 等搜索结果
+        // 4. 查找并点击"郑州保利山水和颂" (老板拍板方案 B 步骤 3)
+        const searchNodes = await ZBBAutomation.getAllTextNodes();
+        projectEntry = searchNodes.find((n: any) => n.text === '郑州保利山水和颂');
+        if (projectEntry && projectEntry.centerX > 0 && projectEntry.centerY > 0) {
+          logger.info('保利:步骤4', `✓ V32.36.73 找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+        } else {
+          logger.warn('保利:步骤4', `V32.36.73 搜索后仍未找到"郑州保利山水和颂"`);
+        }
+      } else {
+        logger.warn('保利:步骤4', `V32.36.73 也没找到搜索框"请输入项目名称"`);
       }
     }
 
