@@ -667,7 +667,7 @@ function readReportCountFromNodes(nodes: A11yNode[]): number {
  *
  * @returns 仅返回 { projectName, customerName, phone } 3 字段
  */
-function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
+export function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
   const lines = assembleKeyValueLines(nodes);
 
   let projectName = '';

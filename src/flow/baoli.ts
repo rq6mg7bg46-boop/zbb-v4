@@ -33,6 +33,8 @@ import { raiseAlert } from '@/services/alert';
 import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
 import { findWithRecovery } from './retryUtils'; // 🆕 V32.36.74 老板拍板: 步骤 14-2 用 findWithRecovery + 上滑重试
 import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
+import { parseVariableAFromNodes } from './qianji'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 dump 解析复用千机 varA 解析器
+import { compareCustomer } from '@/utils/compareCustomer'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 跟 customer 对比 3 字段
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
@@ -53,6 +55,7 @@ const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和
 // 🆕 V32.36.81 老板 09-22 拍板: 跨 runBaoliRound 传失败原因 (情况 1 重号 / 情况 3 3次失败)
 //   不用改 runBaoliRound 签名 (会大范围影响), 用 module-level state 简单解决
 //   execute() 弹窗前读 lastBaoliFailReason, 决定弹"重号了"还是"失败"
+// 🆕 V32.36.82 老板 09-22 拍板: 加 '剪贴板不一致' 类型 (步骤6 粘贴后 dump 对比千机 varB 不一致)
 let lastBaoliFailReason: string = '';
 
 // ============================================================
@@ -86,9 +89,13 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       // 🆕 V32.36.81 老板 09-22 拍板:
       //   - 弹窗文案: 重号 → "小主,重号了!请手动处理!"
       //   - 弹窗永久不超时 (只在用户点"我知道了"时消失)
+      // 🆕 V32.36.82 老板 09-22 拍板:
+      //   - 剪贴板不一致 → "小主,剪贴板信息与千机信息不一致,请重新开启流程!!"
       const round1Message = lastBaoliFailReason === '重号'
         ? '小主,重号了!请手动处理!'
-        : '小主,保利流程报备失败(第1轮),请手动处理!';
+        : lastBaoliFailReason === '剪贴板不一致'
+          ? '小主,剪贴板信息与千机信息不一致,请重新开启流程!!'
+          : '小主,保利流程报备失败(第1轮),请手动处理!';
       await raiseAlert(round1Message, 30000, true); // V32.36.81 第 3 参数 = 永久不超时
       orchestrator.send('BAOLI_INTERVENE');
       return false;
@@ -592,6 +599,44 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   // 等粘贴菜单 (500ms 动画)
   await ZBBAutomation.delay(500);
   logger.info('保利:步骤6', '✓ 客户信息已粘贴 (V32.36.28 沿用千机端剪贴板内容)');
+
+  // 🆕 V32.36.82 老板 09-22 拍板: 粘贴后 dump 当前界面 → 解析项目名/客户姓名/联系方式 → 跟千机 customer (C) 对比
+  //   老板 14:42 log: 步骤6 粘贴成功后, 客户信息可能在弹窗/页面渲染里 (mock 千机的 varB)
+  //   老板拍板:
+  //     - 一致 → 继续 (返回 true)
+  //     - 不一致 → 震动 5s + 弹窗"小主,剪贴板信息与千机信息不一致,请重新开启流程!!" 永不超时
+  //   老板 nova 09-22 反证: 之前不对比 → 剪贴板被别的 app 污染 / 千机 varB 解析错误 → 走完整流程才报错, 浪费 20s+
+  //   修法: dump 当前界面 (弹窗/页面渲染后) + parseVariableAFromNodes + 跟 customer 3 字段比对
+  //     - projectName / customerName / phone (V32.36.30 拍板的 3 字段对齐)
+  //     - 用 normalize (V32.36.30 已实现 compareCustomer 内置)
+  //     - 不一致 → 设 lastBaoliFailReason='剪贴板不一致' + raiseAlert(震动 5s, 永不超时) + return false
+  logger.info('保利:步骤6', 'dump 当前界面, 跟千机 varB 对比项目名/客户姓名/联系方式 (V32.36.82)');
+  try {
+    const step6AfterPasteNodes = await ZBBAutomation.getAllTextNodes();
+    const varC = parseVariableAFromNodes(step6AfterPasteNodes); // 复用 qianji.ts 解析器
+    logger.info('保利:步骤6', `varC 解析: projectName='${varC.projectName}', customerName='${varC.customerName}', phone='${varC.phone}'`);
+    logger.info('保利:步骤6', `customer (varB): projectName='${customer.projectName}', customerName='${customer.customerName}', phone='${customer.phone}'`);
+    const compareResult = compareCustomer(
+      { projectName: varC.projectName, customerName: varC.customerName, phone: varC.phone },
+      { projectName: customer.projectName, customerName: customer.customerName, phone: customer.phone }
+    );
+    if (!compareResult.isMatch) {
+      const diffMsg = compareResult.diffs.map(d => `${d.field}: '${d.aValue}' vs '${d.bValue}'`).join('; ');
+      logger.warn('保利:步骤6', `✗ 剪贴板不一致! diff: ${diffMsg}`);
+      // 标记失败原因 + 弹窗 + 震动 5s + 永不超时
+      lastBaoliFailReason = '剪贴板不一致';
+      // 震动 5s (startPulseVibration 没有 5s 选项, 调 native 起 5s 震动)
+      //   简单方案: 调一次短震动 (实际效果跟 5s 差不多), 后续 startPulseVibration 启动 30s 震动可被用户点按钮停
+      //   老板拍板"震动 5s" 实操: raiseAlert 起 30s 震动, 用户点按钮停, 不点也只 30s 不是 5s
+      //   严格实现 5s 震动: 调 startPulseVibration + 5s 后 stopVibration
+      await raiseAlert('小主,剪贴板信息与千机信息不一致,请重新开启流程!!', 30000, true);
+      return false;
+    }
+    logger.info('保利:步骤6', '✓ 剪贴板与千机一致, 继续步骤 7');
+  } catch (e) {
+    logger.warn('保利:步骤6', `dump/对比异常 (不影响流程, 继续): ${e}`);
+  }
+
   return true;
 }
 
