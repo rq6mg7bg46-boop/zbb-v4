@@ -1444,7 +1444,9 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
     logger.info('保利:步骤14-2', 'dump 解析 varD, 跟 customer (C) 对比 (V32.36.83)');
     try {
       const step14VarDNodes = await ZBBAutomation.getAllTextNodes();
-      const varD = parseVariableCFromClipboard(step14VarDNodes); // 🆕 V32.36.87 跟步骤 6 同款解析器, 处理 varD 混合内容
+      // 🆕 V32.36.89 老板 09-22 拍板: varD 跟 varA 是同一个界面 (mock 千机首页), 复用 parseVariableAFromNodes
+      //   之前 V32.36.87 错用 parseVariableCFromClipboard, 老板拍板'D 和 A 是一样的界面, 可以复用同一个逻辑'
+      const varD = parseVariableAFromNodes(step14VarDNodes);
       logger.info('保利:步骤14-2', `varD 解析: projectName='${varD.projectName}', customerName='${varD.customerName}', phone='${varD.phone}'`);
       logger.info('保利:步骤14-2', `customer (C): projectName='${customer.projectName}', customerName='${customer.customerName}', phone='${customer.phone}'`);
       const compareResultD = compareCustomer(
