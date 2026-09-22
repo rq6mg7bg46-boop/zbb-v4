@@ -838,8 +838,12 @@ async function step12WaitResult(): Promise<boolean> {
   //   老板问: '步骤12的页面渲染时间调整为1-2S间的随机时间'
   //   老板铁子反证金标准: V32.36.33 一次性 delay 3500-5000ms 太长, 老板要求 1000-2000ms 随机
   //   修法: delay(1000 + random*1000) = 1-2s (V32.36.57 老板拍板)
-  const delayMs = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms (V32.36.57 老板拍板)
-  logger.info('保利:步骤12', `等结果页渲染 ${delayMs}ms (V32.36.57 老板拍板 1-2s 随机)`);
+  // 🆕 V32.36.72 老板 09-22 拍板 - 修法 (老板铁子反证金标准 - V2 v22.02.3.1 反证金标准):
+  //   老板 nova 实测反馈: '步骤12偶发性找不到界面已经可以看到的内容'
+  //   老板铁子命中错位 (再次 - 关键): V32.36.57 1-2s 太短, 真千机结果页渲染 2-5s 不等
+  //   修法: delay(2000 + random*2000) = 2-4s (V2 v22.02.3.1 反证金标准)
+  const delayMs = 2000 + Math.floor(Math.random() * 2000);  // 2000-4000ms (V32.36.72 老板拍板 2-4s 随机)
+  logger.info('保利:步骤12', `等结果页渲染 ${delayMs}ms (V32.36.72 老板拍板 2-4s 随机, V32.36.57 1-2s 太短)`);
   await ZBBAutomation.delay(delayMs);
 
   // V32.36.33 step12 不再做"循环等结果", 直接返回 true 让 step13 检测
