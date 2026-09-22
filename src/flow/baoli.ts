@@ -1383,7 +1383,18 @@ async function step14UploadScreenshot(): Promise<boolean> {
       if (baobeiYouxiaoNode) {
         // V32.36.74 修法: baobeiYouxiaoNode 已在 finder 内赋值 (findWithRecovery 找到时已写入)
         logger.info('保利:步骤14-2', `找到"报备有效" @ (${baobeiYouxiaoNode.centerX}, ${baobeiYouxiaoNode.centerY})`);
-        await ZBBAutomation.click(baobeiYouxiaoNode.centerX ?? 0, baobeiYouxiaoNode.centerY ?? 0);
+        // 🆕 V32.36.76 老板 09-22 拍板 - 修法 (老板铁子命中错位再次 - 关键):
+        //   老板 nova 15:44:35 log: 找到 '报备有效' 但 (undefined, undefined)
+        //   老板铁子反证金标准: text='报备有效' 节点存在, 但 centerX/centerY 是 undefined
+        //     跟 V32.36.12 步骤 4 native 占位节点 bug 同款
+        //   修法: 检查 centerX > 0 才点击, 否则走 hardcode 兜底 dp(294, 690)
+        if (baobeiYouxiaoNode.centerX > 0 && baobeiYouxiaoNode.centerY > 0) {
+          await ZBBAutomation.click(baobeiYouxiaoNode.centerX ?? 0, baobeiYouxiaoNode.centerY ?? 0);
+        } else {
+          // 节点找到但坐标无效 (老板铁子反证金标准 - V32.36.12 同款占位节点 bug)
+          logger.warn('保利:步骤14-2', `找到节点但坐标无效 (centerX=${baobeiYouxiaoNode.centerX}, centerY=${baobeiYouxiaoNode.centerY}), 兜底用 dp(294, 690) [V32.36.76 老板拍板修法]`);
+          await ZBBAutomation.click(px(294), px(690));
+        }
       } else {
         // V2 v19.90 D13 vivo 实测兜底 (587,1379)px → dp(294, 690)
         logger.warn('保利:步骤14-2', '未找到"报备有效" (V32.36.74 findWithRecovery 上滑后仍未找到), 兜底用 dp(294, 690) [vivo 实测]');
