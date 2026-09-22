@@ -1344,7 +1344,28 @@ async function step14UploadScreenshot(): Promise<boolean> {
     // V32.36.56 老板拍板: 选完2张后等 1.5-2.5s 让选图状态刷新
     await ZBBAutomation.delay(1500 + Math.floor(Math.random() * 1000));
 
-    // 步骤 14-6: dump 找"完成" + 点击 (V32.36.56 老板 09-21 拍板 - 实施)
+    // 步骤 14-5b: 点"发送" (V32.36.62 老板 09-22 拍板 - 新增步骤)
+    //   老板 nova 10:22 实测: 选完2张图后, 实际需要点"发送", 不是直接"完成"
+    //   V2 v19.90 D13 老板拍板: 真千机是 "发送" 按钮, 然后等 2-3s 后弹 "完成" 按钮
+    //   修法: 插入 14-5b 步骤, dump 找"发送" + click
+    logger.info('保利:步骤14-5b', 'dump 找"发送" + 点击 (V32.36.62 老板拍板新增)');
+    const sendNodes = await ZBBAutomation.getAllTextNodes();
+    let sendNode: any = sendNodes.find((n: any) =>
+      n?.text?.toString()?.trim() === '发送' ||
+      n?.contentDesc?.toString()?.trim() === '发送'
+    );
+    if (sendNode) {
+      logger.info('保利:步骤14-5b', `找到"发送" @ (${sendNode.centerX}, ${sendNode.centerY})`);
+      await ZBBAutomation.click(sendNode.centerX, sendNode.centerY);
+    } else {
+      // 兜底: hardcode px(540, 2200) [千机底部]
+      logger.warn('保利:步骤14-5b', '没找到"发送", 兜底用 px(540, 2200) [千机底部]');
+      await ZBBAutomation.click(540, 2200);
+    }
+    // V32.36.62 老板拍板: 等 2-3s 让"发送"响应 + 弹"完成"按钮
+    await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
+
+    // 步骤 14-6: dump 找"完成" + 点击 (V32.36.62 老板 09-22 拍板 - 修法)
     //   老板铁子反证金标准: dump 找"完成"按钮 (跟 step14-2 "报备有效" 同款格式)
     //   兜底: 老板 nova 实测 (后续铁子从 nova log 反查)
     logger.info('保利:步骤14-6', 'dump 找"完成" + 点击 (V32.36.56 老板拍板实施)');
