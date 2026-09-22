@@ -1427,6 +1427,11 @@ async function step14UploadScreenshot(): Promise<boolean> {
       logger.warn('保利:步骤14-6', '未找到"确认", 兜底用 px(540, 2200) [千机底部]');
       await ZBBAutomation.click(540, 2200);
     }
+    // 🆕 V32.36.67 老板 09-22 拍板: 点"确认"后等 1.5-2.5s 随机, 让"确认"响应
+    const confirmDelay = 1500 + Math.floor(Math.random() * 1000);
+    logger.info('保利:步骤14-6', `点"确认"后等 ${confirmDelay}ms (V32.36.67 老板拍板 1.5-2.5s 随机)`);
+    await ZBBAutomation.delay(confirmDelay);
+
     // 🆕 V32.36.65 老板 09-22 拍板: 点"确认"后, 下滑屏幕刷新当前界面
     //   老板铁子反证金标准: 千机列表通常有分页或延迟, 不下滑可能漏看新客户
     //   修法: 上滑后等 1-2s, 让界面刷新
