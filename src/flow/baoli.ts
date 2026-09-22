@@ -214,7 +214,7 @@ async function runBaoliRound(customer: CustomerInfo, round: 1 | 2, reportIds?: [
   //   老板铁子反证金标准: 步骤14 (第二轮截图后上传千机) 只在 round=2 step13完成后调用
   //   第一轮不调用 (流程结束就退出, 让 runBaoliFlow 自然接第二轮)
   if (round === 2) {
-    const step14 = await step14UploadScreenshot();
+    const step14 = await step14UploadScreenshot(customer);
     if (!step14) {
       logger.warn('保利', '步骤14 失败, 但不影响流程 (老板铁子铁律 - 步骤14 是辅助功能)');
     }
@@ -1373,7 +1373,7 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
 //     - 14-7: Toast 二次确认
 //   老板铁子铁律: 步骤14 只在 round=2 step13完成后调用
 // ============================================================
-async function step14UploadScreenshot(): Promise<boolean> {
+async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> {
   logger.info('保利:步骤14', '第二轮截图后上传千机 (V32.36.53 老板拍板 V2 反证金标准)');
 
   try {
@@ -1430,6 +1430,38 @@ async function step14UploadScreenshot(): Promise<boolean> {
     //   老板铁子命中错位 (再次 - 关键): V32.36.73 步骤 14-2 只有 1 次 dump + hardcode 兜底
     //   老板铁子反证金标准: 跟千机步骤 3 (findWithRecovery + 上滑重试 3 次) 不一致
     //   修法: 改用 findWithRecovery, dump 3 次 + 上滑 + dump 2 次 + 兜底 hardcode
+    // 🆕 V32.36.83 老板 09-22 拍板: 步骤 14-2 找"报备有效"之前, 先 dump 解析 varD 跟 customer (C) 对比
+    //   老板 nova 14:42 log: '核对代码, 这一步如果找不到报备有效, 有上滑操作吗?'
+    //   老板拍板:
+    //     - 一致 → 继续找"报备有效"
+    //     - 不一致 → 弹窗"小主,本次报备的客户与千机现在显示的客户不一致,请手动核对!!" 永不超时
+    //   老板反证: 千机可能缓存了别的客户/千机没刷新 → 报备错了客户会扣绩效
+    logger.info('保利:步骤14-2', 'dump 解析 varD, 跟 customer (C) 对比 (V32.36.83)');
+    try {
+      const step14VarDNodes = await ZBBAutomation.getAllTextNodes();
+      const varD = parseVariableAFromNodes(step14VarDNodes);
+      logger.info('保利:步骤14-2', `varD 解析: projectName='${varD.projectName}', customerName='${varD.customerName}', phone='${varD.phone}'`);
+      logger.info('保利:步骤14-2', `customer (C): projectName='${customer.projectName}', customerName='${customer.customerName}', phone='${customer.phone}'`);
+      const compareResultD = compareCustomer(
+        { projectName: varD.projectName, customerName: varD.customerName, phone: varD.phone },
+        { projectName: customer.projectName, customerName: customer.customerName, phone: customer.phone }
+      );
+      if (!compareResultD.isMatch) {
+        const diffMsgD = compareResultD.diffs.map(d => `${d.field}: '${d.aValue}' vs '${d.bValue}'`).join('; ');
+        logger.warn('保利:步骤14-2', `✗ 千机 varD 跟 customer 不一致! diff: ${diffMsgD}`);
+        // 弹窗 + 永不超时 (步骤14 是辅助功能, 不影响主流程, 这里直接 return true 让步骤14 走完)
+        //   老板拍板: '只有用户点我知道了, 弹窗才消失; 否则, 一直停在界面'
+        await raiseAlert('小主,本次报备的客户与千机现在显示的客户不一致,请手动核对!!', 30000, true);
+        // ⚠️ V32.36.83 设计选择: 步骤14 失败不阻塞主流程 (老板铁子铁律 - 步骤14 是辅助功能)
+        //   所以这里 return true (不 return false), 让流程继续往下走
+        //   用户点完按钮后, 流程会继续, 但步骤14-2 找"报备有效" 已被弹窗打断
+        return true;
+      }
+      logger.info('保利:步骤14-2', '✓ varD 跟 customer 一致, 继续找"报备有效"');
+    } catch (e) {
+      logger.warn('保利:步骤14-2', `varD 对比异常 (不影响流程, 继续找报备有效): ${e}`);
+    }
+
     logger.info('保利:步骤14-2', 'dump 找"报备有效" (V32.36.74 老板拍板 findWithRecovery 上滑重试)...');
     let baobeiYouxiaoNode: any = null;
     try {
