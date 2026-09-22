@@ -667,6 +667,72 @@ function readReportCountFromNodes(nodes: A11yNode[]): number {
  *
  * @returns 仅返回 { projectName, customerName, phone } 3 字段
  */
+/**
+ * 🆕 V32.36.87 老板 09-22 拍板 - 修法:
+ *   老板 nova 17:37 log: 步骤 6 粘贴后 dump 解析失败
+ *     - projectName 拿到首页 banner '保利山水和颂' (错的)
+ *     - customerName 拿到整段剪贴板原文 (因为原文无 '客户姓名' 前缀)
+ *     - phone 拿空 (因为 '客户联系方式：xxx' 没匹配到独立 key 节点)
+ *
+ *   真因: 步骤 6 粘贴后页面没切换到项目详情页, dump 拿到的是保利小程序首页
+ *     - 首页含底部 tab '我要报备 我的报备 楼盘列表 郑州'
+ *     - 首页可能含剪贴板原文 (因为刚刚 paste 过)
+ *     - mock 千机 + 保利小程序混在一起
+ *
+ *   老板拍板: 从 dump 文本里精确定位客户信息字段, 不依赖 a11y key:value 结构
+ *     - 字段顺序固定: 公司名称 → 客户姓名 → 客户性别 → 客户联系方式 → 报备项目 → ...
+ *     - 用正则匹配, 即使字段顺序变了也能 match 到 (基于 key 字符串定位)
+ *
+ *   优先级 (跟 parseVariableAFromNodes 一致):
+ *     1. 先尝试 parseVariableAFromNodes (首页 a11y 节点解析)
+ *     2. 如果 customerName 为空 (说明没匹配到 '客户姓名'), 走 V32.36.87 fallback
+ *        - 从拼接文本里用正则提取 报备项目/客户联系方式/客户姓名 (按 key:value 顺序)
+ *        - phone 提取后按 V32.36.86 规则处理 (前 3 + 后 4 + 中间 ****)
+ */
+export function parseVariableCFromClipboard(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
+  // 先尝试 varA 解析 (如果命中就用)
+  const varAResult = parseVariableAFromNodes(nodes);
+
+  // 拼接所有 text 节点 (按行)
+  const allText = nodes
+    .map(n => n.text?.toString() || '')
+    .filter(t => t.length > 0)
+    .join('\n');
+
+  // fallback: 从拼接文本里正则提取
+  let projectName = varAResult.projectName;
+  let customerName = varAResult.customerName;
+  let phone = varAResult.phone;
+
+  if (!customerName || !phone || !projectName) {
+    // 报备项目 (兼容 报备项目: / 报备项目：)
+    if (!projectName) {
+      const m = allText.match(/报备项目\s*[:：]\s*([^\s\n]+)/);
+      if (m) projectName = m[1].trim();
+    }
+    // 客户联系方式 (兼容前缀, 提取数字)
+    if (!phone) {
+      const m = allText.match(/客户联系方式\s*[:：]\s*(\d+)/);
+      if (m) {
+        const digits = m[1];
+        // V32.36.86 规则: 前 3 + 后 4 + 中间 ****
+        if (digits.length >= 7) {
+          phone = `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+        } else {
+          phone = digits;
+        }
+      }
+    }
+    // 客户姓名: 按字段顺序提取 - '客户性别' 前一行就是姓名
+    if (!customerName) {
+      const m = allText.match(/公司名称\s*[:：][^\n]*\n([^\n]+)\n客户性别/);
+      if (m) customerName = m[1].trim();
+    }
+  }
+
+  return { projectName, customerName, phone };
+}
+
 export function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
   const lines = assembleKeyValueLines(nodes);
 

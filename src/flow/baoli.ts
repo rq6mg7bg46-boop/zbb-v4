@@ -33,7 +33,7 @@ import { raiseAlert } from '@/services/alert';
 import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
 import { findWithRecovery } from './retryUtils'; // 🆕 V32.36.74 老板拍板: 步骤 14-2 用 findWithRecovery + 上滑重试
 import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
-import { parseVariableAFromNodes } from './qianji'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 dump 解析复用千机 varA 解析器
+import { parseVariableAFromNodes, parseVariableCFromClipboard } from './qianji'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 dump 解析复用千机 varA 解析器 + V32.36.87 剪贴板版解析
 import { compareCustomer } from '@/utils/compareCustomer'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 跟 customer 对比 3 字段
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
@@ -616,7 +616,8 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   logger.info('保利:步骤6', 'dump 当前界面, 跟千机 varB 对比项目名/客户姓名/联系方式 (V32.36.82)');
   try {
     const step6AfterPasteNodes = await ZBBAutomation.getAllTextNodes();
-    const varC = parseVariableAFromNodes(step6AfterPasteNodes); // 复用 qianji.ts 解析器
+    // 🆕 V32.36.87: 用剪贴板版解析器 (varA + fallback 正则), 处理步骤6 dump 含混合内容的情况
+    const varC = parseVariableCFromClipboard(step6AfterPasteNodes);
     logger.info('保利:步骤6', `varC 解析: projectName='${varC.projectName}', customerName='${varC.customerName}', phone='${varC.phone}'`);
     logger.info('保利:步骤6', `customer (varB): projectName='${customer.projectName}', customerName='${customer.customerName}', phone='${customer.phone}'`);
     const compareResult = compareCustomer(
@@ -1443,7 +1444,7 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
     logger.info('保利:步骤14-2', 'dump 解析 varD, 跟 customer (C) 对比 (V32.36.83)');
     try {
       const step14VarDNodes = await ZBBAutomation.getAllTextNodes();
-      const varD = parseVariableAFromNodes(step14VarDNodes);
+      const varD = parseVariableCFromClipboard(step14VarDNodes); // 🆕 V32.36.87 跟步骤 6 同款解析器, 处理 varD 混合内容
       logger.info('保利:步骤14-2', `varD 解析: projectName='${varD.projectName}', customerName='${varD.customerName}', phone='${varD.phone}'`);
       logger.info('保利:步骤14-2', `customer (C): projectName='${customer.projectName}', customerName='${customer.customerName}', phone='${customer.phone}'`);
       const compareResultD = compareCustomer(
