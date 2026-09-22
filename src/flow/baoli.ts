@@ -421,8 +421,11 @@ async function step4FindProject(projectName: string): Promise<boolean> {
           logger.info('保利:步骤4', `V32.36.73 找到"粘贴" @ (${pasteNode.centerX}, ${pasteNode.centerY})`);
           await click.byNode(pasteNode);
         } else {
-          // 兜底: hardcode 点击粘贴 (老板拍板实测)
-          await click.byCoords(135, 720);
+          // 🆕 V32.36.85 老板 09-22 拍板: 删掉搜索按钮 (135, 720) hardcode 点击
+          //   老板 nova 16:56 实测: 删后流程仍能找到"郑州保利山水和颂"
+          //   原因: mock 千机可能监听文本变化自动搜索, 不需要点搜索按钮
+          //   老板原话: '删除搜索按钮（触发搜索）'
+          logger.warn('保利:步骤4', `V32.36.85 老板拍板: 没找到'粘贴'菜单, 也不点搜索按钮 (135, 720) hardcode, 直接等搜索结果`);
         }
         await ZBBAutomation.delay(2000);  // 等搜索结果
         // 4. 查找并点击"郑州保利山水和颂" (老板拍板方案 B 步骤 3)
