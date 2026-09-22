@@ -1280,8 +1280,9 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
     }
 
     // 情况 2-4: 等截图保存 + 老板手动截图兜底
-    logger.info('保利:步骤13-情况2', '等待截图保存 (V2.x v21.17 5000ms)');
-    await ZBBAutomation.delay(5000);
+    // 🆕 V32.36.84 老板 09-22 拍板: 5000ms 太长, 改 2-3s 随机 (老板 nova 实测截图保存够快)
+    logger.info('保利:步骤13-情况2', '等待截图保存 (V2.x v21.17 5000ms → V32.36.84 老板拍板 2-3s 随机)');
+    await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
 
     // V32.36.43 老板 09-20 装机实测 - 修法 (老板拍板 B):
     //   老板问: 'tap 返回键 返回的是哪个界面?'
