@@ -1046,6 +1046,12 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
       // V32.36.48 老板铁子反证金标准: 用 top 字段, 不用 imageTop (新方法已直接返回 top)
       qrCandidates.sort((a: any, b: any) => (a.top ?? 0) - (b.top ?? 0));
 
+      // 🆕 V32.36.70 老板 09-22 拍板 - 打印前 5 个二维码候选 (方便老板看 log 调试)
+      const top5 = qrCandidates.slice(0, 5);
+      top5.forEach((qr: any, idx: number) => {
+        logger.info('保利:步骤13-情况2', `二维码候选[${idx + 1}/5] @ (${qr.centerX}, ${qr.centerY}) size=${qr.width}x${qr.height} top=${qr.top}`);
+      });
+
       // 老板反证金标准 #4: 点第一个 (Y 最小 = 最新报备), 零抖动
       if (qrCandidates.length > 0) {
         const firstQr = qrCandidates[0];
