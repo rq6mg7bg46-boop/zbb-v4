@@ -27,8 +27,8 @@ import { logger } from '@/utils/logger';
  * @param message 弹窗消息 (文档示例: "小主,流程出问题了,请手动处理")
  * @param vibrateMs 震动时长 (默认 30000ms = 30s)
  */
-export async function raiseAlert(message: string, vibrateMs = 30000): Promise<void> {
-  logger.error('alert', `异常通知: ${message} (震动 ${vibrateMs}ms)`);
+export async function raiseAlert(message: string, vibrateMs = 30000, dismissOnClickOnly = false): Promise<void> {
+  logger.error('alert', `异常通知: ${message} (震动 ${vibrateMs}ms, dismissOnClickOnly=${dismissOnClickOnly})`);
 
   // 1. 启动脉冲震动 (V2.x 实测: 30s 自动停)
   try {
@@ -41,9 +41,12 @@ export async function raiseAlert(message: string, vibrateMs = 30000): Promise<vo
   //    showSystemDialog 返回:
   //      true  = 用户点了按钮 (实测: 收到后立即调 stopVibration)
   //      false = 30s 超时 (震动 30s 也自动停, 这里再保险一次 stop)
+  //    🆕 V32.36.81 老板 09-22 拍板: dismissOnClickOnly=true 时, 弹窗永不超时
+  //      autoDismissMs 传一个超大值 (24h), 实际效果等于只在用户点按钮时消失
+  const effectiveAutoMs = dismissOnClickOnly ? 24 * 60 * 60 * 1000 : vibrateMs;
   let userClicked = false;
   try {
-    userClicked = await ZBBAutomation.showSystemDialog(message, '我知道了', vibrateMs);
+    userClicked = await ZBBAutomation.showSystemDialog(message, '我知道了', effectiveAutoMs);
   } catch (e) {
     logger.warn('alert', `showSystemDialog 失败 (忽略): ${e}`);
   }

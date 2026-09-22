@@ -50,11 +50,19 @@ const STEP4_TARGET = '郑州保利山水和颂'; // V2.x 反证金标准 (步骤
 const PROJECT_NAME_ROUND_1 = '郑州市三村杓袁7号地项目-保利缦城和颂【郑州保利和颂】';
 const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和颂【郑州保利山水和颂】';
 
+// 🆕 V32.36.81 老板 09-22 拍板: 跨 runBaoliRound 传失败原因 (情况 1 重号 / 情况 3 3次失败)
+//   不用改 runBaoliRound 签名 (会大范围影响), 用 module-level state 简单解决
+//   execute() 弹窗前读 lastBaoliFailReason, 决定弹"重号了"还是"失败"
+let lastBaoliFailReason: string = '';
+
 // ============================================================
 // 保利流程主入口
 // ============================================================
 export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
   logger.info('app', `========== 保利流程开始 (客户=${customer.customerName}) ==========`);
+
+  // 🆕 V32.36.81: 重置 module-level 失败原因 (新流程开始, 默认空)
+  lastBaoliFailReason = '';
 
   // 🆕 08-30 老板拍板端路由: QIANJI_READY_BAOLI 状态转换在 runZbbWorkflow 已发
   //   - 历史 (V32.33 及之前): baoli.ts 内部发 QIANJI_READY
@@ -75,7 +83,13 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       // 🆕 V32.36.3: 端失败统一弹窗 + 进 UserIntervention (非 Error 状态)
       // 老板 08-31 装机验证: 之前 BAOLI_FAILED → Error 状态卡住, 反息屏 5min 后还触发
       // 期望: 端失败 = 弹窗 + 震动 + "我知道了" 按钮 + 进 UserIntervention
-      await raiseAlert('小主,保利流程报备失败(第1轮),请手动处理!');
+      // 🆕 V32.36.81 老板 09-22 拍板:
+      //   - 弹窗文案: 重号 → "小主,重号了!请手动处理!"
+      //   - 弹窗永久不超时 (只在用户点"我知道了"时消失)
+      const round1Message = lastBaoliFailReason === '重号'
+        ? '小主,重号了!请手动处理!'
+        : '小主,保利流程报备失败(第1轮),请手动处理!';
+      await raiseAlert(round1Message, 30000, true); // V32.36.81 第 3 参数 = 永久不超时
       orchestrator.send('BAOLI_INTERVENE');
       return false;
     }
@@ -85,7 +99,11 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
     if (!round2Ok) {
       logger.info('保利', '第二轮报备失败 → 弹窗等老板');
       // 🆕 V32.36.3: 同上
-      await raiseAlert('小主,保利流程报备失败(第2轮),请手动处理!');
+      // 🆕 V32.36.81 老板拍板: 重号 → "小主,重号了!请手动处理!"
+      const round2Message = lastBaoliFailReason === '重号'
+        ? '小主,重号了!请手动处理!'
+        : '小主,保利流程报备失败(第2轮),请手动处理!';
+      await raiseAlert(round2Message, 30000, true); // V32.36.81 永久不超时
       orchestrator.send('BAOLI_INTERVENE');
       return false;
     }
@@ -96,7 +114,8 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
   } catch (error) {
     logger.error('保利', `'流程失败:' ${error}`);
     // 🆕 V32.36.3: 异常也弹窗等老板
-    await raiseAlert(`小主,保利流程异常,请手动处理! (${error})`);
+    // 🆕 V32.36.81: 永久不超时
+    await raiseAlert(`小主,保利流程异常,请手动处理! (${error})`, 30000, true);
     orchestrator.send('BAOLI_INTERVENE');
     return false;
   }
@@ -993,6 +1012,8 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
   // 情况 1 命中: 疑似重号 + 写数据库 status='重号'
   if (detectedRepeat) {
     logger.info('保利:步骤13-情况1', '疑似重号, 启动震动+弹窗');
+    // 🆕 V32.36.81 老板 09-22 拍板: 标记重号, execute() 弹窗文案用"重号了"
+    lastBaoliFailReason = '重号';
     orchestrator.send('BAOLI_INTERVENE');
     // V32.36.58 老板 09-21 拍板: 检测到重号, 写数据库 2 个 ID 都改成 status='重号'
     //   老板铁子反证金标准: '2轮中任何一轮出错, 均需将2个ID的值写为重号'
@@ -1273,6 +1294,8 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
   }
 
   logger.info('保利:步骤13', '3 次都没检测到结果, 报错');
+  // 🆕 V32.36.81 老板 09-22 拍板: 3次失败也标记"重号" (老板原话: '情况 3 也按重号处理')
+  lastBaoliFailReason = '重号';
   // V32.36.58 老板 09-21 拍板: 3 次失败 → 报错 + 写数据库 2 个 ID 都改成 status='重号'
   //   老板铁子反证金标准: '2轮中任何一轮出错, 均需将2个ID的值写为重号'
   //   修法: reportIds 是 [id1, id2] 数组, 同时写 2 个
