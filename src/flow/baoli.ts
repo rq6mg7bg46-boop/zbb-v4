@@ -1528,11 +1528,14 @@ async function step14UploadScreenshot(): Promise<boolean> {
       const img = selectedImages[i];
       logger.info('保利:步骤14-5', `选中第 ${i + 1}/2 张图 @ (${img.centerX}, ${img.centerY}) size=${img.width}x${img.height} class=${img.className}`);
       await ZBBAutomation.click(img.centerX, img.centerY);
-      // V2 v19.90 D16: 选图间隔 1500-2500 → 2250-3750 (×1.5)
-      await ZBBAutomation.delay(2250 + Math.floor(Math.random() * 1500));
+      // 🆕 V32.36.80 老板 09-22 拍板 - 修法:
+      //   老板 nova 16:56 log 时间间隔反证: 选 2 张图间隔 2s, 选完图到 dump 发送间隔 5s
+      //   老板拍板: 改为 1-2s 随机 (更拟人, 更快, 不浪费 5s)
+      //   V2 v19.90 D16 旧值 2250-3750 (×1.5 保稳) 在 nova 上偏长
+      await ZBBAutomation.delay(1000 + Math.floor(Math.random() * 1000));
     }
-    // V32.36.56 老板拍板: 选完2张后等 1.5-2.5s 让选图状态刷新
-    await ZBBAutomation.delay(1500 + Math.floor(Math.random() * 1000));
+    // 🆕 V32.36.80 老板拍板: 选完2张后等 1-2s 让选图状态刷新 (旧 1500-2500 也偏长)
+    await ZBBAutomation.delay(1000 + Math.floor(Math.random() * 1000));
 
     // 步骤 14-5b: 点"发送" (V32.36.62 老板 09-22 拍板 - 新增步骤)
     //   老板 nova 10:22 实测: 选完2张图后, 实际需要点"发送", 不是直接"完成"
