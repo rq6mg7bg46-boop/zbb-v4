@@ -1370,7 +1370,17 @@ async function step14UploadScreenshot(): Promise<boolean> {
         async () => {
           // findWithRecovery 要求 finder 返回 boolean
           const nodes = await ZBBAutomation.getAllTextNodes();
-          const found = nodes.find((n: any) => n?.text?.toString()?.includes('报备有效'));
+          // 🆕 V32.36.77 老板 09-22 拍板 - 修法:
+          //   老板 nova 15:57 log: 找到 '报备有效' 但 (undefined, undefined)
+          //   老板铁子命中错位根因: nova EMUI 10 + 15 个 A11y 服务抢同一棵树
+          //     → 其他 service recycle 后, ZBB 拿到的节点 centerX/Y 是 undefined 或 0
+          //   修法: finder 内过滤掉坐标无效节点 (centerX > 0 && centerY > 0),
+          //     不让 findWithRecovery 拿到"假命中"的占位节点
+          const found = nodes.find((n: any) =>
+            n?.text?.toString()?.includes('报备有效') &&
+            typeof n.centerX === 'number' && n.centerX > 0 &&
+            typeof n.centerY === 'number' && n.centerY > 0
+          );
           baobeiYouxiaoNode = found ?? null;  // 同时存到外部变量
           return !!found;
         },
