@@ -1164,25 +1164,49 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
     //     - threeFingerSwipeDown(80, 600, 400) - dp 起点 80dp, 终点 600dp, 400ms
     //     - nova (JEF-AN00) dispatchGesture 不生效 (V2.x 实战反证 08-12)
     //     - 失败 retry 1 次 (第二次通常成功 v21.22 老板拍板)
-    //   修法: V4 调 native threeFingerSwipeDown (需要 native 端实现) - 先 try/catch, 失败不阻塞
-    //   注: nova 上三指下滑可能不生效 (V2.x 老板实战反证), 但老板拍板加上, 失败就让老板手动截图
-    logger.info('保利:步骤13-情况2', '三指下滑触发系统截图 (V32.36.35 V2.x 同款 v21.17)');
+    // 🆕 V32.36.75 老板 09-22 拍板 - 修法 (老板铁子反证金标准 - vivo 逻辑):
+    //   老板 nova 14:42 实测反馈: '学习V2的三指下滑操作, 核对与这里的差异'
+    //   V32.36.35 调 scrollDownPPlus (单指下滑) != V2 真三指下滑
+    //   老板拍板: '不使用 nova 的逻辑 (无限等 GO), 使用 vivo 的逻辑 (真三指下滑)'
+    //   修法: 调 native ZBBAutomation.threeFingerSwipeDown (跟 V2 v21.17 一致)
+    //   + 调 native checkScreenshotSaved 验证截图真保存 (V2 v22.02.30 反证金标准)
+    logger.info('保利:步骤13-情况2', '三指下滑触发系统截图 (V32.36.75 老板拍板 vivo 逻辑, 跟 V2 v21.17 一致)');
     let swipeSuccess = false;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         if (attempt > 1) {
-          logger.info('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑 (V32.36.35 V2.x v21.22 retry)`);
+          logger.info('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑 (V32.36.75 v21.22 retry)`);
           await ZBBAutomation.delay(500);
         }
-        // V32.36.35 native 端需要 threeFingerSwipeDown (V2.x 同款)
-        // 暂时调 swipeDownPPlus 模拟 (P+ 拟人化下滑, 28% → 84%)
-        // 老板 nova 装机实测 V32.36.36+ 加 threeFingerSwipeDown native API
-        await scrollDownPPlus();
-        swipeSuccess = true;
-        logger.info('保利:步骤13-情况2', `三指下滑 / 模拟下滑成功 (第 ${attempt}/2 次)`);
-        break;
+        // V32.36.75 调 native 真三指下滑 (跟 V2 v21.17 一致, 80dp→600dp=4*80→4*600=320,2400 px on density=4)
+        // V2 v21.17: threeFingerSwipeDown(80, 600, 400) - dp 起点 80, 终点 600, duration 400ms
+        // V32.36.75: 调 native threeFingerSwipeDown(320, 2400, 400) - px 起点 320, 终点 2400
+        const screenHeight = 2400;  // nova 1080x2400 实测
+        const startPx = 320;
+        const endPx = 2400;
+        const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startPx, endPx, 400);
+        swipeSuccess = threeFingerOk;
+        logger.info('保利:步骤13-情况2', `三指下滑 (native) 第 ${attempt}/2 次: success=${threeFingerOk}`);
+        if (threeFingerOk) break;
       } catch (e) {
-        logger.warn('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑失败: ${e}`);
+        logger.warn('保利:步骤13-情况2', `第 ${attempt}/2 次三指下滑异常: ${e}`);
+      }
+    }
+    if (!swipeSuccess) {
+      logger.warn('保利:步骤13-情况2', 'V32.36.75 三指下滑 2 次都失败, 走 fallback - 老板手动截图');
+    } else {
+      // V32.36.75 加 checkScreenshotSaved 验证截图真保存 (V2 v22.02.30 反证金标准)
+      await ZBBAutomation.delay(2500);  // 等系统截图保存 (Android 截图落盘通常 1-3s)
+      try {
+        const screenshotCheck = await ZBBAutomation.checkScreenshotSaved();
+        if (screenshotCheck.saved) {
+          logger.info('保利:步骤13-情况2', `✓ V32.36.75 截图验证成功: ${screenshotCheck.filePath} (V2 v22.02.30 反证金标准)`);
+        } else {
+          logger.warn('保利:步骤13-情况2', `V32.36.75 三指下滑 SUCCESS 但截图未保存 (8s 内没找到 PNG), 走 fallback - 老板手动截图`);
+          swipeSuccess = false;
+        }
+      } catch (e) {
+        logger.warn('保利:步骤13-情况2', `V32.36.75 checkScreenshotSaved 异常: ${e}`);
       }
     }
     if (!swipeSuccess) {

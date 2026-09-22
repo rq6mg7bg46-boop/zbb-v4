@@ -89,6 +89,8 @@ export interface ZBBAutomationModule {
   swipeShell(startX: number, startY: number, endX: number, endY: number, duration?: number): Promise<boolean>;
   threeFingerSwipeDown(startY: number, endY: number, duration: number): Promise<boolean>;
   threeFingerMultiStageGesture(stages: [number, number, number][], stageGapMs: number): Promise<boolean>;
+  // 🆕 V32.36.75 老板 09-22 拍板: 检查最近截图是否真保存 (V2 v22.02.30 反证金标准)
+  checkScreenshotSaved(): Promise<{ saved: boolean; filePath: string | null }>;
   screenshotByKeyevent(keyCode1: number, keyCode2: number): Promise<boolean>;
   screenshotBySendevent(eventPath: string, keyCode1: number, keyCode2: number, gapMs: number): Promise<boolean>;
   setPointerLocation(enabled: boolean): Promise<boolean>;

@@ -1492,6 +1492,93 @@ class AccessibilityServiceImpl : AccessibilityService() {
         }
     }
 
+    /**
+     * 🆕 V32.36.75 老板 09-22 拍板: 三指下滑触发系统截图 (V2 v21.17 vivo 逻辑)
+     *   V2 v21.17 反证金标准: threeFingerSwipeDown(80, 600, 400) - 起点 80dp, 终点 600dp, 400ms
+     *   V2 v22.02.30 反证金标准: vivo 自动三指下滑后验证截图 (mtime < 8s + size > 0)
+     *   老板铁子反证金标准 - 老板 nova 14:42 实测反馈:
+     *     V4 V32.36.35 调 scrollDownPPlus (单指下滑) != V2 三指下滑
+     *     老板拍板: '不使用 nova 的逻辑 (无限等 GO), 使用 vivo 的逻辑 (真三指下滑)'
+     *   修法: native 端用 dispatchGesture 多指同步, 3 个 Stroke 同时下降
+     */
+    fun threeFingerSwipeDown(
+        startY: Float,
+        endY: Float,
+        duration: Long,
+        callback: ((Boolean) -> Unit)? = null
+    ) {
+        val screenWidth = resources.displayMetrics.widthPixels.toFloat()
+        val xPositions = floatArrayOf(
+            screenWidth * 0.25f,  // 左指
+            screenWidth * 0.5f,   // 中指
+            screenWidth * 0.75f   // 右指
+        )
+        val gestureBuilder = GestureDescription.Builder()
+        for (x in xPositions) {
+            val path = android.graphics.Path().apply {
+                moveTo(x, startY)
+                lineTo(x, endY)
+            }
+            val strokeBuilder = GestureDescription.StrokeDescription(path, 0, duration)
+            gestureBuilder.addStroke(strokeBuilder)
+        }
+        val gesture = gestureBuilder.build()
+        val success = dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                Log.d(TAG, "V32.36.75 三指下滑完成: $startY -> $endY duration=${duration}ms")
+                mainHandler.post { callback?.invoke(true) }
+            }
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                Log.w(TAG, "V32.36.75 三指下滑取消")
+                mainHandler.post { callback?.invoke(false) }
+            }
+        }, null)
+        if (!success) {
+            Log.e(TAG, "V32.36.75 三指下滑分发失败")
+            mainHandler.post { callback?.invoke(false) }
+        }
+    }
+
+    /**
+     * 🆕 V32.36.75: 检查最近截图是否真保存 (V2 v22.02.30 反证金标准)
+     *   - 检查 /sdcard/Pictures/Screenshots/ 或 /sdcard/DCIM/Screenshots/ 目录
+     *   - mtime < 8s 内 + size > 0 → 返回 true
+     */
+    fun checkScreenshotSaved(callback: ((Boolean, String?) -> Unit)? = null) {
+        try {
+            val screenshotDirs = arrayOf(
+                "/sdcard/Pictures/Screenshots",
+                "/sdcard/DCIM/Screenshots",
+                "/sdcard/Pictures"
+            )
+            val now = System.currentTimeMillis()
+            for (dirPath in screenshotDirs) {
+                val dir = java.io.File(dirPath)
+                if (dir.exists() && dir.isDirectory()) {
+                    val files = dir.listFiles() ?: continue
+                    var latest: java.io.File? = null
+                    for (f in files) {
+                        if (f.name.endsWith(".png") && f.length() > 0) {
+                            if (latest == null || f.lastModified() > latest.lastModified()) {
+                                latest = f
+                            }
+                        }
+                    }
+                    if (latest != null && (now - latest.lastModified()) < 8000) {
+                        Log.d(TAG, "V32.36.75 截图验证成功: ${latest.absolutePath} mtime=${latest.lastModified()} size=${latest.length()}")
+                        mainHandler.post { callback?.invoke(true, latest.absolutePath) }
+                        return
+                    }
+                }
+            }
+            Log.w(TAG, "V32.36.75 截图验证失败 (8s 内没找到 PNG)")
+            mainHandler.post { callback?.invoke(false, null) }
+        } catch (e: Exception) {
+            Log.e(TAG, "V32.36.75 截图验证异常: ${e.message}")
+            mainHandler.post { callback?.invoke(false, null) }
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun performClick(x: Float, y: Float, isLongPress: Boolean, clickDuration: Long, callback: ((Boolean) -> Unit)?) {
         val gestureBuilder = GestureDescription.Builder()

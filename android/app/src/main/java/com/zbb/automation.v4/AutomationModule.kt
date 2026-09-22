@@ -490,10 +490,54 @@ class AutomationModule(private val mReactContext: ReactApplicationContext) :
     fun takeScreenshotAndSave(path: String?, promise: Promise) {
         captureAndReturn(ReturnType.PATH, promise)
     }
-    
+
     @ReactMethod
     fun captureScreenshot(promise: Promise) {
         captureAndReturn(ReturnType.PATH, promise)
+    }
+
+    // 🆕 V32.36.75 老板 09-22 拍板: 三指下滑触发系统截图 (V2 v21.17 vivo 逻辑)
+    @ReactMethod
+    fun threeFingerSwipeDown(startY: Float, endY: Float, duration: Int, promise: Promise) {
+        try {
+            val service = AccessibilityServiceImpl.getInstance()
+            if (service != null) {
+                service.threeFingerSwipeDown(startY, endY, duration.toLong()) { success ->
+                    promise.resolve(success)
+                }
+            } else {
+                Log.e(TAG, "threeFingerSwipeDown AccessibilityService 未初始化")
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "threeFingerSwipeDown 异常: ${e.message}")
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    // 🆕 V32.36.75: 检查最近截图是否真保存 (V2 v22.02.30 反证金标准)
+    @ReactMethod
+    fun checkScreenshotSaved(promise: Promise) {
+        try {
+            val service = AccessibilityServiceImpl.getInstance()
+            if (service != null) {
+                service.checkScreenshotSaved { success, filePath ->
+                    val result = com.facebook.react.bridge.WritableNativeMap()
+                    result.putBoolean("saved", success)
+                    result.putString("filePath", filePath)
+                    promise.resolve(result)
+                }
+            } else {
+                Log.e(TAG, "checkScreenshotSaved AccessibilityService 未初始化")
+                val result = com.facebook.react.bridge.WritableNativeMap()
+                result.putBoolean("saved", false)
+                result.putString("filePath", null)
+                promise.resolve(result)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkScreenshotSaved 异常: ${e.message}")
+            promise.reject("ERROR", e.message)
+        }
     }
     
     private enum class ReturnType { PATH, BASE64 }
