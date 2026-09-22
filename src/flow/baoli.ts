@@ -1382,22 +1382,29 @@ async function step14UploadScreenshot(): Promise<boolean> {
     // V32.36.62 老板拍板: 等 2-3s 让"发送"响应 + 弹"完成"按钮
     await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
 
-    // 步骤 14-6: dump 找"完成" + 点击 (V32.36.62 老板 09-22 拍板 - 修法)
-    //   老板铁子反证金标准: dump 找"完成"按钮 (跟 step14-2 "报备有效" 同款格式)
-    //   兜底: 老板 nova 实测 (后续铁子从 nova log 反查)
-    logger.info('保利:步骤14-6', 'dump 找"完成" + 点击 (V32.36.56 老板拍板实施)');
+    // 步骤 14-6: dump 找"确认" + 点击 (V32.36.64 老板 09-22 拍板 - 修法)
+    //   老板 nova 10:33 实测: 步骤 14-6 实际节点是 "确认", 不是 "完成/上传"
+    //   老板铁子反证金标准: V32.36.56/62 错位找 "完成/上传", 老板 nova 永远找不到
+    //   修法: 改为找 "确认" (老板拍板实测), content-desc 找 "确认" 兜底
+    logger.info('保利:步骤14-6', 'dump 找"确认" + 点击 (V32.36.64 老板拍板)');
     const finishNodes = await ZBBAutomation.getAllTextNodes();
-    const finishNode = finishNodes.find((n: any) =>
-      n?.text?.toString()?.trim() === '完成' ||  // text 严格匹配
-      n?.text?.toString()?.trim() === '上传'
+    let finishNode: any = finishNodes.find((n: any) =>
+      n?.text?.toString()?.trim() === '确认' ||  // V32.36.64 老板拍板: 找"确认"
+      n?.contentDesc?.toString()?.trim() === '确认'
     );
+    // 兜底: 找 content-desc="确认"
+    if (!finishNode) {
+      finishNode = finishNodes.find((n: any) =>
+        n?.contentDesc?.toString()?.includes('确认')
+      );
+      if (finishNode) logger.info('保利:步骤14-6', 'text="确认" 没找到, 兜底用 content-desc 包含"确认"');
+    }
     if (finishNode) {
-      logger.info('保利:步骤14-6', `找到"完成/上传" @ (${finishNode.centerX}, ${finishNode.centerY})`);
+      logger.info('保利:步骤14-6', `找到"确认" @ (${finishNode.centerX}, ${finishNode.centerY}) text=${finishNode.text} desc=${finishNode.contentDesc}`);
       await ZBBAutomation.click(finishNode.centerX, finishNode.centerY);
     } else {
-      // 老板铁子铁律: 兜底 hardcode (老板 nova 实测后填)
-      // 暂时用千机底部"完成"按钮兜底坐标 (老板铁子反证金标准 - 待老板 nova 实测)
-      logger.warn('保利:步骤14-6', '未找到"完成/上传", 兜底用 px(540, 2200) [千机底部]');
+      // 兜底 hardcode (老板 nova 实测后填)
+      logger.warn('保利:步骤14-6', '未找到"确认", 兜底用 px(540, 2200) [千机底部]');
       await ZBBAutomation.click(540, 2200);
     }
     // V32.36.56 老板拍板: 等 2-3s 让"完成"按钮响应
