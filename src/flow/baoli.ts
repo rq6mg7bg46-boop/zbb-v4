@@ -326,10 +326,27 @@ async function step4FindProject(projectName: string): Promise<boolean> {
       screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
     }
 
-    // 3. V2.x BaoliService.ts:718 反证金标准: 精确匹配
+    // 3. V32.36.63 老板 09-22 拍板 - 修法:
+    //    V2.x BaoliService.ts:718 反证金标准: 精确匹配 '郑州保利山水和颂'
     //    V4 V32.36.11 judge.ts:54 反证: getAllTextNodes 穿透 WebView
+    //    🆕 V32.36.63 老板 nova 10:25 实测: 当客户换项目时, 项目名 '郑州保利山水和颂' 不一定在结果页
+    //         但价格节点 '16500-19500' 总在 (老板拍板兜底)
+    //         老板原话: '如果没有找到郑州保利山水和颂, 但找到了 16500-19500, 就点击 16500-19500, 然后继续执行步骤5'
     const nodes = await ZBBAutomation.getAllTextNodes();
-    const projectEntry = nodes.find((n: any) => n.text === '郑州保利山水和颂');
+    let projectEntry: any = nodes.find((n: any) => n.text === '郑州保利山水和颂');
+
+    // ★ V32.36.63 老板拍板兜底: 找价格节点 (16500-19500) 作为项目入口
+    if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
+      logger.warn('保利:步骤4', `第 ${attempt}/3 次未找到"郑州保利山水和颂", 试找价格节点 (V32.36.63 老板拍板兜底)`);
+      // 找价格格式节点: 数字-数字 (e.g. 16500-19500)
+      projectEntry = nodes.find((n: any) => {
+        const text = n.text?.toString()?.trim() ?? '';
+        return /^\d+-\d+$/.test(text) && n.centerX > 0 && n.centerY > 0;
+      });
+      if (projectEntry) {
+        logger.info('保利:步骤4', `✓ V32.36.63 兜底找到价格节点"${projectEntry.text}" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+      }
+    }
 
     // ★ V32.36.12 防御: centerX<=0 是 V4 native 已知占位节点 bug (V32.36.10 反证)
     if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
