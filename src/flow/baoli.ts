@@ -24,12 +24,14 @@
 
 import { orchestrator } from '@/core/stateMachine';
 import { click, longPress, a11y, judge, pressKey } from '@/operations';
+import { swipe } from '@/operations'; // 🆕 V32.36.74 老板拍板: 步骤 14-2 用 swipe.up() 上滑重试
 import { ZBBAutomation } from '@/native';
 import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
 import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
+import { findWithRecovery } from './retryUtils'; // 🆕 V32.36.74 老板拍板: 步骤 14-2 用 findWithRecovery + 上滑重试
 import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
 import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
@@ -1331,22 +1333,40 @@ async function step14UploadScreenshot(): Promise<boolean> {
     logger.info('保利:步骤14-1', '✓ 千机已打开 (V32.36.55 跟千机-步骤1 一致)');
 
     // 步骤 14-2: dump 找"报备有效" (V2 L2149-2161 步骤8-d)
-    logger.info('保利:步骤14-2', 'dump 找"报备有效"...');
-    let nodesAfterOpen: any[] = [];
+    // 🆕 V32.36.74 老板 09-22 拍板 - 修法 (老板铁子反证金标准 - 跟千机步骤 3 一致):
+    //   老板 nova 14:42 log: '核对代码, 这一步如果找不到报备有效, 有上滑操作吗?'
+    //   老板铁子命中错位 (再次 - 关键): V32.36.73 步骤 14-2 只有 1 次 dump + hardcode 兜底
+    //   老板铁子反证金标准: 跟千机步骤 3 (findWithRecovery + 上滑重试 3 次) 不一致
+    //   修法: 改用 findWithRecovery, dump 3 次 + 上滑 + dump 2 次 + 兜底 hardcode
+    logger.info('保利:步骤14-2', 'dump 找"报备有效" (V32.36.74 老板拍板 findWithRecovery 上滑重试)...');
+    let baobeiYouxiaoNode: any = null;
     try {
-      nodesAfterOpen = await ZBBAutomation.getAllTextNodes();
+      baobeiYouxiaoNode = await findWithRecovery(
+        '保利:步骤14-2:报备有效',
+        async () => {
+          // findWithRecovery 要求 finder 返回 boolean
+          const nodes = await ZBBAutomation.getAllTextNodes();
+          const found = nodes.find((n: any) => n?.text?.toString()?.includes('报备有效'));
+          baobeiYouxiaoNode = found ?? null;  // 同时存到外部变量
+          return !!found;
+        },
+        async () => {
+          // 恢复动作: 上滑 (跟千机步骤 3 同款)
+          await swipe.up();
+          await ZBBAutomation.delay(1500);
+        }
+      );
+      if (baobeiYouxiaoNode) {
+        // V32.36.74 修法: baobeiYouxiaoNode 已在 finder 内赋值 (findWithRecovery 找到时已写入)
+        logger.info('保利:步骤14-2', `找到"报备有效" @ (${baobeiYouxiaoNode.centerX}, ${baobeiYouxiaoNode.centerY})`);
+        await ZBBAutomation.click(baobeiYouxiaoNode.centerX ?? 0, baobeiYouxiaoNode.centerY ?? 0);
+      } else {
+        // V2 v19.90 D13 vivo 实测兜底 (587,1379)px → dp(294, 690)
+        logger.warn('保利:步骤14-2', '未找到"报备有效" (V32.36.74 findWithRecovery 上滑后仍未找到), 兜底用 dp(294, 690) [vivo 实测]');
+        await ZBBAutomation.click(px(294), px(690));
+      }
     } catch (e) {
-      logger.warn('保利:步骤14-2', `dump 异常: ${e}`);
-    }
-    const baobeiYouxiaoNode = nodesAfterOpen.find((n: any) =>
-      n?.text?.toString()?.includes('报备有效')
-    );
-    if (baobeiYouxiaoNode) {
-      logger.info('保利:步骤14-2', `找到"报备有效" @ (${baobeiYouxiaoNode.centerX}, ${baobeiYouxiaoNode.centerY})`);
-      await ZBBAutomation.click(baobeiYouxiaoNode.centerX, baobeiYouxiaoNode.centerY);
-    } else {
-      // V2 v19.90 D13 vivo 实测兜底 (587,1379)px → dp(294, 690)
-      logger.warn('保利:步骤14-2', '未找到"报备有效", 兜底用 dp(294, 690) [vivo 实测]');
+      logger.warn('保利:步骤14-2', `dump 异常: ${e}, 兜底用 dp(294, 690)`);
       await ZBBAutomation.click(px(294), px(690));
     }
     // V2 v19.90 D16: 等弹窗动画 3-4.5s (×1.5)
