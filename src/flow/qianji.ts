@@ -690,45 +690,45 @@ function readReportCountFromNodes(nodes: A11yNode[]): number {
  *        - phone 提取后按 V32.36.86 规则处理 (前 3 + 后 4 + 中间 ****)
  */
 export function parseVariableCFromClipboard(nodes: A11yNode[]): { projectName: string; customerName: string; phone: string } {
-  // 先尝试 varA 解析 (如果命中就用)
+  // 🆕 V32.36.88 老板 09-22 拍板: 强制走正则解析 (不用 varA 结果)
+  //   老板 nova 17:37 反证: varA 在混合内容下会拿到错的字段 (首页 banner + 整段剪贴板)
+  //   老板拍板: 解析字段顺序固定 = 公司名称 → 客户姓名 → 客户性别 → 客户联系方式 → 报备项目
+  //   即使 varA 返回错的结果, 也用正则重新提取 (varA 只用于 debug log)
   const varAResult = parseVariableAFromNodes(nodes);
 
-  // 拼接所有 text 节点 (按行)
+  // 拼接所有 text 节点 (按行, 用换行分隔, 防单节点文本吞 \n)
   const allText = nodes
     .map(n => n.text?.toString() || '')
     .filter(t => t.length > 0)
     .join('\n');
 
-  // fallback: 从拼接文本里正则提取
-  let projectName = varAResult.projectName;
-  let customerName = varAResult.customerName;
-  let phone = varAResult.phone;
+  // 强制用正则提取 (基于字段 key:value 顺序)
+  let projectName = '';
+  let customerName = '';
+  let phone = '';
 
-  if (!customerName || !phone || !projectName) {
-    // 报备项目 (兼容 报备项目: / 报备项目：)
-    if (!projectName) {
-      const m = allText.match(/报备项目\s*[:：]\s*([^\s\n]+)/);
-      if (m) projectName = m[1].trim();
-    }
-    // 客户联系方式 (兼容前缀, 提取数字)
-    if (!phone) {
-      const m = allText.match(/客户联系方式\s*[:：]\s*(\d+)/);
-      if (m) {
-        const digits = m[1];
-        // V32.36.86 规则: 前 3 + 后 4 + 中间 ****
-        if (digits.length >= 7) {
-          phone = `${digits.slice(0, 3)}****${digits.slice(-4)}`;
-        } else {
-          phone = digits;
-        }
-      }
-    }
-    // 客户姓名: 按字段顺序提取 - '客户性别' 前一行就是姓名
-    if (!customerName) {
-      const m = allText.match(/公司名称\s*[:：][^\n]*\n([^\n]+)\n客户性别/);
-      if (m) customerName = m[1].trim();
+  // 报备项目 (兼容 报备项目: / 报备项目：)
+  const projectMatch = allText.match(/报备项目\s*[:：]\s*([^\s\n]+)/);
+  if (projectMatch) projectName = projectMatch[1].trim();
+
+  // 客户联系方式 (兼容前缀, 提取数字)
+  const phoneMatch = allText.match(/客户联系方式\s*[:：]\s*(\d+)/);
+  if (phoneMatch) {
+    const digits = phoneMatch[1];
+    // V32.36.86 规则: 前 3 + 后 4 + 中间 ****
+    if (digits.length >= 7) {
+      phone = `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+    } else {
+      phone = digits;
     }
   }
+
+  // 客户姓名: 按字段顺序提取 - '客户性别' 前一行就是姓名
+  const nameMatch = allText.match(/公司名称\s*[:：][^\n]*\n([^\n]+)\n客户性别/);
+  if (nameMatch) customerName = nameMatch[1].trim();
+
+  // 调试 log: varA 结果 vs 正则结果 (帮助老板反证哪个对)
+  logger.info('qianji', `parseVariableCFromClipboard: varA={p:'${varAResult.projectName}',n:'${varAResult.customerName.slice(0, 30)}',ph:'${varAResult.phone}'} regex={p:'${projectName}',n:'${customerName}',ph:'${phone}'}`);
 
   return { projectName, customerName, phone };
 }
