@@ -2703,8 +2703,12 @@ class AccessibilityServiceImpl : AccessibilityService() {
             val w = rect.width()
             val h = rect.height()
             // 老板铁子铁律: 自己的 rect, 不用 outer scope 的 bounds
-            // 老板 E470 adb dump 实测: Image #2 84x87, Image #3 64x87 - 用 40-150 范围
-            if (w in 40..150 && h in 40..150) {
+            // 🆕 V32.36.61 老板 09-22 拍板 - 修法:
+            //   老板 nova dump 反证: 真千机相册 ImageView 缩略图 219x219
+            //   原 40-150 范围太小, 缩略图全部被过滤掉
+            //   修法: 40-150 → 40-1000 (兼容大缩略图, 但避免截屏/全屏 ImageView)
+            //   V32.36.60 JS 端 size filter >= 200 兜底 (避免 native 改完 JS 还能 work)
+            if (w in 40..1000 && h in 40..1000) {
                 result.add(mapOf(
                     "centerX" to rect.centerX().toDouble(),
                     "centerY" to rect.centerY().toDouble(),
