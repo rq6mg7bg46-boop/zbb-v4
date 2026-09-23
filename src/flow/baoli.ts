@@ -414,37 +414,21 @@ async function step4FindProject(projectName: string): Promise<boolean> {
       );
       if (searchBox) {
         logger.info('保利:步骤4', `✓ V32.36.73 找到搜索框"请输入项目名称" @ (${searchBox.centerX}, ${searchBox.centerY})`);
-        // 2. 点击搜索框 + 等 3s (老板拍板方案 B 步骤 1)
+        // V32.36.101 老板 09-23 拍板: 删掉 "写剪贴板 + 长按" 步骤
+        //   老板 nova 11:11 反证: 写剪贴板 + 长按 3 次都没找到粘贴菜单, 但第 3 次"奇迹"找到了项目
+        //   老板拍板: '删除 写剪贴板 + 长按. 这里只需要点击 搜索框 请输入项目名称, 然后查找即可'
+        //   修法: 1. 点搜索框 + 2. 等 3s 模拟 IME 弹起 + 3. 直接查找 (不写剪贴板, 不长按, 不粘贴)
+        //   老板铁子反证: mock 千机监听搜索框 onFocus / onClick 触发自动搜索 (不需要粘贴内容)
+        // V32.36.96+97 老板铁律: ZBBAutomation.click 接 px, 业务代码用 dp, 但 searchBox.centerX 是 native dump 返的 px, 直接用
         await ZBBAutomation.click(searchBox.centerX ?? 0, searchBox.centerY ?? 0);
-        await ZBBAutomation.delay(3000);
-        // 3. 输入'郑州保利山水和颂' (老板拍板方案 B 步骤 2)
-        await ZBBAutomation.setClipboardText('郑州保利山水和颂');
-        // V2 v19.x 老板拍板: 长按 + 粘贴 (跟步骤 6 同款)
-        await longPress.byCoords(searchBox.centerX ?? 0, searchBox.centerY ?? 0, 3000);
-        await ZBBAutomation.delay(1500);
-        const pasteNodes = await ZBBAutomation.getAllTextNodes();
-        const pasteNode = pasteNodes.find((n: any) =>
-          n?.text?.toString()?.trim() === '粘贴' ||
-          n?.contentDesc?.toString()?.trim() === '粘贴'
-        );
-        if (pasteNode) {
-          logger.info('保利:步骤4', `V32.36.73 找到"粘贴" @ (${pasteNode.centerX}, ${pasteNode.centerY})`);
-          await click.byNode(pasteNode);
-        } else {
-          // 🆕 V32.36.85 老板 09-22 拍板: 删掉搜索按钮 (135, 720) hardcode 点击
-          //   老板 nova 16:56 实测: 删后流程仍能找到"郑州保利山水和颂"
-          //   原因: mock 千机可能监听文本变化自动搜索, 不需要点搜索按钮
-          //   老板原话: '删除搜索按钮（触发搜索）'
-          logger.warn('保利:步骤4', `V32.36.85 老板拍板: 没找到'粘贴'菜单, 也不点搜索按钮 (135, 720) hardcode, 直接等搜索结果`);
-        }
-        await ZBBAutomation.delay(2000);  // 等搜索结果
+        await ZBBAutomation.delay(3000);  // 等 IME 弹起 + mock 千机自动搜索 (V32.36.73 老板拍板方案 B 步骤 1)
         // 4. 查找并点击"郑州保利山水和颂" (老板拍板方案 B 步骤 3)
         const searchNodes = await ZBBAutomation.getAllTextNodes();
         projectEntry = searchNodes.find((n: any) => n.text === '郑州保利山水和颂');
         if (projectEntry && projectEntry.centerX > 0 && projectEntry.centerY > 0) {
-          logger.info('保利:步骤4', `✓ V32.36.73 找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY})`);
+          logger.info('保利:步骤4', `✓ V32.36.73 找到"郑州保利山水和颂" @ (${projectEntry.centerX}, ${projectEntry.centerY}) [V32.36.101 删 写剪贴板+长按]`);
         } else {
-          logger.warn('保利:步骤4', `V32.36.73 搜索后仍未找到"郑州保利山水和颂"`);
+          logger.warn('保利:步骤4', `V32.36.73 搜索后仍未找到"郑州保利山水和颂" [V32.36.101 删 写剪贴板+长按]`);
         }
       } else {
         logger.warn('保利:步骤4', `V32.36.73 也没找到搜索框"请输入项目名称"`);
