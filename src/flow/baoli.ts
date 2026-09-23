@@ -590,8 +590,12 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
     return false;
   }
 
-  // 等粘贴菜单 (500ms 动画)
-  await ZBBAutomation.delay(500);
+  // 等粘贴菜单 (V32.36.102 老板 09-23 拍板: 500ms -> 1-1.5s 随机)
+  //   老板 nova 11:28 log 反证: 点击"粘贴"的同时就 dump, 500ms 太短, dump 拿到的还是粘贴动画中界面 (字段未渲染完整)
+  //   修法: 等 1-1.5s 随机 + dump (V32.36.100 加的 allText 拼接输出)
+  const pasteWait = 1000 + Math.floor(Math.random() * 500);  // 1000-1500ms 随机
+  logger.info('保利:步骤6', `点完"粘贴"后等 ${pasteWait}ms (V32.36.102 老板拍板 1-1.5s 随机)`);
+  await ZBBAutomation.delay(pasteWait);
   logger.info('保利:步骤6', '✓ 客户信息已粘贴 (V32.36.28 沿用千机端剪贴板内容)');
 
   // 🆕 V32.36.82 老板 09-22 拍板: 粘贴后 dump 当前界面 → 解析项目名/客户姓名/联系方式 → 跟千机 customer (C) 对比
