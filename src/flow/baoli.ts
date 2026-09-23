@@ -56,6 +56,7 @@ const PROJECT_NAME_ROUND_2 = '郑州市三村杓袁7号地项目-保利山水和
 //   不用改 runBaoliRound 签名 (会大范围影响), 用 module-level state 简单解决
 //   execute() 弹窗前读 lastBaoliFailReason, 决定弹"重号了"还是"失败"
 // 🆕 V32.36.82 老板 09-22 拍板: 加 '剪贴板不一致' 类型 (步骤6 粘贴后 dump 对比千机 varB 不一致)
+// 🆕 V32.36.91 老板 09-23 拍板: 加 'varD不一致' 类型 (步骤14-2 千机 varD 对比 customer 不一致)
 let lastBaoliFailReason: string = '';
 
 // ============================================================
@@ -93,16 +94,21 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       //   - 剪贴板不一致 → "小主,剪贴板信息与千机信息不一致,请重新开启流程!!"
       // 🆕 V32.36.90 老板 09-22 拍板: 弹窗只在步骤6弹一次, execute() 不再弹 (否则 2 轮弹窗)
       //   老板原话: '只有用户点击我知道了,弹窗才消失;否则,一直停在界面'
+      // 🆕 V32.36.91 老板 09-23 拍板: varD 不一致 (步骤14-2) 同款去重
+      //   - 文案: '小主,本次报备的客户与千机现在显示的客户不一致,请手动核对!!'
+      //   - execute() 不再二次弹 (步骤14-2 已弹过)
       const round1Message = lastBaoliFailReason === '重号'
         ? '小主,重号了!请手动处理!'
         : lastBaoliFailReason === '剪贴板不一致'
           ? ''  // V32.36.90: 步骤6 已弹过, 不在 execute() 重复弹 (否则弹 2 轮)
-          : '小主,保利流程报备失败(第1轮),请手动处理!';
-      // V32.36.90: 剪贴板不一致时步骤6已经弹过了, execute() 不再二次弹窗
+          : lastBaoliFailReason === 'varD不一致'
+            ? ''  // V32.36.91: 步骤14-2 已弹过, 不在 execute() 重复弹
+            : '小主,保利流程报备失败(第1轮),请手动处理!';
+      // V32.36.90/91: 步骤6/步骤14-2 已弹过, execute() 跳过二次弹窗
       if (round1Message) {
         await raiseAlert(round1Message, 30000, true);
       } else {
-        logger.info('保利', '步骤6 已弹过剪贴板不一致弹窗, execute() 跳过二次弹窗 (V32.36.90)');
+        logger.info('保利', `步骤6/14-2 已弹过 (${lastBaoliFailReason}) 弹窗, execute() 跳过二次弹窗 (V32.36.90/91)`);
       }
       orchestrator.send('BAOLI_INTERVENE');
       return false;
@@ -1463,13 +1469,14 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
       if (!compareResultD.isMatch) {
         const diffMsgD = compareResultD.diffs.map(d => `${d.field}: '${d.aValue}' vs '${d.bValue}'`).join('; ');
         logger.warn('保利:步骤14-2', `✗ 千机 varD 跟 customer 不一致! diff: ${diffMsgD}`);
-        // 弹窗 + 永不超时 (步骤14 是辅助功能, 不影响主流程, 这里直接 return true 让步骤14 走完)
-        //   老板拍板: '只有用户点我知道了, 弹窗才消失; 否则, 一直停在界面'
+        // 🆕 V32.36.91 老板 09-23 拍板: varD 不一致 → 阻塞主流程 + 只一轮弹窗
+        //   老板原话: '如果C和D的数据不一致,需要阻塞流程. 但只需要一轮弹窗+震动!'
+        //   V32.36.83 之前设计: return true 不阻塞 (设计错了, 老板 09-23 拍板改)
+        //   V32.36.91 修法: return false 阻塞 + 设 lastBaoliFailReason='varD不一致' + raiseAlert 永不超时
+        //     - execute() 看到 reason='varD不一致' 跳过二次弹窗 (跟 V32.36.90 剪贴板不一致同款机制)
+        lastBaoliFailReason = 'varD不一致';
         await raiseAlert('小主,本次报备的客户与千机现在显示的客户不一致,请手动核对!!', 30000, true);
-        // ⚠️ V32.36.83 设计选择: 步骤14 失败不阻塞主流程 (老板铁子铁律 - 步骤14 是辅助功能)
-        //   所以这里 return true (不 return false), 让流程继续往下走
-        //   用户点完按钮后, 流程会继续, 但步骤14-2 找"报备有效" 已被弹窗打断
-        return true;
+        return false;
       }
       logger.info('保利:步骤14-2', '✓ varD 跟 customer 一致, 继续找"报备有效"');
     } catch (e) {
