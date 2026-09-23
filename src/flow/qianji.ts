@@ -723,8 +723,17 @@ export function parseVariableCFromClipboard(nodes: A11yNode[]): { projectName: s
     }
   }
 
-  // 客户姓名: 按字段顺序提取 - '客户性别' 前一行就是姓名
-  const nameMatch = allText.match(/公司名称\s*[:：][^\n]*\n([^\n]+)\n客户性别/);
+  // 🆕 V32.36.93 老板 09-23 拍板: 改 regex 用精确 key:value 匹配, 不依赖"中间独立行"假设
+  //   老板 nova 09:26 反证: dump 拿到 '客户姓名：孙勇\n客户性别' (跟 V32.36.88 假设的 '公司名称\n孙勇\n客户性别' 不同)
+  //   老板拍板: 3 字段统一用 key[:：]value 提取, 兼容两种 dump 格式:
+  //     格式 A (V32.36.88): 公司 → 姓名独立行 → 性别 (mock 千机首页)
+  //     格式 B (nova 09:26): 公司 → 客户姓名：XXX → 性别 (保利小程序输入框聚合)
+  // 兼容策略: 先尝试带前缀的 '客户姓名：' 匹配 (格式 B), 再 fallback 到独立行 (格式 A)
+  let nameMatch = allText.match(/客户姓名\s*[:：]\s*([^\s\n]+)/);
+  if (!nameMatch) {
+    // 兼容老 dump: 客户姓名独立一行, '公司名称' 和 '客户性别' 之间
+    nameMatch = allText.match(/公司名称\s*[:：][^\n]*\n([^\n]+)\n客户性别/);
+  }
   if (nameMatch) customerName = nameMatch[1].trim();
 
   // 调试 log: varA 结果 vs 正则结果 (帮助老板反证哪个对)
