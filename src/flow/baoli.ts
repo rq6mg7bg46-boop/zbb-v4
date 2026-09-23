@@ -623,7 +623,25 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   logger.info('保利:步骤6', 'dump 当前界面, 跟千机 varB 对比项目名/客户姓名/联系方式 (V32.36.82)');
   try {
     const step6AfterPasteNodes = await ZBBAutomation.getAllTextNodes();
+    // 🆕 V32.36.100 老板 09-23 拍板: 加 dump 拼接结果 + 关键字段 substring 输出 (老板 nova 11:04 反证 varC 解析全空)
+    //   老板原话: '解析出错. 实测的客户信息是一致的!'
+    //   V32.36.92 之前打印 80 节点详细列表, V32.36.94 删了
+    //   V32.36.100 修法: 只打印拼接后 allText 的 报备项目 / 客户姓名 / 客户联系方式 substring, 帮助老板定位 regex 失配原因
+    const allText = step6AfterPasteNodes.map(n => n.text?.toString() || '').filter(t => t.length > 0).join('\n');
+    logger.info('保利:步骤6', `dump allText 长度=${allText.length} 字符 (V32.36.100 老板拍板加拼接输出, 定位 regex 失配)`);
+    // 打印 allText 中包含关键字段的 200 字符窗口, 帮助老板看 dump 真实内容
+    ['报备项目', '客户姓名', '客户联系方式', '公司名称'].forEach(key => {
+      const idx = allText.indexOf(key);
+      if (idx >= 0) {
+        const start = Math.max(0, idx - 10);
+        const end = Math.min(allText.length, idx + 100);
+        logger.info('保利:步骤6', `  ${key} found @ ${idx}: '${allText.slice(start, end).replace(/\n/g, '\\n')}'`);
+      } else {
+        logger.info('保利:步骤6', `  ${key} NOT FOUND in allText (regex 必然返空)`);
+      }
+    });
     // 🆕 V32.36.94 老板 09-23 拍板: 删掉 V32.36.92 调试 A11y 节点打印 (老板确认正则已对, 调试完成)
+    //   V32.36.100 保留 allText 关键字段 substring 输出 (老板 nova 11:04 varC 解析又空, 必须重新打开调试)
     // 🆕 V32.36.87: 用剪贴板版解析器 (varA + fallback 正则), 处理步骤6 dump 含混合内容的情况
     const varC = parseVariableCFromClipboard(step6AfterPasteNodes);
     logger.info('保利:步骤6', `varC 解析: projectName='${varC.projectName}', customerName='${varC.customerName}', phone='${varC.phone}'`);
