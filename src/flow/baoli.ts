@@ -366,13 +366,10 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     // V32.36.66 老板 09-22 拍板 - 撤销 V32.36.65: 恢复详细节点列表打印
     //   老板 nova 11:09 实测: dump 只看到 5 个节点 (没加载完), 老板需要看具体哪些节点
     //   修法: 恢复完整节点列表, 老板 log 能看清是缺哪些节点
+    // 🆕 V32.36.94 老板 09-23 拍板: 删掉步骤 4 详细节点列表打印 (老板原话: '删除保利:步骤4的界面内容打印')
+    //   老板拍板: 调试完成, log 太冗杂, 删掉
     const screenTexts = await judge.dumpScreenTexts(30);
-    if (screenTexts.length > 0) {
-      logger.info('保利:步骤4', `dump 节点数: ${screenTexts.length} (V32.36.66 老板拍板恢复详细列表)`);
-      screenTexts.forEach((t, idx) => logger.info('保利:步骤4', `  [${idx + 1}] ${t}`));
-    } else {
-      logger.info('保利:步骤4', 'dump 节点数: 0 [空]');
-    }
+    logger.info('保利:步骤4', `dump 节点数: ${screenTexts.length} (V32.36.94 老板拍板只保留节点数)`);
 
     // 3. V32.36.63 老板 09-22 拍板 - 修法:
     //    V2.x BaoliService.ts:718 反证金标准: 精确匹配 '郑州保利山水和颂'
@@ -544,13 +541,9 @@ async function step5ClickReportButton(): Promise<boolean> {
 // (V2.x 步骤 7, 实测: 长按 3000ms + 等 1500ms + tap 粘贴)
 // ============================================================
 async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> {
-  // V32.36.65 老板 09-22 拍板: 步骤6 开始先打印当前界面 (方便老板看)
-  const step6StartTexts = await judge.dumpScreenTexts(30);
-  logger.info('保利:步骤6', `开始 (V32.36.65 老板拍板打印当前界面): dump 节点数=${step6StartTexts.length}`);
-  if (step6StartTexts.length > 0) {
-    // V32.36.65 老板拍板: 步骤6 步骤14-6 打印, 其他步骤不打印
-    step6StartTexts.forEach((t, idx) => logger.info('保利:步骤6', `  [${idx + 1}] ${t}`));
-  }
+  // 🆕 V32.36.94 老板 09-23 拍板: 删掉步骤 4 / 步骤 6 打印当前界面的 log (老板拍板 '删除保利:步骤4、保利:步骤6的界面内容打印')
+  //   V32.36.65 之前设计: 步骤6 开始打印 30 条文本 (方便老板看), 步骤 14-6 打印
+  //   V32.36.94 移除: 调试完成, log 太冗杂
   logger.info('保利:步骤6', '长按输入框 + 粘贴客户信息...');
 
   // V32.36.28 老板 09-20 装机实测 - 修法 (老板拍板简化):
@@ -629,18 +622,7 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   logger.info('保利:步骤6', 'dump 当前界面, 跟千机 varB 对比项目名/客户姓名/联系方式 (V32.36.82)');
   try {
     const step6AfterPasteNodes = await ZBBAutomation.getAllTextNodes();
-    // 🆕 V32.36.92 老板 09-23 拍板: 解析前先打印当前界面内容 (A11y), 帮助老板定位根因
-    //   老板 nova 09:21 log 反证: varC 解析全空, 不知道是 dump 拿到空还是解析器没匹配
-    //   老板原话: '在解析前增加一个操作:A11y并打印当前界面的内容'
-    logger.info('保利:步骤6', `dump A11y 节点数=${step6AfterPasteNodes.length}`);
-    step6AfterPasteNodes.slice(0, 80).forEach((n: any, idx: number) => {
-      const text = n?.text?.toString() || '';
-      const cd = n?.contentDesc?.toString() || '';
-      const cls = n?.className?.toString() || '';
-      if (text || cd) {
-        logger.info('保利:步骤6', `  [${idx + 1}] text='${text.slice(0, 100)}' cd='${cd.slice(0, 50)}' cls='${cls.split('.').pop()}'`);
-      }
-    });
+    // 🆕 V32.36.94 老板 09-23 拍板: 删掉 V32.36.92 调试 A11y 节点打印 (老板确认正则已对, 调试完成)
     // 🆕 V32.36.87: 用剪贴板版解析器 (varA + fallback 正则), 处理步骤6 dump 含混合内容的情况
     const varC = parseVariableCFromClipboard(step6AfterPasteNodes);
     logger.info('保利:步骤6', `varC 解析: projectName='${varC.projectName}', customerName='${varC.customerName}', phone='${varC.phone}'`);
@@ -1231,8 +1213,9 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
         //   老板问: '点击二维码和三指下滑是同一时间进行的, 调整为, 点击二维码之后等待3-4S间的随机时间, 然后再执行三指下滑'
         //   老板反证金标准: 之前 tap + 三指下滑之间没等, 太快了
         //   修法: 点击二维码后等 3000-4000ms 随机, 再执行三指下滑
-        const qrWait = 3000 + Math.floor(Math.random() * 1000);  // 3000-4000ms
-        logger.info('保利:步骤13-情况2', `点击二维码后等 ${qrWait}ms (V32.36.49 老板拍板 3-4s 随机)`);
+        // 🆕 V32.36.94 老板 09-23 拍板: 改 1-2s 随机 (老板 nova 09:40 实测 3943ms 偏长)
+        const qrWait = 1000 + Math.floor(Math.random() * 1000);  // 1000-2000ms
+        logger.info('保利:步骤13-情况2', `点击二维码后等 ${qrWait}ms (V32.36.94 老板拍板 1-2s 随机)`);
         await ZBBAutomation.delay(qrWait);
         qrClicked = true;
       } else {
@@ -1277,8 +1260,17 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
         // V2 v21.17: threeFingerSwipeDown(80, 600, 400) - dp 起点 80, 终点 600, duration 400ms
         // V32.36.75: 调 native threeFingerSwipeDown(320, 2400, 400) - px 起点 320, 终点 2400
         const screenHeight = 2400;  // nova 1080x2400 实测
+        const screenWidth = 1080;  // nova 1080x2400 实测
         const startPx = 320;
         const endPx = 2400;
+        // 🆕 V32.36.94 老板 09-23 拍板: 列出三指下滑的起止坐标 (老板原话: '列出三只下滑的起止坐标')
+        //   native 三指 X 按屏幕百分比 25%/50%/75% (AccessibilityServiceImpl.kt:1774 xPercent default)
+        //   三指同步下滑 (v21.14 老板拍板, 同时开始/结束, 拟人化只保留 X ±10dp 偏移)
+        const fingerXList = [screenWidth * 0.25, screenWidth * 0.5, screenWidth * 0.75];
+        logger.info('保利:步骤13-情况2', `三指下滑 (native) 起止坐标:`);
+        fingerXList.forEach((x, i) => {
+          logger.info('保利:步骤13-情况2', `  第 ${i + 1} 指: (${x.toFixed(0)}, ${startPx}) → (${x.toFixed(0)}, ${endPx}), duration=400ms`);
+        });
         const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startPx, endPx, 400);
         swipeSuccess = threeFingerOk;
         logger.info('保利:步骤13-情况2', `三指下滑 (native) 第 ${attempt}/2 次: success=${threeFingerOk}`);
