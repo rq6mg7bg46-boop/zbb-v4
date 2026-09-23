@@ -1259,19 +1259,23 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
         // V32.36.75 调 native 真三指下滑 (跟 V2 v21.17 一致, 80dp→600dp=4*80→4*600=320,2400 px on density=4)
         // V2 v21.17: threeFingerSwipeDown(80, 600, 400) - dp 起点 80, 终点 600, duration 400ms
         // V32.36.75: 调 native threeFingerSwipeDown(320, 2400, 400) - px 起点 320, 终点 2400
-        const screenHeight = 2400;  // nova 1080x2400 实测
+        // 🆕 V32.36.95 老板 09-23 拍板: 改坐标
+        //   X: 25%/50%/75% -> 30%/50%/70%
+        //   Y 起/止: 320/2400 -> 500/1500 (短一些)
+        //   duration: 400ms -> 600ms (慢一些)
         const screenWidth = 1080;  // nova 1080x2400 实测
-        const startPx = 320;
-        const endPx = 2400;
+        const startPx = 500;
+        const endPx = 1500;
+        const durationMs = 600;
         // 🆕 V32.36.94 老板 09-23 拍板: 列出三指下滑的起止坐标 (老板原话: '列出三只下滑的起止坐标')
-        //   native 三指 X 按屏幕百分比 25%/50%/75% (AccessibilityServiceImpl.kt:1774 xPercent default)
+        //   native 三指 X 按屏幕百分比 (AccessibilityServiceImpl.kt:1774 xPercent default)
         //   三指同步下滑 (v21.14 老板拍板, 同时开始/结束, 拟人化只保留 X ±10dp 偏移)
-        const fingerXList = [screenWidth * 0.25, screenWidth * 0.5, screenWidth * 0.75];
-        logger.info('保利:步骤13-情况2', `三指下滑 (native) 起止坐标:`);
+        const fingerXList = [screenWidth * 0.3, screenWidth * 0.5, screenWidth * 0.7];
+        logger.info('保利:步骤13-情况2', `三指下滑 (native) 起止坐标 (V32.36.95 老板拍板 30/50/70%, 500→1500, 600ms):`);
         fingerXList.forEach((x, i) => {
-          logger.info('保利:步骤13-情况2', `  第 ${i + 1} 指: (${x.toFixed(0)}, ${startPx}) → (${x.toFixed(0)}, ${endPx}), duration=400ms`);
+          logger.info('保利:步骤13-情况2', `  第 ${i + 1} 指: (${x.toFixed(0)}, ${startPx}) → (${x.toFixed(0)}, ${endPx}), duration=${durationMs}ms`);
         });
-        const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startPx, endPx, 400);
+        const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startPx, endPx, durationMs);
         swipeSuccess = threeFingerOk;
         logger.info('保利:步骤13-情况2', `三指下滑 (native) 第 ${attempt}/2 次: success=${threeFingerOk}`);
         if (threeFingerOk) break;
