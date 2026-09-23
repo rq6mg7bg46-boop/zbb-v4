@@ -22,7 +22,7 @@ import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
 import { navBarHomeDp, px as dpToPxForNav } from '@/utils/DpUtil'; // V32.36.98 老板 09-23 拍板: 千机端返回桌面
-import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
+import { getDeviceFallbackCoords } from '@/utils/deviceFallback'; // V32.36.99 老板拍板: 移除 dpToPx (死代码)
 import { logger } from '@/utils/logger';
 
 // ============================================================
@@ -486,9 +486,8 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
         const dp = fallback.forwardBtn;
-        const px = dpToPx(dp);
+        // V32.36.99 老板 09-23 拍板: 移除 dpToPx (V32.36.97 byCoords 内部已统一 px() 转, 调用方不要再 dpToPx)
         logger.info('千机:步骤5', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
-        // V32.36.97 老板拍板: byCoords 接 dp 入参, 内部 px() 转. 不要再 dpToPx() (双层转错误)
         await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
@@ -528,9 +527,8 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       const fallback = await getDeviceFallbackCoords();
       if (fallback) {
         const dp = fallback.copyBtn;
-        const px = dpToPx(dp);
+        // V32.36.99 老板 09-23 拍板: 移除 dpToPx (V32.36.97 byCoords 内部已统一 px() 转, 调用方不要再 dpToPx)
         logger.info('千机:步骤6', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
-        // V32.36.97 老板拍板: byCoords 接 dp 入参, 内部 px() 转. 不要再 dpToPx() (双层转错误)
         await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');

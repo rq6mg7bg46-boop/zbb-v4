@@ -23,6 +23,7 @@
 
 import { ZBBAutomation } from '@/native';
 import { logger } from '@/utils/logger';
+import { screenWidthDp, px as dpToPx } from '@/utils/DpUtil'; // V32.36.96 老板拍板: 业务代码用 dp, native swipeShell 接 px, 用 px() 转
 
 const DEFAULT_DISTANCE_PX = 600;
 const DEFAULT_DURATION_MS = 300;
@@ -35,8 +36,9 @@ const DEFAULT_DURATION_MS = 300;
  */
 export async function swipeUp(distancePx: number = DEFAULT_DISTANCE_PX, durationMs: number = DEFAULT_DURATION_MS): Promise<boolean> {
   // V32.36.9 老板 09-09 改 swipeShell (input swipe 通道, 千机/企微可接收)
-  const startX = 540;  // nova 7 5G 屏幕宽度 1080/2 = 540
-  const startY = 1500; // nova 屏幕中部偏下
+  // V32.36.96 老板 09-23 拍板: X 用 screenWidthDp()/2 * pixelRatio 转 px, 不用 nova 1080/2=540 硬编码
+  const startX = dpToPx(screenWidthDp() / 2);  // nova 屏幕宽 1080 px = 360 dp / 2 * 3 = 540 px
+  const startY = 1500; // nova 屏幕中部偏下 (px, native swipeShell 接 px)
   const endY = Math.max(100, startY - distancePx);
 
   logger.info('swipe', `swipeUp(shell): (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
@@ -48,8 +50,9 @@ export async function swipeUp(distancePx: number = DEFAULT_DISTANCE_PX, duration
  */
 export async function swipeDown(distancePx: number = DEFAULT_DISTANCE_PX, durationMs: number = DEFAULT_DURATION_MS): Promise<boolean> {
   // V32.36.9 老板 09-09 改 swipeShell
-  const startX = 540;
-  const startY = 500; // nova 屏幕中部偏上
+  // V32.36.96 老板 09-23 拍板: X 用 screenWidthDp()/2 * pixelRatio 转 px, 不用 nova 1080/2=540 硬编码
+  const startX = dpToPx(screenWidthDp() / 2);  // nova 屏幕宽 1080 px = 360 dp / 2 * 3 = 540 px
+  const startY = 500; // nova 屏幕中部偏上 (px, native swipeShell 接 px)
   const endY = Math.min(2200, startY + distancePx);
 
   logger.info('swipe', `swipeDown(shell): (${startX},${startY}) → (${startX},${endY}) 距离=${distancePx}px 时长=${durationMs}ms`);
@@ -61,16 +64,14 @@ export async function swipeDown(distancePx: number = DEFAULT_DISTANCE_PX, durati
  */
 export async function swipeUpByDp(dp: number = 200, durationMs: number = DEFAULT_DURATION_MS): Promise<boolean> {
   // 老板实测 08-23 V4.x 跨机型 dp 适配
-  const { px } = await import('../utils/DpUtil');
-  return swipeUp(px(dp), durationMs);
+  return swipeUp(dpToPx(dp), durationMs);
 }
 
 /**
  * 下滑 N dp (跨机型适配)
  */
 export async function swipeDownByDp(dp: number = 200, durationMs: number = DEFAULT_DURATION_MS): Promise<boolean> {
-  const { px } = await import('../utils/DpUtil');
-  return swipeDown(px(dp), durationMs);
+  return swipeDown(dpToPx(dp), durationMs);
 }
 
 /**

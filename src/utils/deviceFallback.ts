@@ -79,12 +79,9 @@ export async function getDeviceFallbackCoords(): Promise<DeviceFallbackCoords | 
 }
 
 /**
- * dp → px 转换 (供 qianji.ts 调用 click.byCoords 前用)
+ * 🆕 V32.36.99 老板 09-23 拍板: 移除 deviceFallback.ts 的 dpToPx 函数 (V32.36.97 之后变死代码)
+ *   原因: byCoords/longPress.byCoords 内部已统一 px() 转 (DpUtil 原则), 调用方直接传 dp 数字
+ *   历史: V32.36.87 之前调用方调 byCoords(px.x, px.y) 需要自己 px 转
+ *         V32.36.97 老板拍板: byCoords 接 dp, 内部 px() 转 → dpToPx() 死代码
+ *   修法: 完全删掉 dpToPx 函数, qianji.ts 改用 DpUtil 的 px() (但 byCoords 内部已转, 不需要再调)
  */
-export function dpToPx(dp: { x: number; y: number }): { x: number; y: number } {
-  const scale = PixelRatio.get();
-  return {
-    x: Math.round(dp.x * scale),
-    y: Math.round(dp.y * scale),
-  };
-}
