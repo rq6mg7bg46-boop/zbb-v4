@@ -35,7 +35,7 @@ import { findWithRecovery } from './retryUtils'; // 🆕 V32.36.74 老板拍板:
 import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
 import { parseVariableAFromNodes, parseVariableCFromClipboard } from './qianji'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 dump 解析复用千机 varA 解析器 + V32.36.87 剪贴板版解析
 import { compareCustomer } from '@/utils/compareCustomer'; // 🆕 V32.36.82 老板 09-22 拍板: 步骤6 跟 customer 对比 3 字段
-import { px, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑)
+import { px, dp, screenWidthDp, screenHeightDp, centerXDp } from '@/utils/DpUtil'; // V4.x 跨机型适配 (老板拍板 08-23 + V32.36.8 修上滑 + V32.36.96 px 转 dp)
 import { scrollUpPPlus, scrollDownPPlus, humanSwipeWithBounceDp, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.11 P+ 拟人化 (V2.x BaoliService 反证)
 
 const APP_PACKAGES = {
@@ -515,12 +515,12 @@ async function step5ClickReportButton(): Promise<boolean> {
       logger.info('保利:步骤5', `dump 找到 "报备" Button @ (${reportBtn.centerX}, ${reportBtn.centerY})`);
       ok = await click.byNode(reportBtn);
     } else {
-      logger.warn('保利:步骤5', `dump 没找到带 Button 的 "报备", 兜底 hardcode byCoords(449, 2138)`);
-      ok = await click.byCoords(449, 2138);  // V32.36.30 兜底 (老板 nova 11:10 dump 实测)
+      logger.warn('保利:步骤5', `dump 没找到带 Button 的 "报备", 兜底 hardcode byCoords(dp(150), dp(713))`);  // V32.36.96 px→dp (449,2138)/(150,713)
+      ok = await click.byCoords(dp(150), dp(713));  // V32.36.30 兜底 (老板 nova 11:10 dump 实测)
     }
   } catch (e) {
-    logger.warn('保利:步骤5', `dump 异常: ${e}, 兜底 byCoords(449, 2138)`);
-    ok = await click.byCoords(449, 2138);
+    logger.warn('保利:步骤5', `dump 异常: ${e}, 兜底 byCoords(dp(150), dp(713))`);  // V32.36.96 px→dp (449,2138)/(150,713)
+    ok = await click.byCoords(dp(150), dp(713));
   }
   if (!ok) {
     logger.info('保利:步骤5', '点报备失败');
@@ -592,14 +592,15 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   if (inputNode && inputNode.centerX > 0 && inputNode.centerY > 0) {
     await longPress.byNode(inputNode, 3000);
   } else {
-    // V32.36.32 兜底: 用 V4 dump 坐标 (540, 896) 长按 (老板 nova 实测命中)
-    await longPress.byCoords(540, 896);
+    // V32.36.32 兜底: 用 V4 dump 坐标 dp(180) dp(299) 长按 (老板 nova 实测命中)  // V32.36.96 px→dp (540,896)/(180,299)
+    await longPress.byCoords(dp(180), dp(299));
   }
   await ZBBAutomation.delay(1500);
 
   // V32.36.27 老板 10:16 拍板 - 改粘贴坐标: (540, 896) → (135, 720)
   // V32.36.28 老板 09-20 拍板 - 直接粘贴 (不写剪贴板), 沿用千机端写入的内容
-  const pasteOk = await click.byCoords(135, 720);
+  // V32.36.96 px→dp (135,720)/(45,240)
+  const pasteOk = await click.byCoords(dp(45), dp(240));
   if (!pasteOk) {
     logger.info('保利:步骤6', 'tap 粘贴失败');
     return false;
@@ -703,9 +704,9 @@ async function step7SelectInstallment(): Promise<boolean> {
   if (foundNode) {
     ok = await click.byNode(foundNode);
   } else {
-    // V32.36.34 兜底: hardcode byCoords(519, 607) (老板 nova 11:35 实测命中坐标)
-    logger.warn('保利:步骤7', `2 次都没找到, 兜底 hardcode byCoords(519, 607) (老板 nova 11:35 实测)`);
-    ok = await click.byCoords(519, 607);
+    // V32.36.34 兜底: hardcode byCoords(dp(173), dp(202)) (老板 nova 11:35 实测命中坐标)  // V32.36.96 px→dp (519,607)/(173,202)
+    logger.warn('保利:步骤7', `2 次都没找到, 兜底 hardcode byCoords(dp(173), dp(202)) (老板 nova 11:35 实测)`);
+    ok = await click.byCoords(dp(173), dp(202));
   }
 
   if (!ok) {
@@ -729,11 +730,11 @@ async function step8SelectProject(projectName: string, round: 1 | 2): Promise<bo
   //   老板拍板: '这是 2 轮, 是 2 个兜底坐标. 你现在设置了几个?'
   //   V32.36.40 老板铁子错位: 只设了 1 个兜底 (540, 1919), 第二轮会点错位置
   //   修法: step8 加 round 参数, 根据 round 选不同兜底坐标
-  //     - round=1 → 兜底 byCoords(540, 1919) (老板 nova 17:01 实测)
-  //     - round=2 → 兜底 byCoords(540, 2159) (老板 nova 17:02 实测)
+  //     - round=1 → 兜底 byCoords(dp(180), dp(640)) (老板 nova 17:09 实测)
+  //     - round=2 → 兜底 byCoords(dp(180), dp(720)) (老板 nova 17:58 实测)
   //   循环逻辑跟 V32.36.32 step6 / V32.36.34 step7 / V32.36.40 step8 一致
-  const fallbackX = 540;
-  const fallbackY = round === 1 ? 1919 : 2159;  // V32.36.41 老板拍板 2 个兜底坐标
+  const fallbackX = dp(180);  // V32.36.96 px→dp (540)/(180)
+  const fallbackY = round === 1 ? dp(640) : dp(720);  // V32.36.41 老板拍板 2 个兜底坐标 + V32.36.96 px→dp (1919)/(640) (2159)/(720)
   let foundNode: any = null;
   for (let attempt = 1; attempt <= 2; attempt++) {
     if (attempt > 1) {
@@ -824,9 +825,9 @@ async function step9ClickConfirm(): Promise<boolean> {
   if (foundNode) {
     ok = await click.byNode(foundNode);
   } else {
-    // V32.36.50 兜底: hardcode byCoords(958, 1496) (老板 nova 10:52:37 实测命中)
-    logger.warn('保利:步骤9', `2 次都没找到, 兜底 hardcode byCoords(958, 1496) (老板 nova 10:52:37 实测)`);
-    ok = await click.byCoords(958, 1496);
+    // V32.36.50 兜底: hardcode byCoords(dp(319), dp(499)) (老板 nova 10:52:37 实测命中)  // V32.36.96 px→dp (958,1496)/(319,499)
+    logger.warn('保利:步骤9', `2 次都没找到, 兜底 hardcode byCoords(dp(319), dp(499)) (老板 nova 10:52:37 实测)`);
+    ok = await click.byCoords(dp(319), dp(499));
   }
   if (!ok) {
     logger.info('保利:步骤9', '点确认失败');
@@ -879,9 +880,9 @@ async function step10SmartRecognition(): Promise<boolean> {
   if (foundNode) {
     ok = await click.byNode(foundNode);
   } else {
-    // V32.36.50 兜底: hardcode byCoords(919, 1360) (老板 nova 10:52:39 实测命中)
-    logger.warn('保利:步骤10', `2 次都没找到, 兜底 hardcode byCoords(919, 1360) (老板 nova 10:52:39 实测)`);
-    ok = await click.byCoords(919, 1360);
+    // V32.36.50 兜底: hardcode byCoords(dp(306), dp(453)) (老板 nova 10:52:39 实测命中)  // V32.36.96 px→dp (919,1360)/(306,453)
+    logger.warn('保利:步骤10', `2 次都没找到, 兜底 hardcode byCoords(dp(306), dp(453)) (老板 nova 10:52:39 实测)`);
+    ok = await click.byCoords(dp(306), dp(453));
   }
   if (!ok) {
     logger.info('保利:步骤10', '点智能识别失败');
@@ -936,9 +937,9 @@ async function step11ClickReport(): Promise<boolean> {
   if (foundNode) {
     ok = await click.byNode(foundNode);
   } else {
-    // V32.36.51 兜底: hardcode byCoords(449, 2138) (V32.36.31 实测命中, 跟 V32.36.30 step5 一致)
-    logger.warn('保利:步骤11', `2 次都没找到, 兜底 hardcode byCoords(449, 2138) (V32.36.31 实测命中)`);
-    ok = await click.byCoords(449, 2138);
+    // V32.36.51 兜底: hardcode byCoords(dp(150), dp(713)) (V32.36.31 实测命中, 跟 V32.36.30 step5 一致)  // V32.36.96 px→dp (449,2138)/(150,713)
+    logger.warn('保利:步骤11', `2 次都没找到, 兜底 hardcode byCoords(dp(150), dp(713)) (V32.36.31 实测命中)`);
+    ok = await click.byCoords(dp(150), dp(713));
   }
   if (!ok) {
     logger.info('保利:步骤11', '点报备失败');
@@ -1263,19 +1264,24 @@ async function step13DetectResult(round: 1 | 2, reportIds?: [number, number]): P
         //   X: 25%/50%/75% -> 30%/50%/70%
         //   Y 起/止: 320/2400 -> 500/1500 (短一些)
         //   duration: 400ms -> 600ms (慢一些)
-        const screenWidth = 1080;  // nova 1080x2400 实测
-        const startPx = 500;
-        const endPx = 1500;
+        // V32.36.96 老板 09-23 拍板: V32.36.95 老板给的 px 值 (500/1500) 转 dp (167/500)
+        //   V32.36.95 原话: 'Y 起 500 → 止 1500' - 这里 500/1500 是 px 值 (老板 nova 实测 px 单位)
+        //   V32.36.96 修法: native threeFingerSwipeDown 接 dp 入参 (AccessibilityServiceImpl.kt:1771 startY: Float, dp 单位)
+        //     500 px / 3 = 167 dp (四舍五入), 1500 px / 3 = 500 dp
+        //     这俩 dp 数值就是 native 期望的入参, 直接传 dp 数值 (不再用 px() 转)
+        //   X 坐标 native 内部按 screenWidth * percent (px) 算 (L1788), JS 端无需传 X
+        const startDp = 167;   // V32.36.95 Y 起 500 px → dp(167)  // 500/3 ≈ 167
+        const endDp = 500;     // V32.36.95 Y 止 1500 px → dp(500)  // 1500/3 = 500
         const durationMs = 600;
         // 🆕 V32.36.94 老板 09-23 拍板: 列出三指下滑的起止坐标 (老板原话: '列出三只下滑的起止坐标')
-        //   native 三指 X 按屏幕百分比 (AccessibilityServiceImpl.kt:1774 xPercent default)
-        //   三指同步下滑 (v21.14 老板拍板, 同时开始/结束, 拟人化只保留 X ±10dp 偏移)
-        const fingerXList = [screenWidth * 0.3, screenWidth * 0.5, screenWidth * 0.7];
-        logger.info('保利:步骤13-情况2', `三指下滑 (native) 起止坐标 (V32.36.95 老板拍板 30/50/70%, 500→1500, 600ms):`);
-        fingerXList.forEach((x, i) => {
-          logger.info('保利:步骤13-情况2', `  第 ${i + 1} 指: (${x.toFixed(0)}, ${startPx}) → (${x.toFixed(0)}, ${endPx}), duration=${durationMs}ms`);
+        //   X 坐标 native 内部按屏幕宽 px * percent 算 (AccessibilityServiceImpl.kt:1788), 这里 log 用 px 显式表达
+        //   nova 屏幕宽 1080 px (或 360 dp), 三指 X px = 1080 * 0.3/0.5/0.7 = 324/540/756
+        const fingerXPxList = [screenWidthDp() * 3 * 0.3, screenWidthDp() * 3 * 0.5, screenWidthDp() * 3 * 0.7];
+        logger.info('保利:步骤13-情况2', `三指下滑 (native) 起止坐标 (V32.36.95 老板拍板 30/50/70% X px, 500→1500 px → dp(167)/dp(500), 600ms):`);
+        fingerXPxList.forEach((x, i) => {
+          logger.info('保利:步骤13-情况2', `  第 ${i + 1} 指: (${x.toFixed(0)}px, ${startDp}dp) → (${x.toFixed(0)}px, ${endDp}dp), duration=${durationMs}ms`);
         });
-        const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startPx, endPx, durationMs);
+        const threeFingerOk = await ZBBAutomation.threeFingerSwipeDown(startDp, endDp, durationMs);
         swipeSuccess = threeFingerOk;
         logger.info('保利:步骤13-情况2', `三指下滑 (native) 第 ${attempt}/2 次: success=${threeFingerOk}`);
         if (threeFingerOk) break;
@@ -1544,19 +1550,19 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
           // 拟人化点击 (precise 模式: ±2px 抖动)
           await click.byNode(baobeiYouxiaoNode, 'precise');
         } else {
-          // 兜底用 nova 实测坐标 (854, 1879)px = dp(427, 940) (density=480 scale=3.00 → dp=(854/2, 1879/2))
-          //   老板 nova 16:56 log 反证: V2 v19.90 D13 vivo 实测 (587, 1379)px 在 nova 上点错位置
-          logger.warn('保利:步骤14-2', `找到节点但坐标无效 (centerX=${baobeiYouxiaoNode.centerX}, centerY=${baobeiYouxiaoNode.centerY}), 兜底用 nova 实测 (854, 1879)px [V32.36.79 老板拍板修法]`);
-          await ZBBAutomation.click(854, 1879);
+          // V32.36.79 老板拍板修法: 兜底坐标改成 nova 实测 dp(285), dp(626) (854,1879 → dp 转换)  // V32.36.96 px→dp (854,1879)/(285,626)
+                    //   老板 nova 642 实测: V2 v19.90 D13 vivo 实测 (587, 1379)px 在 nova 上点错位置
+                    logger.warn('保利:步骤14-2', `找到节点但坐标无效 (centerX=${baobeiYouxiaoNode.centerX}, centerY=${baobeiYouxiaoNode.centerY}), 兜底用 nova 实测 dp(285), dp(626) [V32.36.79 老板拍板修法 + V32.36.96 px→dp]`);
+                    await ZBBAutomation.click(dp(285), dp(626));
         }
       } else {
-        // 兜底用 nova 实测坐标 (854, 1879)px (老板 nova 16:56 实测)
-        logger.warn('保利:步骤14-2', '未找到"报备有效" (findWithRecovery 上滑后仍未找到), 兜底用 nova 实测 (854, 1879)px [V32.36.79]');
-        await ZBBAutomation.click(854, 1879);
+        // 兜底用 nova 实测坐标 dp(285), dp(626) (老板 nova 16:56 实测)  // V32.36.96 px→dp (854,1879)/(285,626)
+        logger.warn('保利:步骤14-2', '未找到"报备有效" (findWithRecovery 上滑后仍未找到), 兜底用 nova 实测 dp(285), dp(626) [V32.36.79 + V32.36.96]');
+        await ZBBAutomation.click(dp(285), dp(626));
       }
     } catch (e) {
-      logger.warn('保利:步骤14-2', `dump 异常: ${e}, 兜底用 nova 实测 (854, 1879)px`);
-      await ZBBAutomation.click(854, 1879);
+      logger.warn('保利:步骤14-2', `dump 异常: ${e}, 兜底用 nova 实测 dp(285), dp(626) [V32.36.96]`);  // V32.36.96 px→dp (854,1879)/(285,626)
+      await ZBBAutomation.click(dp(285), dp(626));
     }
     // V2 v19.90 D16: 等弹窗动画 3-4.5s (×1.5)
     await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 1500));
@@ -1607,8 +1613,8 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
       await ZBBAutomation.click(addBoxNode.centerX, addBoxNode.centerY);
     } else {
       // V32.36.59 兜底: hardcode px(202, 1269) [nova dump bounds=[90,1152][315,1386] 中心点]
-      logger.warn('保利:步骤14-4', 'text/content-desc/Button 都没找到, 兜底用 px(202, 1269) [nova dump]');
-      await ZBBAutomation.click(202, 1269);
+      logger.warn('保利:步骤14-4', 'text/content-desc/Button 都没找到, 兜底用 dp(67), dp(423) [nova dump, V32.36.96 px→dp (202,1269)/(67,423)]');  // V32.36.96 px→dp (202,1269)/(67,423)
+      await ZBBAutomation.click(dp(67), dp(423));
     }
     // V2 v19.90 D16: Gamma 2000-3500 → 3000-5250 (×1.5 保稳)
     await ZBBAutomation.delay(3000 + Math.floor(Math.random() * 2250));
@@ -1682,7 +1688,7 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
     } else {
       // 兜底: hardcode px(540, 2200) [千机底部]
       logger.warn('保利:步骤14-5b', '没找到"发送", 兜底用 px(540, 2200) [千机底部]');
-      await ZBBAutomation.click(540, 2200);
+      await ZBBAutomation.click(dp(180), dp(733));  // V32.36.96 px→dp (540,2200)/(180,733)
     }
     // V32.36.62 老板拍板: 等 2-3s 让"发送"响应 + 弹"完成"按钮
     await ZBBAutomation.delay(2000 + Math.floor(Math.random() * 1000));
@@ -1716,7 +1722,7 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
     } else {
       // 兜底 hardcode (老板 nova 实测后填)
       logger.warn('保利:步骤14-6', '未找到"确认", 兜底用 px(540, 2200) [千机底部]');
-      await ZBBAutomation.click(540, 2200);
+      await ZBBAutomation.click(dp(180), dp(733));  // V32.36.96 px→dp (540,2200)/(180,733)
     }
     // 🆕 V32.36.67 老板 09-22 拍板: 点"确认"后等 1.5-2.5s 随机, 让"确认"响应
     const confirmDelay = 1500 + Math.floor(Math.random() * 1000);
@@ -1731,7 +1737,9 @@ async function step14UploadScreenshot(customer: CustomerInfo): Promise<boolean> 
     //   老板 nova 11:44 反馈: '需要的是下滑刷新, 不是上滑操作!'
     //   修法: 改 swipe(540, 800, 540, 1800, 500) = 手指从上往下滑 (下滑手势)
     logger.info('保利:步骤14-6', '下滑屏幕刷新当前界面 (V32.36.65 + V32.36.69 老板拍板)');
-    await ZBBAutomation.swipe(540, 800, 540, 1800, 500);  // 手指从上往下滑 (下滑手势)
+    // V32.36.96 px→dp (540,800,540,1800,500): swipe 接 px 入参 (native)，业务代码用 dp 写
+  //   540 px = 180 dp, 800 px = 267 dp, 1800 px = 600 dp, 500ms duration
+  await ZBBAutomation.swipe(px(180), px(267), px(180), px(600), 500);  // 手指从上往下滑 (下滑手势)
     await ZBBAutomation.delay(1000 + Math.floor(Math.random() * 1000));  // 1-2s 随机
     // 打印刷新后界面
     const step146AfterTexts = await judge.dumpScreenTexts(30);

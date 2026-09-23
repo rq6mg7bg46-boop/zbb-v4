@@ -117,12 +117,13 @@ async function hardRollback(): Promise<void> {
   } catch (e) {
     logger.warn('hardRollback', `复用失败, 用 nova 坐标 tap: ${e}`);
   }
-  // nova 7 5G 1 轮大退出 (老板实测 08-24)
-  await ZBBAutomation.click(555, 2350); // HOME
+  // V32.36.96 px→dp: nova 7 5G HOME/RECENTS/TRASH 兜底坐标改 dp (老板铁律: 业务代码统一用 dp)
+  //   555 px = 185 dp, 310 px = 103 dp, 545 px = 182 dp, 2350 px = 783 dp, 2160 px = 720 dp
+  await ZBBAutomation.click(px(185), px(783)); // HOME
   await ZBBAutomation.delay(1000);
-  await ZBBAutomation.click(310, 2350); // RECENTS
+  await ZBBAutomation.click(px(103), px(783)); // RECENTS
   await ZBBAutomation.delay(1500);
-  await ZBBAutomation.click(545, 2160); // TRASH (实测: 清空 + 自动回桌面)
+  await ZBBAutomation.click(px(182), px(720)); // TRASH (实测: 清空 + 自动回桌面)
   await ZBBAutomation.delay(1500);
 }
 
