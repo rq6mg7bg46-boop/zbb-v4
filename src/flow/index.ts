@@ -19,6 +19,7 @@ import { runBaoliFlow } from './baoli';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { setZbbWorkflowRunner } from './handleStart';
 import { ZBBAutomation } from '@/native'; // 🆕 V32.36.103 老板拍板: 自动续跑 dump 千机首页用
+import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.105 老板拍板: dump 前 launch 千机确保首页
 import { logger } from '@/utils/logger';
 import type { ProjectType } from './types';
 
@@ -226,6 +227,22 @@ export async function runZbbWorkflowAuto(): Promise<{
     const wait = 2000 + Math.floor(Math.random() * 1000);
     logger.info('runZbbWorkflowAuto', `第 ${loop} 轮跑完, 等 ${wait}ms 让千机刷数据...`);
     await new Promise((r) => setTimeout(r, wait));
+
+    // 🆕 V32.36.105 老板 09-23 拍板: dump 前先确保界面是千机首页 (老板 nova 13:06 反证)
+    //   真因: 老板 nova 13:06:42 log 显示 runZbbWorkflowAuto 第 1 轮跑完 → 等 2439ms → 没有 dump log → 退出循环
+    //   推测: dump 时界面是保 baoli 步骤 14-7 Toast / 千机监听弹窗, 不是千机首页
+    //   修法: 1) launch 千机 (确保界面是千机) + 2) 等 3s 千机启动 + 3) dump
+    try {
+      const qianjiPkg = qianjiPackage();
+      const qianjiAct = qianjiMainActivity();
+      const launchWithAm = (ZBBAutomation as any).launchAppWithAmStart
+        ?? (ZBBAutomation as any).launchApp;
+      await launchWithAm(qianjiPkg, qianjiAct);
+      await new Promise((r) => setTimeout(r, 3000));  // 等千机启动 + 首页渲染
+      logger.info('runZbbWorkflowAuto', `已重启千机确保 dump 是首页 (V32.36.105 老板拍板)`);
+    } catch (launchErr: any) {
+      logger.warn('runZbbWorkflowAuto', `重启千机失败 (best-effort, 继续 dump 兜底): ${launchErr}`);
+    }
 
     // 4. dump 千机首页找 报备待审核 N
     try {
