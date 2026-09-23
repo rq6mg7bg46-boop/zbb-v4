@@ -21,6 +21,7 @@ import { writeReport, writeBaoliDouble, getRecentReports } from '@/services/data
 import { compareCustomer, formatCompareResult } from '@/utils/compareCustomer';
 import { raiseAlert, notifyNoReport } from '@/services/alert';
 import { withFlowRetry, findWithRecovery, waitForScreenChange, RetryFlowError } from './retryUtils';
+import { navBarHomeDp, px as dpToPxForNav } from '@/utils/DpUtil'; // V32.36.98 老板 09-23 拍板: 千机端返回桌面
 import { getDeviceFallbackCoords, dpToPx } from '@/utils/deviceFallback';
 import { logger } from '@/utils/logger';
 
@@ -486,8 +487,9 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       if (fallback) {
         const dp = fallback.forwardBtn;
         const px = dpToPx(dp);
-        logger.info('千机:步骤5', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
-        await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
+        logger.info('千机:步骤5', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
+        // V32.36.97 老板拍板: byCoords 接 dp 入参, 内部 px() 转. 不要再 dpToPx() (双层转错误)
+        await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
       }
@@ -527,8 +529,9 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
       if (fallback) {
         const dp = fallback.copyBtn;
         const px = dpToPx(dp);
-        logger.info('千机:步骤6', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y}) → px=(${px.x}, ${px.y})`);
-        await click.byCoords(px.x, px.y, HumanLevel.NORMAL);
+        logger.info('千机:步骤6', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
+        // V32.36.97 老板拍板: byCoords 接 dp 入参, 内部 px() 转. 不要再 dpToPx() (双层转错误)
+        await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
       } else {
         throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
       }
@@ -544,7 +547,25 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     //   - 修法: 删除千机端 launchApp, 千机端只返回 varB, 保利端自己 launchApp
     //   - 优势: 千机端零 APP 耦合, 加新端只改 registry + 端文件, 千机端零改动
     logger.info('千机:步骤7', `千机端完成, 返回客户=${varB.customerName}, 项目=${varB.projectType} (后续端流程自主 launchApp)`);
-    // 不 launchApp, 不 delay (接力留给端流程)
+    // 🆕 V32.36.98 老板 09-23 拍板: 千机端步骤6 点完"复制" 后, 返回桌面 (按 Home 键), 让 baoli.ts 自主 launchApp 企业微信
+    //   V2.x 反证金标准 (QianjiService.ts L793-806 v22.02.12 老板实战): 保利路径步骤3.5+hook 必须返回桌面 + 启动企微
+    //   V4 端路由设计 (08-30): 千机端零 APP 知识 → 不 launchApp 企微, 但要按 Home 键回到桌面让 baoli.ts 接管
+    //   修法: 1-2s 随机延迟 + Home 键 + 0.5s 延迟 (跟 V2 v22.02.12 一致)
+    try {
+      const homeDelay = 1000 + Math.floor(Math.random() * 500);  // 1-1.5s 随机
+      logger.info('千机:步骤7', `点完"复制" 后等 ${homeDelay}ms (V32.36.98 1-1.5s 随机, V2 v22.02.12 反证)`);
+      await ZBBAutomation.delay(homeDelay);
+      // 老板 nova 反证: ZBBAutomation.pressHomeKey 可能不可靠, 直接用 navBarHomeDp + 点击 (V2.x humanTapDp 反证金标准)
+      // V32.36.96 + V32.36.97 老板铁律: 业务代码用 dp, native click 接 px, 用 px() 转
+      const homeHookDp = navBarHomeDp();
+      logger.info('千机:步骤7', `tap Home 键 dp=(${homeHookDp.x}, ${homeHookDp.y}) → px(${dpToPxForNav(homeHookDp.x)}, ${dpToPxForNav(homeHookDp.y)}) [V32.36.98 老板拍板]`);
+      await ZBBAutomation.click(dpToPxForNav(homeHookDp.x), dpToPxForNav(homeHookDp.y));
+      await ZBBAutomation.delay(500);
+      logger.info('千机:步骤7', '✓ 已返回桌面 (V32.36.98 老板拍板加 Home 键)');
+    } catch (homeErr) {
+      logger.warn('千机:步骤7', `Home 键失败 (best-effort, baoli 步骤1 launchApp 会重试): ${homeErr}`);
+    }
+    // 不 launchApp, 不 delay (接力留给端流程) - 但 Home 键已保证 baoli launchApp 是 fresh app
     return varB;
   } catch (error) {
     // RetryFlowError 抛出, 让 withFlowRetry 处理 (返回 + 重进 + 重试整条)
