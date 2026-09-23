@@ -629,6 +629,18 @@ async function step6PasteCustomerInfo(customer: CustomerInfo): Promise<boolean> 
   logger.info('保利:步骤6', 'dump 当前界面, 跟千机 varB 对比项目名/客户姓名/联系方式 (V32.36.82)');
   try {
     const step6AfterPasteNodes = await ZBBAutomation.getAllTextNodes();
+    // 🆕 V32.36.92 老板 09-23 拍板: 解析前先打印当前界面内容 (A11y), 帮助老板定位根因
+    //   老板 nova 09:21 log 反证: varC 解析全空, 不知道是 dump 拿到空还是解析器没匹配
+    //   老板原话: '在解析前增加一个操作:A11y并打印当前界面的内容'
+    logger.info('保利:步骤6', `dump A11y 节点数=${step6AfterPasteNodes.length}`);
+    step6AfterPasteNodes.slice(0, 80).forEach((n: any, idx: number) => {
+      const text = n?.text?.toString() || '';
+      const cd = n?.contentDesc?.toString() || '';
+      const cls = n?.className?.toString() || '';
+      if (text || cd) {
+        logger.info('保利:步骤6', `  [${idx + 1}] text='${text.slice(0, 100)}' cd='${cd.slice(0, 50)}' cls='${cls.split('.').pop()}'`);
+      }
+    });
     // 🆕 V32.36.87: 用剪贴板版解析器 (varA + fallback 正则), 处理步骤6 dump 含混合内容的情况
     const varC = parseVariableCFromClipboard(step6AfterPasteNodes);
     logger.info('保利:步骤6', `varC 解析: projectName='${varC.projectName}', customerName='${varC.customerName}', phone='${varC.phone}'`);
