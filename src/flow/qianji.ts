@@ -654,7 +654,8 @@ function detectProjectType(lines: string[]): string {
  *
  * @returns 数字 (找不到返 0, 实测: 永远不返 -1, 0 触发下滑刷新)
  */
-function readReportCountFromNodes(nodes: A11yNode[]): number {
+// 🆕 V32.36.103 老板 09-23 拍板: export 出来给 runZbbWorkflowAuto 用 (自动续跑机制)
+export function readReportCountFromNodes(nodes: A11yNode[]): number {
   const labelNode = nodes.find(n => n.text?.includes('报备待审核'));
   if (!labelNode) return 0; // 找不到关键字, 兜底返 0 (实测: 0 = 无报备, 走下滑刷新路径)
 

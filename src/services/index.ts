@@ -32,7 +32,7 @@
  */
 
 import { NativeEventEmitter, NativeModules } from 'react-native';
-import { runZbbWorkflow } from '@/flow';
+import { runZbbWorkflow, runZbbWorkflowAuto } from '@/flow'; // 🆕 V32.36.103 老板拍板: 反息屏改调 runZbbWorkflowAuto (自动续跑到千机空)
 import { orchestrator } from '@/core/stateMachine';
 import { loadAppEnv } from '@/config/env';
 import { logger } from '@/utils/logger';
@@ -76,14 +76,14 @@ if (nativeEmitter) {
       return;
     }
 
-    // 调 runZbbWorkflow (并发守卫复用)
-    runZbbWorkflow().then((result) => {
-      logger.info('zbbIdleWorkTrigger', `runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
+    // 🆕 V32.36.103 老板 09-23 拍板: 反息屏调 runZbbWorkflowAuto (跑完一组 → 检查 → 有客户 → 续跑 → 千机空就停)
+    runZbbWorkflowAuto().then((autoResult) => {
+      logger.info('zbbIdleWorkTrigger', `runZbbWorkflowAuto 完成: totalRuns=${autoResult.totalRuns} lastReason=${autoResult.lastResult?.reason}`);
     }).catch((e: any) => {
-      logger.error('zbbIdleWorkTrigger', `'runZbbWorkflow 异常:' ${e}`);
+      logger.error('zbbIdleWorkTrigger', `'runZbbWorkflowAuto 异常:' ${e}`);
     });
   });
-  logger.info('services/index.ts', '入口 3 监听器已注册: zbbIdleWorkTrigger → runZbbWorkflow');
+  logger.info('services/index.ts', '入口 3 监听器已注册: zbbIdleWorkTrigger → runZbbWorkflowAuto [V32.36.103 自动续跑]');
 } else {
   logger.info('services/index.ts', 'ZBBAutomation native module 不可用, 跳过入口 3 监听器注册');
 }
@@ -260,11 +260,12 @@ async function scheduleQianjiTrigger(payload: QianjiPayload): Promise<void> {
  * 真正调 runZbbWorkflow
  */
 function triggerQianjiRun(payload: QianjiPayload): void {
-  logger.info('千机监听', `✓ 闸门全过, 触发 runZbbWorkflow (pkg=${payload?.package}, project=${payload?.text?.slice(0, 60)})`);
-  runZbbWorkflow().then((result) => {
-    logger.info('千机监听', `runZbbWorkflow 完成: ok=${result.ok} skipped=${result.skipped} reason=${result.reason}`);
+  logger.info('千机监听', `✓ 闸门全过, 触发 runZbbWorkflowAuto (pkg=${payload?.package}, project=${payload?.text?.slice(0, 60)})`);
+  // 🆕 V32.36.103 老板 09-23 拍板: 千机监听也改调 runZbbWorkflowAuto (自动续跑到千机空)
+  runZbbWorkflowAuto().then((autoResult) => {
+    logger.info('千机监听', `runZbbWorkflowAuto 完成: totalRuns=${autoResult.totalRuns} lastReason=${autoResult.lastResult?.reason}`);
   }).catch((e: any) => {
-    logger.error('千机监听', `'runZbbWorkflow 异常:' ${e}`);
+    logger.error('千机监听', `'runZbbWorkflowAuto 异常:' ${e}`);
   });
 }
 

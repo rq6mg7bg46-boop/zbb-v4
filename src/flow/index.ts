@@ -14,10 +14,11 @@
  *   - 三者 100% 复用同一套流程, 避免抢跑 bug (历史 V2.x 实测)
  */
 
-import { runQianjiFlow } from './qianji';
+import { runQianjiFlow, readReportCountFromNodes } from './qianji'; // 🆕 V32.36.103 老板拍板: readReportCountFromNodes 拿来检测千机首页报备数量
 import { runBaoliFlow } from './baoli';
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { setZbbWorkflowRunner } from './handleStart';
+import { ZBBAutomation } from '@/native'; // 🆕 V32.36.103 老板拍板: 自动续跑 dump 千机首页用
 import { logger } from '@/utils/logger';
 import type { ProjectType } from './types';
 
@@ -172,3 +173,78 @@ export async function runZbbWorkflow(): Promise<WorkflowResult> {
 setZbbWorkflowRunner(async () => {
   await runZbbWorkflow();
 });
+
+// 🆕 V32.36.103 老板 09-23 拍板: 注册 runZbbWorkflowAuto 给 handleStart 用 (入口 1 老板点 开始干活 自动续跑)
+import { setZbbWorkflowAutoRunner } from './handleStart';
+setZbbWorkflowAutoRunner(async () => {
+  return await runZbbWorkflowAuto();
+});
+
+/**
+ * 🆕 V32.36.103 老板 09-23 拍板: 自动续跑机制
+ *   老板 nova 11:36 log 反证: 5min 反息屏只报备第一组客户, 不会报备第二组
+ *   老板拍板: '跑完一组 → 检查首页 → 有客户 → 立刻再调 runZbbWorkflow → 直到首页没客户'
+ *   老板拍板: '不需要递归限制, 因为会一直跑到首页没有客户'
+ *
+ * 实施:
+ *   - 位置: 入口 1 (handleStart) + 入口 3 (反息屏) 都改调本函数
+ *   - 循环条件: runZbbWorkflow 成功 + reason != 'no_report' + 千机首页 报备待审核 N > 0
+ *   - 退出条件: 千机首页 报备待审核 N == 0 (no_report) / 异常结束 (ok=false) / 守卫跳过 (skipped=true)
+ *   - 间隔: 每轮 2-3s 等待 (让 mock 千机刷出新数据)
+ *   - 不发通知: 自动续跑不打扰老板, 不弹 Toast
+ *
+ * V2.x 反证金标准 (QianjiService.ts stepCopyPhoneNumber 后 V2.x 反证逻辑):
+ *   - V2.x 设计也是反复跑, 没设上限, 千机空了就停
+ *   - 老板 09-23 实测反证: 5min 反息屏只跑第一组, V2.x 早期 v18.x 也有同样问题
+ */
+export async function runZbbWorkflowAuto(): Promise<{
+  totalRuns: number;
+  lastResult: WorkflowResult | null;
+}> {
+  let totalRuns = 0;
+  let lastResult: WorkflowResult | null = null;
+
+  for (let loop = 1; ; loop++) {
+    logger.info('runZbbWorkflowAuto', `第 ${loop} 轮 runZbbWorkflow 启动...`);
+
+    // 1. 跑单次流程
+    const result = await runZbbWorkflow();
+    totalRuns++;
+    lastResult = result;
+
+    // 2. 退出条件: 异常结束 / 千机无客户 / 守卫跳过
+    if (!result.ok) {
+      logger.info('runZbbWorkflowAuto', `第 ${loop} 轮异常结束 (reason=${result.reason}), 停止自动续跑`);
+      break;
+    }
+    if (result.skipped || result.reason === 'no_report') {
+      logger.info('runZbbWorkflowAuto', `第 ${loop} 轮无客户/被跳过 (reason=${result.reason}), 停止自动续跑`);
+      break;
+    }
+
+    // 3. 等 2-3s 让 mock 千机刷出新数据 (V32.36.103 老板拍板)
+    const wait = 2000 + Math.floor(Math.random() * 1000);
+    logger.info('runZbbWorkflowAuto', `第 ${loop} 轮跑完, 等 ${wait}ms 让千机刷数据...`);
+    await new Promise((r) => setTimeout(r, wait));
+
+    // 4. dump 千机首页找 报备待审核 N
+    try {
+      const homeNodes = await ZBBAutomation.getAllTextNodes();
+        const homeCount = readReportCountFromNodes(homeNodes);
+        logger.info('runZbbWorkflowAuto', `千机首页 报备待审核=${homeCount} (runZbbWorkflowAuto 续跑判断)`);
+
+        // 5. 报备数量 = 0 → 停止
+        if (homeCount === 0) {
+          logger.info('runZbbWorkflowAuto', `千机首页已无待审核客户, 停止自动续跑 (共 ${loop} 轮)`);
+          break;
+        }
+        // 6. 报备数量 > 0 → 立刻下一轮
+        logger.info('runZbbWorkflowAuto', `千机首页还有 ${homeCount} 个待审核客户, 立刻跑下一轮`);
+      } catch (dumpErr: any) {
+        logger.warn('runZbbWorkflowAuto', `dump 千机首页失败 (best-effort, 当 0 处理): ${dumpErr}`);
+        break; // dump 失败保守停止 (避免错误 trigger)
+      }
+    }
+
+    return { totalRuns, lastResult };
+}

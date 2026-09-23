@@ -24,6 +24,12 @@ export function setZbbWorkflowRunner(fn: () => Promise<void>) {
   runZbbWorkflowRef = fn;
 }
 
+// 🆕 V32.36.103 老板 09-23 拍板: 自动续跑机制 (入口 1 老板点"开始干活"也用自动续跑)
+let runZbbWorkflowAutoRef: (() => Promise<{ totalRuns: number; lastResult: any }>) | null = null;
+export function setZbbWorkflowAutoRunner(fn: () => Promise<{ totalRuns: number; lastResult: any }>) {
+  runZbbWorkflowAutoRef = fn;
+}
+
 const MAX_RETRY = 3; // 老板拍板: 3 次重试后弹 Alert
 
 /**
@@ -49,7 +55,8 @@ export async function handleStart(): Promise<void> {
         logger.info('handleStart', `humanSwipeWithBounceDp 下滑结果: ${swipeOk}`);
         // V2.x pGammaDelay 拟人化: 等 2-2.5s (千机列表渲染 + 刷新动画)
         await pPlusDelay(2000, 500);
-        return await runZbbWorkflow();
+        // 🆕 V32.36.103 老板拍板: 入口 1 也用 runZbbWorkflowAuto (跑完一组 → 检查 → 续跑 → 千机空停)
+        return await runZbbWorkflowAutoInternal();
       }
 
       case 'zbb_home':
@@ -66,7 +73,8 @@ export async function handleStart(): Promise<void> {
           break; // 重试
         }
         await ZBBAutomation.delay(3000); // 等千机启动完成
-        return await runZbbWorkflow();
+        // 🆕 V32.36.103 老板拍板: 入口 1 也用 runZbbWorkflowAuto (跑完一组 → 检查 → 续跑 → 千机空停)
+        return await runZbbWorkflowAutoInternal();
       }
 
       case 'other':
@@ -133,4 +141,14 @@ async function runZbbWorkflow(): Promise<void> {
     return;
   }
   await runZbbWorkflowRef();
+}
+
+// 🆕 V32.36.103 老板 09-23 拍板: 入口 1 老板点 开始干活 也用自动续跑
+async function runZbbWorkflowAutoInternal(): Promise<void> {
+  if (!runZbbWorkflowAutoRef) {
+    logger.info('handleStart', 'runZbbWorkflowAuto 未注册, 调 runZbbWorkflow 单次');
+    return await runZbbWorkflow();
+  }
+  const result = await runZbbWorkflowAutoRef();
+  logger.info('handleStart', `runZbbWorkflowAuto 完成: totalRuns=${result.totalRuns}`);
 }
