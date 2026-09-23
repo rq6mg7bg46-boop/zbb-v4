@@ -91,12 +91,19 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
       //   - 弹窗永久不超时 (只在用户点"我知道了"时消失)
       // 🆕 V32.36.82 老板 09-22 拍板:
       //   - 剪贴板不一致 → "小主,剪贴板信息与千机信息不一致,请重新开启流程!!"
+      // 🆕 V32.36.90 老板 09-22 拍板: 弹窗只在步骤6弹一次, execute() 不再弹 (否则 2 轮弹窗)
+      //   老板原话: '只有用户点击我知道了,弹窗才消失;否则,一直停在界面'
       const round1Message = lastBaoliFailReason === '重号'
         ? '小主,重号了!请手动处理!'
         : lastBaoliFailReason === '剪贴板不一致'
-          ? '小主,剪贴板信息与千机信息不一致,请重新开启流程!!'
+          ? ''  // V32.36.90: 步骤6 已弹过, 不在 execute() 重复弹 (否则弹 2 轮)
           : '小主,保利流程报备失败(第1轮),请手动处理!';
-      await raiseAlert(round1Message, 30000, true); // V32.36.81 第 3 参数 = 永久不超时
+      // V32.36.90: 剪贴板不一致时步骤6已经弹过了, execute() 不再二次弹窗
+      if (round1Message) {
+        await raiseAlert(round1Message, 30000, true);
+      } else {
+        logger.info('保利', '步骤6 已弹过剪贴板不一致弹窗, execute() 跳过二次弹窗 (V32.36.90)');
+      }
       orchestrator.send('BAOLI_INTERVENE');
       return false;
     }
