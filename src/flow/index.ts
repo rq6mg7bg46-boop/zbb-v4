@@ -232,6 +232,8 @@ export async function runZbbWorkflowAuto(): Promise<{
     //   真因: 老板 nova 13:06:42 log 显示 runZbbWorkflowAuto 第 1 轮跑完 → 等 2439ms → 没有 dump log → 退出循环
     //   推测: dump 时界面是保 baoli 步骤 14-7 Toast / 千机监听弹窗, 不是千机首页
     //   修法: 1) launch 千机 (确保界面是千机) + 2) 等 3s 千机启动 + 3) dump
+    // 🆕 V32.36.107 老板 09-23 拍板: 加 2 次 dump (间隔 3s, 任一找到报备待审核都算有客户)
+    //   老板 nova 13:06 反证: V32.36.105 launch 后 dump 仍可能拿不到 (mock 千机冷启动慢, 第一次 dump 可能拿到加载中界面)
     try {
       const qianjiPkg = qianjiPackage();
       const qianjiAct = qianjiMainActivity();
@@ -239,29 +241,41 @@ export async function runZbbWorkflowAuto(): Promise<{
         ?? (ZBBAutomation as any).launchApp;
       await launchWithAm(qianjiPkg, qianjiAct);
       await new Promise((r) => setTimeout(r, 3000));  // 等千机启动 + 首页渲染
-      logger.info('runZbbWorkflowAuto', `已重启千机确保 dump 是首页 (V32.36.105 老板拍板)`);
+      logger.info('runZbbWorkflowAuto', `已重启千机确保 dump 是首页 (V32.36.105 + V32.36.107 老板拍板)`);
     } catch (launchErr: any) {
       logger.warn('runZbbWorkflowAuto', `重启千机失败 (best-effort, 继续 dump 兜底): ${launchErr}`);
     }
 
-    // 4. dump 千机首页找 报备待审核 N
+    // 4. dump 千机首页找 报备待审核 N (V32.36.107 老板拍板: 2 次 dump, 任一找到 N>0 就续跑)
+    let homeCount = 0;
     try {
-      const homeNodes = await ZBBAutomation.getAllTextNodes();
-        const homeCount = readReportCountFromNodes(homeNodes);
-        logger.info('runZbbWorkflowAuto', `千机首页 报备待审核=${homeCount} (runZbbWorkflowAuto 续跑判断)`);
+      // V32.36.107: 第 1 次 dump
+      let homeNodes = await ZBBAutomation.getAllTextNodes();
+      homeCount = readReportCountFromNodes(homeNodes);
+      logger.info('runZbbWorkflowAuto', `千机首页 报备待审核=${homeCount} (V32.36.107 第 1 次 dump)`);
 
-        // 5. 报备数量 = 0 → 停止
-        if (homeCount === 0) {
-          logger.info('runZbbWorkflowAuto', `千机首页已无待审核客户, 停止自动续跑 (共 ${loop} 轮)`);
-          break;
-        }
-        // 6. 报备数量 > 0 → 立刻下一轮
-        logger.info('runZbbWorkflowAuto', `千机首页还有 ${homeCount} 个待审核客户, 立刻跑下一轮`);
-      } catch (dumpErr: any) {
-        logger.warn('runZbbWorkflowAuto', `dump 千机首页失败 (best-effort, 当 0 处理): ${dumpErr}`);
-        break; // dump 失败保守停止 (避免错误 trigger)
+      // V32.36.107: 第 1 次=0 时再 dump 一次 (mock 千机冷启动慢)
+      if (homeCount === 0) {
+        logger.info('runZbbWorkflowAuto', `第 1 次 dump 拿不到, 等 3s 再 dump (V32.36.107 老板拍板)`);
+        await new Promise((r) => setTimeout(r, 3000));
+        homeNodes = await ZBBAutomation.getAllTextNodes();
+        homeCount = readReportCountFromNodes(homeNodes);
+        logger.info('runZbbWorkflowAuto', `千机首页 报备待审核=${homeCount} (V32.36.107 第 2 次 dump)`);
       }
+    } catch (dumpErr: any) {
+      logger.warn('runZbbWorkflowAuto', `dump 千机首页失败 (best-effort, 当 0 处理): ${dumpErr}`);
     }
 
-    return { totalRuns, lastResult };
+    logger.info('runZbbWorkflowAuto', `千机首页 报备待审核=${homeCount} (runZbbWorkflowAuto 续跑判断)`);
+
+    // 5. 报备数量 = 0 → 停止
+    if (homeCount === 0) {
+      logger.info('runZbbWorkflowAuto', `千机首页已无待审核客户, 停止自动续跑 (共 ${loop} 轮)`);
+      break;
+    }
+    // 6. 报备数量 > 0 → 立刻下一轮
+    logger.info('runZbbWorkflowAuto', `千机首页还有 ${homeCount} 个待审核客户, 立刻跑下一轮`);
+  }
+
+  return { totalRuns, lastResult };
 }

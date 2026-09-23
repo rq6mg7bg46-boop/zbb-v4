@@ -655,17 +655,21 @@ function detectProjectType(lines: string[]): string {
  * @returns 数字 (找不到返 0, 实测: 永远不返 -1, 0 触发下滑刷新)
  */
 // 🆕 V32.36.103 老板 09-23 拍板: export 出来给 runZbbWorkflowAuto 用 (自动续跑机制)
+// 🆕 V32.36.106 老板 09-23 拍板: 加 ±200px 容差 (老板 nova 13:06 反证)
+  //   老板 nova 13:06:40 dump 节点 [8]='1' 在 label [9]='报备待审核 1' 上方, 不在 V32.36.103 '>labelCenterY' 范围内
+  //   修法: 改为 |centerY diff| < 200px (上方 / 下方都允许, 不强制 > labelCenterY)
+  //   老板铁子反证金标准: mock 千机首页 UI 节点顺序 = [数字] [label] (数字在 label 上方), 真实千机也常见
+  //   V2.x 实测 ±200px + X ±200px 范围内最近的纯数字节点
 export function readReportCountFromNodes(nodes: A11yNode[]): number {
   const labelNode = nodes.find(n => n.text?.includes('报备待审核'));
   if (!labelNode) return 0; // 找不到关键字, 兜底返 0 (实测: 0 = 无报备, 走下滑刷新路径)
 
-  // V2.x 实测: label 下方 ±200px + X ±200px 范围内最近的纯数字节点
+  // V32.36.106 老板 09-23 拍板: ±200px (不再强制 >labelCenterY, 允许 label 上方的数字节点)
   const pendingNode = nodes.find(n =>
     n !== labelNode &&
     /^\d+$/.test((n.text || '').trim()) &&
     Math.abs((n.centerX ?? 0) - (labelNode.centerX ?? 0)) < 200 &&
-    (n.centerY ?? 0) > (labelNode.centerY ?? 0) &&
-    (n.centerY ?? 0) < (labelNode.centerY ?? 0) + 200
+    Math.abs((n.centerY ?? 0) - (labelNode.centerY ?? 0)) < 200  // V32.36.106: ±200px (上方/下方都允许)
   );
 
   if (pendingNode) {
