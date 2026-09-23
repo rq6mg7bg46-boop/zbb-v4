@@ -10,6 +10,7 @@
 import { ZBBAutomation, A11yNode } from '@/native';
 import { applyHumanOffset, HumanLevel } from '@/utils/HumanOffset';
 import { logger } from '@/utils/logger';
+import { px as dpToPx } from '@/utils/DpUtil'; // V32.36.97 老板 09-23 拍板: longPress.byCoords 接 dp 入参, 内部 px() 转
 
 const DEFAULT_DURATION_MS = 600;
 
@@ -55,15 +56,21 @@ export async function byNode(
 }
 
 /**
- * 按坐标长按
+ * 按坐标长按 (V32.36.97 老板 09-23 拍板: 接 dp 入参, 内部 px() 转)
+ *   修前: longPress.byCoords(540, 896) → 直接当 px 用, nova density 3.0 上点错位置
+ *   修后: longPress.byCoords(180, 299) → dp 入参, 内部 px(180)=540 px / px(299)=897 px, nova 实测命中
  */
 export async function byCoords(
-  x: number,
-  y: number,
+  dpX: number,
+  dpY: number,
   durationMs: number = DEFAULT_DURATION_MS,
   level: HumanLevel = HumanLevel.PRECISE,
 ): Promise<boolean> {
-  return longPressAt(x, y, durationMs, level);
+  const x = dpToPx(dpX);
+  const y = dpToPx(dpY);
+  const { x: hx, y: hy } = applyHumanOffset(x, y, level);
+  logger.info('longPress.byCoords', `tap dp(${dpX}, ${dpY}) → px(${x}, ${y}) → tap (${hx}, ${hy}) [V32.36.97]`);
+  return ZBBAutomation.longClick(hx, hy, durationMs, true);
 }
 
 export const longPress = { byText, byNode, byCoords };

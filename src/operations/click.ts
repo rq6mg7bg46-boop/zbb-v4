@@ -23,6 +23,7 @@
 
 import { ZBBAutomation } from '@/native';
 import { logger } from '@/utils/logger';
+import { px as dpToPx } from '@/utils/DpUtil'; // V32.36.97 老板 09-23 拍板: byCoords 接 dp 入参, 内部 px() 转
 import type { A11yNode } from '@/native';
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -184,14 +185,24 @@ export async function byId(viewId: string, level: HumanLevel = 'precise'): Promi
  *   V4 getAllTextNodes 返回 (121, 1033) - WebView 内部坐标, 不是物理坐标
  *   真因: nova EMUI 10 WebView getBoundsInScreen 返回 WebView 内部坐标, 不是物理屏幕坐标
  *   修法: 老板 nova 实测 hardcode (360-720 屏中部) / (720 屏中点) 不依赖 V4 dump
+ *
+ * V32.36.97 老板 09-23 拍板: 入参单位统一改 dp
+ *   业务代码用 dp (老板 DpUtil 原则), byCoords 内部 px(dp) 转
+ *   修前: byCoords(449, 2138) → 直接当 px 用, nova density 3.0 上 = dp(150, 713) 位置, 点错
+ *   修后: byCoords(150, 713) → dp 入参, byCoords 内部 px(150)=450 px / px(713)=2139 px, nova 实测命中
+ *   老板 nova 10:29 log 反证: 'click.byCoords tap (50, 238) → (49, 237)' = dp(150)=50 px (错) , dp(713)=238 px (错)
+ *     真因: 调用方传 dp(150)/dp(713) → dp 函数返 150/713 (dp 值) → byCoords 当 px 用 → 错
  */
 export async function byCoords(
-  x: number,
-  y: number,
+  dpX: number,
+  dpY: number,
   level: HumanLevel = 'precise',
 ): Promise<boolean> {
+  // V32.36.97: 业务代码入参是 dp 值, byCoords 内部 px() 转给 native
+  const x = dpToPx(dpX);
+  const y = dpToPx(dpY);
   const { x: tapX, y: tapY } = applyHumanOffset(x, y, level);
-  logger.info('click.byCoords', `tap (${x}, ${y}) → (${tapX}, ${tapY}) (V32.36.26 老板 nova hardcode)`);
+  logger.info('click.byCoords', `tap dp(${dpX}, ${dpY}) → px(${x}, ${y}) → tap (${tapX}, ${tapY}) [V32.36.97 老板拍板 byCoords 接 dp]`);
   return ZBBAutomation.click(tapX, tapY);
 }
 
