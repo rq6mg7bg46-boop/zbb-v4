@@ -348,288 +348,26 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     const varA = parseVariableAFromNodes(step2Nodes);
     logger.info('千机:步骤2', `变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
 
-    // 🆕 V32.36.114 老板 09-24 拍板: 千机步骤3 在变量A解析出"越秀"时不做A、B对比
-    //   老板原话: '千机步骤3依旧点击转发。在变量A解析出"越秀"时,不做A、B对比,仿照V2点击"联系方式"后的电话'
-    //   老板 nova 16:57:06 log 反证: 当前千机步骤3 不分流 varA, 全部走"找转发"流程
-    //   V2 反证金标准 (QianjiService.ts:659-672 越秀分支):
-    //     - hasYuexiu → parseCustomerFromNodes + writeToReports('yuexiu') + tapPhoneMaskAndWaitForCopy
-    //     - V2 越秀不走"转发", 直接点"联系方式"后的 * 复制脱敏号码到剪贴板
-    //     - 越秀步骤10 longPress 粘贴依赖剪贴板
-    //   修法: 在 varA.projectName 含"越秀"时, 跳过"找转发"流程, 仿照 V2 直接 tapPhoneMaskAndWaitForCopy
-    const isYuexiu = varA.projectName?.includes('越秀');
-    if (isYuexiu) {
-      logger.info('千机:步骤3', `变量A项目=${varA.projectName} 含"越秀", 仿照V2点"联系方式"后的电话 (V32.36.114 老板拍板 不做A/B对比)`);
-      // 仿照 V2 越秀分支: 解析客户信息 + 写库 + 点 * 复制脱敏号码
-      const phoneDigits = varA.phone.replace(/\D/g, '');
-      const customerA: CustomerInfo = {
-        companyName: '',
-        customerName: varA.customerName,
-        customerGender: '男',
-        phone: varA.phone,
-        phonePart1: phoneDigits.slice(0, 3),
-        phonePart2: '****',
-        phonePart3: phoneDigits.slice(-3),
-        phoneLast4: phoneDigits.slice(-4),
-        projectName: varA.projectName,
-        projectType: 'yuexiu',
-        propertyType: '',
-        reportTime: '',
-        expectedVisitTime: '',
-        agent: '',
-        agentPhone: '',
-        agentNote: '',
-        city: '',
-      };
-      // 写库 (V32.36.52 复用, 千机端步骤 4 stepWriteToReports 通用化已支持 yuexiu)
-      const reportIdsA = await stepWriteToReports(customerA);
-      customerA.reportIds = Array.isArray(reportIdsA) ? (reportIdsA as [number, number]) : [reportIdsA as number, reportIdsA as number];
-      logger.info('千机:步骤3', `写库完成 (yuexiu): reportIds=${JSON.stringify(reportIdsA)}`);
-      // 点 * 复制脱敏号码到剪贴板 (V2 越秀分支)
-      await stepCopyPhoneNumber(customerA);
-      logger.info('千机:步骤3', '✓ 越秀客户, 已仿照V2点"联系方式"后的电话 + 写库');
-      // 返回 customer (越秀端会从这接, 走 V32.36.112 runYuexiuFlow)
-      // 让步骤 7 按 Home 键 + 返回桌面 (跟 baoli 同款)
-      // 提取后续步骤需要的 varB (跟 varA 共用, 因为越秀不分流)
-      // 把 customerA 写到 module-level varB 让步骤 7 返它
-      // 但 runQianjiFlowInner 局部变量 varB 在后面赋值, 这里直接 inline 步骤 7 的 Home 键
-      try {
-        const homeDelay = 1000 + Math.floor(Math.random() * 500);
-        await ZBBAutomation.delay(homeDelay);
-        const homeHookDp = navBarHomeDp();
-        await ZBBAutomation.click(dpToPxForNav(homeHookDp.x), dpToPxForNav(homeHookDp.y));
-        await ZBBAutomation.delay(500);
-        logger.info('千机:步骤7', '✓ 越秀分支已返回桌面 (V32.36.114 老板拍板)');
-      } catch (homeErr) {
-        logger.warn('千机:步骤7', `Home 键失败 (best-effort): ${homeErr}`);
-      }
-      return customerA;
+    // 🆕 V32.36.117 老板 09-24 拍板: 千机端分 2 套独立代码 (baoli / yuexiu)
+    //   老板原话: '判断客户是保利或者越秀时,是不是可以匹配2套千机端的代码?'
+    //   老板 nova 17:20 log 反证: 当前千机端步骤3 混合 baoli/yuexiu 逻辑, varA.phone 已含脱敏号码 ('联系方式 *******5484')
+    //   V2 反证金标准 (QianjiService.ts:659-672 越秀分支): hasYuexiu → parseCustomerFromNodes + writeToReports('yuexiu') + tapPhoneMaskAndWaitForCopy
+    //   优势: 零耦合, 可读性高, 故障隔离, 扩展性好 (加新端 = 新建 qianji_xxx.ts + registry)
+    //   修法: 在 varA 解析后, 根据项目类型分流到独立子流程
+    if (varA.projectName?.includes('保利')) {
+      logger.info('千机:步骤2', '项目=保利 → 调 runQianjiForBaoli 独立流程 (V32.36.117 老板拍板 2套分流)');
+      const { runQianjiForBaoli } = await import('./qianji_baoli');
+      return await runQianjiForBaoli(varA);
+    }
+    if (varA.projectName?.includes('越秀')) {
+      logger.info('千机:步骤2', '项目=越秀 → 调 runQianjiForYuexiu 独立流程 (V32.36.117 老板拍板 2套分流, 仿V2)');
+      const { runQianjiForYuexiu } = await import('./qianji_yuexiu');
+      return await runQianjiForYuexiu(varA);
     }
 
-    // ============ 步骤 3: A11y 找"转发" (有界面变化, findWithRecovery + 上滑恢复) ============
-    logger.info('千机:步骤3', 'A11y 找"转发"...');
-    const step3Ok = await findWithRecovery(
-      '千机:步骤3:转发',
-      async () => !!(await a11y.findByText('转发')),
-      async () => {
-        await swipe.up();
-        await ZBBAutomation.delay(1500);
-      }
-    );
-    if (!step3Ok) {
-      throw new RetryFlowError('步骤3: 上滑3次仍未找到"转发"');
-    }
-    logger.info('千机:步骤3', `找到"转发", 点击 (中等偏移 NORMAL 档)`);
-    await click.byText('转发', { level: HumanLevel.NORMAL });
-    await ZBBAutomation.delay(1800);
-
-    // ============ 步骤 4: A11y 找"公司名称" + 解析变量 B(10字段) + A vs B 对比 + 写库 ============
-    // 类型 B: 有界面变化 (转发页加载), 1-2s 首轮 + 重试
-    const step4NodesFound = await waitForScreenChange(
-      '千机:步骤4:公司名称',
-      async () => {
-        const nodes = await ZBBAutomation.getAllTextNodes();
-        return nodes.some(n => n.text?.includes('公司名称'));
-      }
-    );
-    if (!step4NodesFound) {
-      throw new RetryFlowError('步骤4: 等待"公司名称"超时');
-    }
-
-    const step4Nodes = await ZBBAutomation.getAllTextNodes();
-    const varB = parseVariableBFromNodes(step4Nodes);
-
-    // A vs B 对比 (修法4: 只比 3 字段: 项目/姓名/电话)
-    const compareResult = compareCustomer(
-      { projectName: varA.projectName, customerName: varA.customerName, phone: varA.phone },
-      { projectName: varB.projectName, customerName: varB.customerName, phone: varB.phone },
-    );
-    logger.info('千机:步骤4', `A vs B 对比: ${formatCompareResult(compareResult)}`);
-
-    if (!compareResult.isMatch) {
-      _mismatchRetryCount++;
-      const diffMsg = compareResult.diffs.map(d => `${d.field}: A="${d.aValue}" vs B="${d.bValue}"`).join('; ');
-      logger.warn('千机:步骤4', `不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES}): ${diffMsg}`);
-      await pressKey.back();
-      await ZBBAutomation.delay(1000);
-
-      if (_mismatchRetryCount >= MISMATCH_MAX_RETRIES) {
-        // 🆕 08-26 老板拍板: 弹 Dialog (有按钮 + 震动 30s) — 老板必须点"我知道了"
-        //   - 标题: 小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!
-        //   - 按钮: 我知道了 (raiseAlert 已自带, 点后弹窗消失 + 停震动 + 流程结束)
-        const dialogMessage = '小主,流程出问题了(千机端首页vs转发页连续3次不一致),请手动处理!';
-        logger.error('千机:步骤4', `${dialogMessage}`);
-        logger.error('千机:步骤4', `差异详情: ${diffMsg}`);
-        await raiseAlert(dialogMessage);
-        _mismatchRetryCount = 0;
-        return null;
-      }
-
-      // 未达上限 → 抛 RetryFlowError 让 withFlowRetry 重试整条
-      throw new RetryFlowError(`步骤4: A vs B 不一致 (${_mismatchRetryCount}/${MISMATCH_MAX_RETRIES})`);
-    }
-
-    // 对比成功 → 重置计数 + 直接用 varB 写库
-    _mismatchRetryCount = 0;
-    logger.info('千机:步骤4', `✓ A vs B 一致, 直接用 varB 写库 (3 字段: 项目/姓名/电话)`);
-    // 写库 (缺口2: 保利双写 / 其他单写)
-    const writeResult = await stepWriteToReports(varB);
-    let reportIds: [number, number] | undefined;
-    if (Array.isArray(writeResult)) {
-      // V32.36.52 老板 09-21 拍板: 保利双写返回 [id1, id2], 传给 baoli 用于 step13-情况2 改 status
-      reportIds = writeResult as [number, number];
-      logger.info('千机:步骤4', `保利双写: ID=${writeResult.join(',')} → 传给 baoli 用于 step13-情况2 markReportDone`);
-    } else {
-      // V32.36.52 老板 09-21 拍板: 单写返回单 id (越秀/招商), 传给对应端 (暂不实现, 老板铁子铁律)
-      logger.info('千机:步骤4', `单写: ID=${writeResult} → 单写客户不传 reportIds (待 yuexiu/zhaoshang 端适配)`);
-    }
-
-    // 🆕 V32.36.52 老板 09-21 装机实测 - 修法 (老板拍板 写数据库):
-    //   老板拍板: '在这里增加一个写数据库的动作, 将 [千机:步骤4] [X] ID=Y 客户=李晓梅 项目=保利X 和颂 状态=baoli 状态改为成功'
-    //   老板反证金标准: step13-情况2 报备成功后, 把对应的 report ID 状态从 pending 改成 done
-    //   修法: 千机端把 writeResult 传给 baoli (新增 reportIds 字段给 varB)
-    if (reportIds) {
-      varB.reportIds = reportIds;
-      logger.info('千机:步骤4', `V32.36.52 reportIds 传给 baoli: ${JSON.stringify(reportIds)}`);
-    }
-
-    // 🆕 08-26 老板实战要求: 步骤 4 末尾打印数据库最近 3 组客户 (按 ID DESC)
-    try {
-      const recentReports = await getRecentReports(3);
-      logger.info('千机:步骤4', `📋 数据库最近 ${recentReports.length} 组客户:`);
-      recentReports.forEach((r: any, idx: number) => {
-        // 🆕 08-26 老板实战要求: 用 camelCase 读字段 (snake_case fallback)
-        const id = r.id;
-        const customerName = r.customerName ?? r.customer_name ?? '';
-        const phone = r.phone ?? '';
-        const projectName = r.projectName ?? r.project_name ?? '';
-        const projectType = r.projectType ?? r.project_type ?? '';
-        // phone 三段拆 (老板 08-26 要求: 不需要后3)
-        const phonePart1 = r.phonePart1 ?? r.phone_part1 ?? '';
-        const phonePart2 = r.phonePart2 ?? r.phone_part2 ?? '';
-        const phoneLast4 = r.phoneLast4 ?? r.phone_last4 ?? '';
-        logger.info('千机:步骤4', `[${idx + 1}] ID=${id} 客户=${customerName} 项目=${projectName} 类型=${projectType}`);
-        logger.info('千机:步骤4', `电话=${phone} (前3=${phonePart1} 中4=${phonePart2} 后4=${phoneLast4})`);
-      });
-    } catch (e: any) {
-      logger.warn('千机:步骤4', `读取数据库失败: ${e.message}`);
-    }
-
-    // ============ 步骤 5: A11y 找"转发" + 点转发 (有界面变化) ============
-    logger.info('千机:步骤5', 'A11y 找"转发" (第二次, 进对象选择页)...');
-    const step5Ok = await findWithRecovery(
-      '千机:步骤5:转发',
-      async () => {
-        const node = await a11y.findByText('转发');
-        // 🆕 08-26 老板拍板: 检测 A11y 是否真实工作 (findByText 命中 stale 节点不算)
-        //   - 真实节点: text 或 content-desc 含"转发", bounds 在屏幕内, clickable=true, class=Button
-        //   - stale 节点: text='' (千机端 a11y 80% 节点 text 空), 但 bounds 真实, 命中父容器误判
-        if (!node) return false;
-        const bounds = node.bounds;
-        // 排除 bounds 空节点
-        if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
-          return false;
-        }
-        // 排除非 Button 类节点 (父容器 ViewGroup 误命中)
-        const className = node.className ?? '';
-        if (!/Button|button/i.test(className)) {
-          return false;
-        }
-        // 排除 text 空 + content-desc 空的节点 (a11y 无法识别的空节点)
-        const text = node.text ?? '';
-        const contentDesc = (node as any).contentDesc ?? '';
-        if (!text && !contentDesc) {
-          return false;
-        }
-        return true;
-      }
-    );
-    if (step5Ok) {
-      logger.info('千机:步骤5', `找到"转发", 点击 (中等偏移 NORMAL 档)`);
-      await click.byText('转发', { level: HumanLevel.NORMAL });
-    } else {
-      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
-      const fallback = await getDeviceFallbackCoords();
-      if (fallback) {
-        const dp = fallback.forwardBtn;
-        // V32.36.99 老板 09-23 拍板: 移除 dpToPx (V32.36.97 byCoords 内部已统一 px() 转, 调用方不要再 dpToPx)
-        logger.info('千机:步骤5', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
-        await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
-      } else {
-        throw new RetryFlowError('步骤5: 未找到"转发"且无 fallback 坐标');
-      }
-    }
-    await ZBBAutomation.delay(1800);
-
-    // ============ 步骤 6: A11y 找"复制" + 点复制 (有界面变化) ============
-    logger.info('千机:步骤6', 'A11y 找"复制"...');
-    const step6Ok = await findWithRecovery(
-      '千机:步骤6:复制',
-      async () => {
-        const node = await a11y.findByText('复制');
-        // 🆕 08-26 老板拍板: 同步骤 5, 加 A11y 真实性检测 (text + content-desc 不能都空)
-        if (!node) return false;
-        const bounds = node.bounds;
-        if (bounds && (bounds.left === 0 && bounds.top === 0 && bounds.right === 0 && bounds.bottom === 0)) {
-          return false;
-        }
-        const className = node.className ?? '';
-        if (!/Button|button/i.test(className)) {
-          return false;
-        }
-        const text = node.text ?? '';
-        const contentDesc = (node as any).contentDesc ?? '';
-        if (!text && !contentDesc) {
-          return false;
-        }
-        return true;
-      }
-    );
-    if (step6Ok) {
-      logger.info('千机:步骤6', `找到"复制", 点击 (中等偏移 NORMAL 档)`);
-      await click.byText('复制', { level: HumanLevel.NORMAL });
-    } else {
-      // 🆕 08-26 老板拍板 T5: A11y 找不到 → fallback 硬坐标 (按 appEnv)
-      const fallback = await getDeviceFallbackCoords();
-      if (fallback) {
-        const dp = fallback.copyBtn;
-        // V32.36.99 老板 09-23 拍板: 移除 dpToPx (V32.36.97 byCoords 内部已统一 px() 转, 调用方不要再 dpToPx)
-        logger.info('千机:步骤6', `A11y 找不到, 用 fallback 坐标 dp=(${dp.x}, ${dp.y})`);
-        await click.byCoords(dp.x, dp.y, HumanLevel.NORMAL);
-      } else {
-        throw new RetryFlowError('步骤6: 未找到"复制"且无 fallback 坐标');
-      }
-    }
-    await ZBBAutomation.delay(1800);
-
-    // ============ 步骤 7: 千机端完成 (🆕 08-30 老板拍板端路由设计: 千机端零 APP 知识) ============
-    //   - 千机端 = 纯识别 + 路由, 不负责 launchApp
-    //   - 返回 varB (CustomerInfo 含 projectType) 给 runZbbWorkflow
-    //   - runZbbWorkflow 按 FLOW_REGISTRY[customer.projectType] 路由到对应端
-    //   - 每个端自主 launchApp (baoli.ts step1 launchApp 企业微信, zhaoshang.ts launchApp 飞书等)
-    //   - 历史 (V32.33 及之前): 千机端步骤7 写死 launchApp(企业微信) + delay(2000), 保利端步骤1 重复 launchApp
-    //   - 修法: 删除千机端 launchApp, 千机端只返回 varB, 保利端自己 launchApp
-    //   - 优势: 千机端零 APP 耦合, 加新端只改 registry + 端文件, 千机端零改动
-    logger.info('千机:步骤7', `千机端完成, 返回客户=${varB.customerName}, 项目=${varB.projectType} (后续端流程自主 launchApp)`);
-    // 🆕 V32.36.98 老板 09-23 拍板: 千机端步骤6 点完"复制" 后, 返回桌面 (按 Home 键), 让 baoli.ts 自主 launchApp 企业微信
-    //   V2.x 反证金标准 (QianjiService.ts L793-806 v22.02.12 老板实战): 保利路径步骤3.5+hook 必须返回桌面 + 启动企微
-    //   V4 端路由设计 (08-30): 千机端零 APP 知识 → 不 launchApp 企微, 但要按 Home 键回到桌面让 baoli.ts 接管
-    //   修法: 1-2s 随机延迟 + Home 键 + 0.5s 延迟 (跟 V2 v22.02.12 一致)
-    try {
-      const homeDelay = 1000 + Math.floor(Math.random() * 500);  // 1-1.5s 随机
-      logger.info('千机:步骤7', `点完"复制" 后等 ${homeDelay}ms (V32.36.98 1-1.5s 随机, V2 v22.02.12 反证)`);
-      await ZBBAutomation.delay(homeDelay);
-      // 老板 nova 反证: ZBBAutomation.pressHomeKey 可能不可靠, 直接用 navBarHomeDp + 点击 (V2.x humanTapDp 反证金标准)
-      // V32.36.96 + V32.36.97 老板铁律: 业务代码用 dp, native click 接 px, 用 px() 转
-      const homeHookDp = navBarHomeDp();
-      logger.info('千机:步骤7', `tap Home 键 dp=(${homeHookDp.x}, ${homeHookDp.y}) → px(${dpToPxForNav(homeHookDp.x)}, ${dpToPxForNav(homeHookDp.y)}) [V32.36.98 老板拍板]`);
-      await ZBBAutomation.click(dpToPxForNav(homeHookDp.x), dpToPxForNav(homeHookDp.y));
-      await ZBBAutomation.delay(500);
-      logger.info('千机:步骤7', '✓ 已返回桌面 (V32.36.98 老板拍板加 Home 键)');
-    } catch (homeErr) {
-      logger.warn('千机:步骤7', `Home 键失败 (best-effort, baoli 步骤1 launchApp 会重试): ${homeErr}`);
-    }
-    // 不 launchApp, 不 delay (接力留给端流程) - 但 Home 键已保证 baoli launchApp 是 fresh app
-    return varB;
+    // 未知项目类型
+    logger.warn('千机:步骤2', `未知项目类型: ${varA.projectName}, 不分流`);
+    return null;
   } catch (error) {
     // RetryFlowError 抛出, 让 withFlowRetry 处理 (返回 + 重进 + 重试整条)
     if (error instanceof RetryFlowError) {
@@ -908,7 +646,7 @@ export function parseVariableAFromNodes(nodes: A11yNode[]): { projectName: strin
  *
  * 跟步骤4 的 stepParseCustomerInfo 复用 assembleKeyValueLines + extractValue
  */
-function parseVariableBFromNodes(nodes: A11yNode[]): CustomerInfo {
+export function parseVariableBFromNodes(nodes: A11yNode[]): CustomerInfo {
   const lines = assembleKeyValueLines(nodes);
 
   // 复用 step4 的解析逻辑
