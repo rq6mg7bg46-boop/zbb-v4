@@ -259,9 +259,20 @@ async function step1OpenWechat(): Promise<boolean> {
 // ============================================================
 async function step2ClickWorkbench(): Promise<boolean> {
   logger.info('保利:步骤2', '点击工作台...');
-  const ok = await click.byText('工作台');
+  // V32.36.108 老板 09-24 拍板: 加 2 次查找, 间隔 1-2s 随机 (老板 nova 13:16 反证)
+  //   老板 nova 13:16:21 log: click.byText 报 "getAllTextNodes 没找到有效节点" → 找不到工作台 → 步骤 2 失败 → 第 1 轮报备失败弹窗
+  //   老板拍板: '做2次查找,间隔1-2S间的随机时间'
+  //   V2.x 老板实战反证: 工作台可能在第 1 次 dump 时坐标无效 (微信工作台 + 模拟器刚加载), 重试 1 次通常命中
+  let ok = false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    ok = await click.byText('工作台');
+    if (ok) break;
+    const wait = 1000 + Math.floor(Math.random() * 1000);  // 1-2s 随机
+    logger.warn('保利:步骤2', `第 ${attempt}/2 次没找到工作台, 等 ${wait}ms 重试 (V32.36.108 老板拍板)`);
+    await ZBBAutomation.delay(wait);
+  }
   if (!ok) {
-    logger.info('保利:步骤2', '找不到工作台');
+    logger.info('保利:步骤2', '找不到工作台 (V32.36.108 2 次查找都失败)');
     return false;
   }
   await ZBBAutomation.delay(2000);
