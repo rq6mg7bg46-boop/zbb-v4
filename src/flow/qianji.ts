@@ -245,17 +245,17 @@ export async function stepCopyPhoneNumber(customer: CustomerInfo): Promise<void>
     // 越秀端: 点 * 触发复制
     const copyOk = await ZBBAutomation.clickByText?.('*', false);
     if (copyOk) {
-      // 🆕 V32.36.115 老板 09-24 反证: mock 千机复制通知是"已复制 联系方式", 不是"已复制到剪贴板"
-      //   老板 nova 17:12:53 log: 'text=已复制 联系方式' (跟 V4 假设的"已复制到剪贴板"不一致)
-      //   真因: waitForScreenWithRollback 等不到"已复制到剪贴板" → 5s 后回滚 → 流程破坏 → 卡死
-      //   修法: 改 text="已复制" (宽松匹配), 不调回滚
-      logger.info('千机:步骤6', '点 * 完成, 等"已复制"通知 (V32.36.115 老板拍板 宽松匹配)');
-      const notifyResult = await judge.waitForScreen('已复制', 5000);
-      if (notifyResult) {
-        logger.info('千机:步骤6', '✓ 已监测到复制通知');
-      } else {
-        logger.warn('千机:步骤6', '5s 超时未监测到复制通知, 继续 (best-effort, 剪贴板可能已复制成功)');
-      }
+      // 🆕 V32.36.116 老板 09-24 反证: judge.waitForScreen 等不到 (mock 千机"已复制"是 accessibility 消息不显示在屏幕)
+      //   老板 nova 17:16:49 log 反证:
+      //     LOG [千机:步骤6] 点 * 完成, 等"已复制"通知 (V32.36.115 老板拍板 宽松匹配)
+      //     LOG [千机监听] 收到 ... text=已复制 联系方式  (accessibility 消息, 不是屏幕文本)
+      //     (流程卡死 5s 超时)
+      //   真因: judge.waitForScreen('已复制', 5000) 轮询 isScreenText 找不到
+      //         mock 千机的"已复制"是 QianjiMessageReceived (accessibility 通知), 不显示在屏幕 A11y
+      //   修法: 直接假定复制成功, 点 * 完成就 + 等 1s 让剪贴板稳定, 不等屏幕通知
+      logger.info('千机:步骤6', '点 * 完成, 假定复制成功 + 等 1s 让剪贴板稳定 (V32.36.116 老板拍板 不等屏幕通知)');
+      await ZBBAutomation.delay(1000);
+      logger.info('千机:步骤6', '✓ 复制完成 (best-effort, mock 千机立刻触发已复制消息)');
     }
   } else {
     // 保利端: 不复制 (老板实测: 保利端不复制脱敏号码, 用 customerInfo.phone)
