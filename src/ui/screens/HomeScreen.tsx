@@ -30,7 +30,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { runZbbWorkflow } from '@/flow';
+import { runZbbWorkflow, runZbbWorkflowAuto } from '@/flow'; // 🆕 V32.36.109 老板拍板: 入口 1 HomeScreen 改调 runZbbWorkflowAuto
 import { orchestrator, OrchState } from '@/core/stateMachine';
 import { showSystemToast } from '@/services/alert';
 import { logger } from '@/utils/logger';
@@ -242,16 +242,22 @@ export default function HomeScreen() {
     }
 
     setIsRunning(true);
-    logger.info('开始干活', '启动业务流程 (handleStart → runZbbWorkflow)...');
+    logger.info('开始干活', '启动业务流程 (handleStart → runZbbWorkflowAuto)...');
     try {
-      const result = await runZbbWorkflow();
-      if (result.skipped) {
-        logger.warn('开始干活', `流程跳过: ${result.reason}`);
-        Alert.alert('提示', `流程跳过: ${result.reason}`);
-      } else if (result.ok) {
-        logger.info('开始干活', `流程完成: ${result.customerName}`);
+      // 🆕 V32.36.109 老板 09-24 拍板: HomeScreen 直接调 runZbbWorkflowAuto (入口 1 自动续跑)
+      //   老板 nova 13:55 反证: handleStart 改调 runZbbWorkflowAutoInternal 是死的, 因为 HomeScreen 跳过 handleStart 直接调 runZbbWorkflow
+      //   修法: HomeScreen 直接调 runZbbWorkflowAuto (跟入口 2/3 一样)
+      //   V2.x 反证金标准: HomeScreen 入口 = 自动续跑 = 一致
+      const result = await runZbbWorkflowAuto();
+      if (result.lastResult?.skipped) {
+        logger.warn('开始干活', `流程跳过: ${result.lastResult.reason}`);
+        Alert.alert('提示', `流程跳过: ${result.lastResult.reason}`);
+      } else if (result.lastResult?.ok) {
+        logger.info('开始干活', `流程完成: ${result.lastResult.customerName} (自动续跑 ${result.totalRuns} 轮)`);
+      } else if (!result.lastResult) {
+        logger.warn('开始干活', `runZbbWorkflowAuto 返回 null lastResult → UserIntervention`);
       } else {
-        logger.warn('开始干活', `流程失败: ${result.reason} → UserIntervention`);
+        logger.warn('开始干活', `流程失败: ${result.lastResult.reason} → UserIntervention`);
         // 失败已转 UserIntervention, 等老板点"开始干活"才恢复
       }
     } catch (e: any) {
