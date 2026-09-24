@@ -187,17 +187,31 @@ async function yuexiuStep4CheckViewMore(): Promise<'A' | 'B'> {
   logger.info('越秀:4', '检索"推荐购房"+"查看更多" (V32.36.112 A/B 方案) + 失败时打印节点');
   await ZBBAutomation.delay(2000);
 
-  const nodes = await ZBBAutomation.getAllTextNodes();
-  const allText = nodes.map(n => n.text || '').join('|');
-  const hasRecommendPurchase = allText.includes('推荐购房');
-  const hasViewMoreBtn = allText.includes('查看更多');
+  // 🆕 V32.36.118 老板 09-25 反证: 老板 nova dump 节点数=8 全在屏幕顶部, 底部"推荐购房"/"查看更多"没 dump 出来
+  //   老板 nova 截图显示底部有"推荐购房"+"查看更多" (@ ~1395px 起始), 但 dump 只读到顶栏"更多"/"关闭"按钮
+  //   真因: WebView dump 截断了底部内容 (顶栏节点坐标 (835,199)/(981,199) 全 < 200px 范围)
+  //   修法: 第 1 次 dump 不命中 → scrollUpPPlus 让底部内容进视口 → 再 dump
+  let nodes = await ZBBAutomation.getAllTextNodes();
+  let allText = nodes.map(n => n.text || '').join('|');
+  let hasRecommendPurchase = allText.includes('推荐购房');
+  let hasViewMoreBtn = allText.includes('查看更多');
+
+  if (!hasRecommendPurchase && !hasViewMoreBtn) {
+    logger.info('越秀:4', `第 1 次 dump 不命中, 触发 scrollUpPPlus 让底部内容进视口 (V32.36.118 老板反证)`);
+    await scrollUpPPlus();
+    await pPlusDelay(1500, 500);
+    nodes = await ZBBAutomation.getAllTextNodes();
+    allText = nodes.map(n => n.text || '').join('|');
+    hasRecommendPurchase = allText.includes('推荐购房');
+    hasViewMoreBtn = allText.includes('查看更多');
+  }
 
   logger.info('越秀:4', `has推荐购房=${hasRecommendPurchase}, has查看更多=${hasViewMoreBtn}`);
 
   // 🆕 V32.36.114 老板 09-24 拍板反馈 4: 检索失败时打印当前界面的节点
-  //   老板原话: '"LOG  📋 [16:57:46] [越秀:5] 检索"推荐购房"+"查看更多" (V32.36.112 A/B 方案) LOG  📋 [16:57:49] [越秀:5] has推荐购房=false, has查看更多=false" 打印当前界面的节点'
+  //   老板原话: '"LOG [16:57:46] [越秀:5] 检索"推荐购房"+"查看更多" 打印当前界面的节点'
   //   老板 nova 16:57:49 反证: 检索全 false 但不知道界面有什么, 需要打印 dump
-  //   修法: 不管 A/B 都打印节点数 + 节点详情 (便于诊断)
+  //   修法: 不管 A/B 都打印节点数 + 节点详情 (便于诊断"为什么检索失败")
   logger.info('越秀:4', `当前界面 dump 节点数=${nodes.length}`);
   nodes.slice(0, 50).forEach((n, idx) => {
     logger.info('越秀:4', `  [${idx + 1}] text="${n.text}" desc="${n.contentDesc || ''}" @ (${n.centerX}, ${n.centerY})`);
