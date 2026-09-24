@@ -24,6 +24,7 @@ import { runZbbWorkflowAuto } from './index';
 import type { CustomerInfo } from './qianji';
 import { px, centerXDp } from '@/utils/DpUtil';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
+import { scrollUpPPlus, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',
@@ -140,16 +141,29 @@ async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
     return true;
   }
 
-  for (let i = 0; i < 5; i++) {
-    logger.info('越秀:3', `第 ${i + 1} 次上滑后查找越秀地产悦秀会`);
-    await swipe.up();
-    await ZBBAutomation.delay(2000 + Math.random() * 500);
-    ok = await findWithRecovery(`越秀:3 第${i+1}次`, async () => click.byText('越秀地产悦秀会'));
-    if (ok) {
-      logger.info('越秀:3', `第 ${i + 1} 次上滑后找到越秀地产悦秀会`);
-      await ZBBAutomation.delay(3000 + Math.random() * 1000);
-      return true;
+  // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
+  //   老板原话: '学习V4保利端的操作,在工作台是上滑!!'
+  //   老板 nova 16:50:19 log 反证: swipe.up() 走 swipeShell (V32.36.9 已知 bug) 实际没滑动
+  //   V4 baoli.ts:349 步骤3 用 scrollUpPPlus() + pPlusDelay(2000, 500) 老板装机实测生效
+  //   V2.x BaoliService.ts:628-636 反证金标准: humanSwipeWithBounceDp(中心X, appHeightDp*0.84, 中心X, appHeightDp*0.28, 500ms)
+  //   V32.36.18 反证: judge.isScreenText 单次 dump 不重试 (避免企微 WebView 卡死)
+  //   修法: 跟 baoli 步骤 3 完全一致 (5 次循环: 先 judge + 再 scrollUpPPlus + 再 pPlusDelay)
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // V32.36.18: judge 单次 dump 不重试
+    const found = await judge.isScreenText('越秀地产悦秀会');
+    if (found) {
+      logger.info('越秀:3', `✓ 第 ${attempt + 1} 次找到越秀地产悦秀会 (judge.isScreenText)`);
+      const ok = await click.byText('越秀地产悦秀会');
+      if (ok) {
+        await ZBBAutomation.delay(3000 + Math.random() * 1000);
+        return true;
+      }
     }
+    // V4 baoli 步骤 3 同款 scrollUpPPlus + pPlusDelay
+    const swipeOk = await scrollUpPPlus();
+    logger.info('越秀:3', `scrollUpPPlus 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
+    // V2.x BaoliService.ts:636 反证金标准: delay 2-2.5s (随机, 拟人化操作间隔)
+    await pPlusDelay(2000, 500);
   }
 
   // 兜底: dp(180, 400) → click.byCoords 接 dp
