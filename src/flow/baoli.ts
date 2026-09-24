@@ -30,6 +30,7 @@ import type { CustomerInfo } from './qianji';
 import { verifyAndRecover } from './verify';
 import { logger } from '@/utils/logger';
 import { raiseAlert } from '@/services/alert';
+import { runZbbWorkflowAuto } from './index'; // 🆕 V32.36.111 老板拍板: 学习 V2 - 保 baoli 完成后调下一组
 import { markReportDone } from '@/services/database'; // 🆕 V32.36.52 老板 09-21 拍板: step13-情况2 写数据库
 import { findWithRecovery } from './retryUtils'; // 🆕 V32.36.74 老板拍板: 步骤 14-2 用 findWithRecovery + 上滑重试
 import { qianjiPackage, qianjiMainActivity } from '@/config/env'; // 🆕 V32.36.55 老板 09-21 拍板: 跟千机-步骤1 一致
@@ -130,6 +131,25 @@ export async function runBaoliFlow(customer: CustomerInfo): Promise<boolean> {
 
     orchestrator.send('BAOLI_COMPLETE'); // BaoliRunning → YuexiuRunning
     logger.info('app', '========== 保利流程完成 ==========');
+
+    // 🆕 V32.36.111 老板 09-24 拍板: 学习 V2 接龙循环 - 保 baoli 完成后直接调下一组 (老板 nova 15:00 反证)
+    //   老板原话: '是否可以在最后保利:步骤14-6 下滑屏幕刷新当前界面 (V32.36.65 + V32.36.69 老板拍板) 直接调用 开始干活?'
+    //   V2 反证金标准 (QianjiService.ts:1289 testOnlyQianjiFlow + BaoliService.ts:2333 接龙):
+    //     - 保 baoli 步骤15-情况2 完成后 → 直接调 testOnlyQianjiFlow 检测下一组
+    //     - 'has_baoli' → 递归 baoli.execute() 跑下一组
+    //     - 'no_pending' → 停止
+    //   V32.36.110 反证: runZbbWorkflow 完成后调 runZbbWorkflowAuto, 但并发守卫拦下 + dump 拿不到
+    //   修法: 保 baoli 完成后在 baoli.ts 内部直接调 runZbbWorkflowAuto 检测下一组
+    //   并发守卫: BAOLI_COMPLETE 后状态机是 Idle, runZbbWorkflowAuto 不会被守卫拦
+    //   兜底: 调失败 / 千机无客户 → log warn 但不抛异常 (保 baoli 本身已成功)
+    logger.info('保利', '第二轮报备成功 → 调 runZbbWorkflowAuto 检测下一组 (V32.36.111 老板拍板 学习 V2)');
+    try {
+      const autoResult = await runZbbWorkflowAuto();
+      logger.info('保利', `runZbbWorkflowAuto 完成: totalRuns=${autoResult.totalRuns}`);
+    } catch (autoErr: any) {
+      logger.warn('保利', `runZbbWorkflowAuto 异常 (best-effort, 不影响本次报备): ${autoErr}`);
+    }
+
     return true;
   } catch (error) {
     logger.error('保利', `'流程失败:' ${error}`);
