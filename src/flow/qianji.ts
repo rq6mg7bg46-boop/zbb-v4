@@ -340,6 +340,63 @@ async function runQianjiFlowInner(): Promise<CustomerInfo | null | 'no_report'> 
     const varA = parseVariableAFromNodes(step2Nodes);
     logger.info('千机:步骤2', `变量 A: 项目=${varA.projectName}, 姓名=${varA.customerName}, 电话=${varA.phone}`);
 
+    // 🆕 V32.36.114 老板 09-24 拍板: 千机步骤3 在变量A解析出"越秀"时不做A、B对比
+    //   老板原话: '千机步骤3依旧点击转发。在变量A解析出"越秀"时,不做A、B对比,仿照V2点击"联系方式"后的电话'
+    //   老板 nova 16:57:06 log 反证: 当前千机步骤3 不分流 varA, 全部走"找转发"流程
+    //   V2 反证金标准 (QianjiService.ts:659-672 越秀分支):
+    //     - hasYuexiu → parseCustomerFromNodes + writeToReports('yuexiu') + tapPhoneMaskAndWaitForCopy
+    //     - V2 越秀不走"转发", 直接点"联系方式"后的 * 复制脱敏号码到剪贴板
+    //     - 越秀步骤10 longPress 粘贴依赖剪贴板
+    //   修法: 在 varA.projectName 含"越秀"时, 跳过"找转发"流程, 仿照 V2 直接 tapPhoneMaskAndWaitForCopy
+    const isYuexiu = varA.projectName?.includes('越秀');
+    if (isYuexiu) {
+      logger.info('千机:步骤3', `变量A项目=${varA.projectName} 含"越秀", 仿照V2点"联系方式"后的电话 (V32.36.114 老板拍板 不做A/B对比)`);
+      // 仿照 V2 越秀分支: 解析客户信息 + 写库 + 点 * 复制脱敏号码
+      const phoneDigits = varA.phone.replace(/\D/g, '');
+      const customerA: CustomerInfo = {
+        companyName: '',
+        customerName: varA.customerName,
+        customerGender: '男',
+        phone: varA.phone,
+        phonePart1: phoneDigits.slice(0, 3),
+        phonePart2: '****',
+        phonePart3: phoneDigits.slice(-3),
+        phoneLast4: phoneDigits.slice(-4),
+        projectName: varA.projectName,
+        projectType: 'yuexiu',
+        propertyType: '',
+        reportTime: '',
+        expectedVisitTime: '',
+        agent: '',
+        agentPhone: '',
+        agentNote: '',
+        city: '',
+      };
+      // 写库 (V32.36.52 复用, 千机端步骤 4 stepWriteToReports 通用化已支持 yuexiu)
+      const reportIdsA = await stepWriteToReports(customerA);
+      customerA.reportIds = Array.isArray(reportIdsA) ? (reportIdsA as [number, number]) : [reportIdsA as number, reportIdsA as number];
+      logger.info('千机:步骤3', `写库完成 (yuexiu): reportIds=${JSON.stringify(reportIdsA)}`);
+      // 点 * 复制脱敏号码到剪贴板 (V2 越秀分支)
+      await stepCopyPhoneNumber(customerA);
+      logger.info('千机:步骤3', '✓ 越秀客户, 已仿照V2点"联系方式"后的电话 + 写库');
+      // 返回 customer (越秀端会从这接, 走 V32.36.112 runYuexiuFlow)
+      // 让步骤 7 按 Home 键 + 返回桌面 (跟 baoli 同款)
+      // 提取后续步骤需要的 varB (跟 varA 共用, 因为越秀不分流)
+      // 把 customerA 写到 module-level varB 让步骤 7 返它
+      // 但 runQianjiFlowInner 局部变量 varB 在后面赋值, 这里直接 inline 步骤 7 的 Home 键
+      try {
+        const homeDelay = 1000 + Math.floor(Math.random() * 500);
+        await ZBBAutomation.delay(homeDelay);
+        const homeHookDp = navBarHomeDp();
+        await ZBBAutomation.click(dpToPxForNav(homeHookDp.x), dpToPxForNav(homeHookDp.y));
+        await ZBBAutomation.delay(500);
+        logger.info('千机:步骤7', '✓ 越秀分支已返回桌面 (V32.36.114 老板拍板)');
+      } catch (homeErr) {
+        logger.warn('千机:步骤7', `Home 键失败 (best-effort): ${homeErr}`);
+      }
+      return customerA;
+    }
+
     // ============ 步骤 3: A11y 找"转发" (有界面变化, findWithRecovery + 上滑恢复) ============
     logger.info('千机:步骤3', 'A11y 找"转发"...');
     const step3Ok = await findWithRecovery(

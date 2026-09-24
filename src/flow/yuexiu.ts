@@ -1,14 +1,34 @@
 /**
- * V4 越秀端流程 (V32.36.112 老板 09-24 拍板 - 应用 6 点反馈)
+ * V4 越秀端流程 (V32.36.114 老板 09-24 拍板 - 应用 4 点反馈)
  *
- * 老板拍板 V32.36.112 (基于老板 6 点反馈):
- *   1. 千机端复用现有流程, 只在关键步骤 (千机步骤 5 项目类型判断) 做调整
- *   2. 越秀步骤编号从 1 开始 (独立编号, 不延续千机步骤 8)
- *   3. 补充 V2 步骤 5.5 B 方案 (查找"推荐购房"+"查看更多"有 A/B 两种情况)
- *   4. dump + 取客户节点顺序: 先粘贴电话 → 从数据库拿客户姓名 → 再粘贴姓名
- *      确认: V2 步骤 9.5 从 DB 拿客户, V4 由 Orchestrator 端路由传 customer (统一机制)
- *   5. 清理用 V4 滑动刷新替代 V2 exitMiniProgram (老板 09-13 实战反证)
- *   6. 越秀 + 保利共用 V4 expo-sqlite, 客户只写一次 (千机步骤 6 写库, 越秀步骤 14 只更新)
+ * 老板拍板 V32.36.114 反馈:
+ *   1. 千机步骤3依旧点击转发。在变量A解析出"越秀"时，不做A、B对比，仿照V2点击"联系方式"后的电话
+ *      → 千机端 qianji.ts:340 已修 (V32.36.114): varA 含"越秀" → 跳过"找转发" → 仿 V2 tapPhoneMaskAndWaitForCopy + 写库
+ *   2. 在工作台查找"越秀地产悦秀会"的方式参考V4 保利端查找"云和家经纪云"的逻辑
+ *      → 越秀:3 已用 scrollUpPPlus + judge.isScreenText (V32.36.113), 跟 baoli 步骤 3 同款
+ *   3. 删除"越秀:4"，后续的序号重新调整
+ *      → 越秀:4 整体删除, 越秀:5-17 → 越秀:4-16
+ *   4. 越秀:4 (原 5) 检索失败时打印当前界面的节点
+ *      → 新 越秀:4 失败时 dump 所有节点 (text + centerX/Y)
+ *
+ * V32.36.114 步骤编号 (从 1 开始, 越秀:4 已删, 重新排序):
+ *   越秀:1   打开企业微信
+ *   越秀:2   点击"工作台" (V32.36.108 跨端复用: 2 次查找 + 1-2s 随机)
+ *   越秀:3   查找"越秀地产悦秀会" (V32.36.113 + baoli 步骤 3 同款: scrollUpPPlus + judge.isScreenText)
+ *   越秀:4   检索"推荐购房"+"查看更多" (V2 步骤 5.5 A/B 方案分支 + 失败时 dump 节点) ← 原越秀:5
+ *   越秀:5A  情况A: 点"查看更多" (V2 步骤 6) ← 原越秀:6A
+ *   越秀:5B  情况B: 兜底流程 "推荐赚佣"→ 弹窗"前往查看" (V2 步骤 5.6-5.9) ← 原越秀:6B
+ *   越秀:6   点"去推荐" (V2 步骤 8, Y值最大) ← 原越秀:7
+ *   越秀:7   验证推荐页 (V2 步骤 8.5 verifyAndRecover) ← 原越秀:8
+ *   越秀:8   dump + 取客户 (Orchestrator 传入 customer) ← 原越秀:9
+ *   越秀:9   输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机) ← 原越秀:10
+ *   越秀:10  输入姓名 (V2 步骤 11) ← 原越秀:11
+ *   越秀:11  选性别 (3 层判断, q1q2Logic.ts guessGenderFromName) ← 原越秀:12
+ *   越秀:12  验证输入内容 (V2 步骤 12) ← 原越秀:13
+ *   越秀:13  点"立即推荐" (V2 步骤 13) ← 原越秀:14
+ *   越秀:14  检测报备结果 + 更新 DB (3 路分支 + markReportDone V32.36.52) ← 原越秀:15
+ *   越秀:15  反馈 (拉千机 + 一致性校验 + 点"报备有效/无效" + 自动 Dialog, V2 步骤 15) ← 原越秀:16
+ *   越秀:16  清理 (V4 下滑刷新替代 V2 exitMiniProgram, V32.36.65+69) + YUEXIU_COMPLETE + inline hook 调下一组 (V32.36.111 + V32.36.114) ← 原越秀:17
  */
 
 import { orchestrator } from '@/core/stateMachine';
@@ -46,39 +66,39 @@ export async function runYuexiuFlow(customer: CustomerInfo): Promise<boolean> {
     if (!await yuexiuStep1OpenWechat()) throw new Error('越秀:1 打开企业微信失败');
     if (!await yuexiuStep2ClickWorkbench()) throw new Error('越秀:2 找不到工作台');
     if (!await yuexiuStep3FindYuexiuMiniApp()) throw new Error('越秀:3 找不到越秀地产悦秀会');
-    await yuexiuStep4WaitMiniAppLoad();
 
-    const mode = await yuexiuStep5CheckViewMore();
+    // 🆕 V32.36.114 老板 09-24 拍板: 删除越秀:4 (V2 步骤5 verifyAndRecover 老板 09-13 拍板禁跑)
+    //   原 越秀:5 → 新 越秀:4
+    const mode = await yuexiuStep4CheckViewMore();
     if (mode === 'A') {
-      if (!await yuexiuStep6AClickViewMore()) throw new Error('越秀:6A 点查看更多失败');
+      if (!await yuexiuStep5AClickViewMore()) throw new Error('越秀:5A 点查看更多失败');
     } else {
-      if (!await yuexiuStep6BFallback()) throw new Error('越秀:6B 兜底流程失败');
+      if (!await yuexiuStep5BFallback()) throw new Error('越秀:5B 兜底流程失败');
     }
 
-    if (!await yuexiuStep7ClickRecommend()) throw new Error('越秀:7 找不到去推荐');
+    if (!await yuexiuStep6ClickRecommend()) throw new Error('越秀:6 找不到去推荐');
 
-    const verifyOk = await yuexiuStep8VerifyRecommendPage();
-    if (!verifyOk) logger.warn('越秀:8', '验证推荐页失败 (best-effort, 继续)');
+    const verifyOk = await yuexiuStep7VerifyRecommendPage();
+    if (!verifyOk) logger.warn('越秀:7', '验证推荐页失败 (best-effort, 继续)');
 
-    // 越秀:9 dump + 取客户 (Orchestrator 已传 customer)
-    logger.info('越秀:9', `dump 界面 + 取客户 (来自 Orchestrator): ${customer.customerName} ${customer.phoneLast4}`);
+    logger.info('越秀:8', `dump + 取客户 (Orchestrator 传入): ${customer.customerName} ${customer.phoneLast4}`);
 
-    if (!await yuexiuStep10InputPhone(customer)) throw new Error('越秀:10 输入手机号失败');
-    if (!await yuexiuStep11InputName(customer)) throw new Error('越秀:11 输入姓名失败');
-    if (!await yuexiuStep12SelectGender(customer)) logger.warn('越秀:12', '选性别失败 (best-effort, 继续)');
+    if (!await yuexiuStep9InputPhone(customer)) throw new Error('越秀:9 输入手机号失败');
+    if (!await yuexiuStep10InputName(customer)) throw new Error('越秀:10 输入姓名失败');
+    if (!await yuexiuStep11SelectGender(customer)) logger.warn('越秀:11', '选性别失败 (best-effort, 继续)');
 
-    const inputOk = await yuexiuStep13VerifyInput(customer);
-    if (!inputOk) logger.warn('越秀:13', '验证输入内容失败 (best-effort, 继续)');
+    const inputOk = await yuexiuStep12VerifyInput(customer);
+    if (!inputOk) logger.warn('越秀:12', '验证输入内容失败 (best-effort, 继续)');
 
-    if (!await yuexiuStep14ClickSubmit()) throw new Error('越秀:14 点立即推荐失败');
+    if (!await yuexiuStep13ClickSubmit()) throw new Error('越秀:13 点立即推荐失败');
 
-    const baobeiMode = await yuexiuStep15DetectResult(customer);
-    if (baobeiMode === 'timeout') throw new Error('越秀:15 报备结果超时');
+    const baobeiMode = await yuexiuStep14DetectResult(customer);
+    if (baobeiMode === 'timeout') throw new Error('越秀:14 报备结果超时');
 
-    const feedbackOk = await yuexiuStep16Feedback(customer, baobeiMode);
-    if (!feedbackOk) throw new Error('越秀:16 一致性校验失败');
+    const feedbackOk = await yuexiuStep15Feedback(customer, baobeiMode);
+    if (!feedbackOk) throw new Error('越秀:15 一致性校验失败');
 
-    await yuexiuStep17CleanupAndComplete();
+    await yuexiuStep16CleanupAndComplete();
 
     return true;
   } catch (error: any) {
@@ -129,27 +149,18 @@ async function yuexiuStep2ClickWorkbench(): Promise<boolean> {
   return true;
 }
 
-// 越秀:3 查找"越秀地产悦秀会" (5 次循环上滑)
+// 越秀:3 查找"越秀地产悦秀会" (V32.36.113 + baoli 步骤 3 同款: scrollUpPPlus + judge.isScreenText)
 async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
   logger.info('越秀:3', '查找越秀地产悦秀会...');
   await ZBBAutomation.delay(4000 + Math.random() * 2000);
-
-  let ok = await findWithRecovery('越秀:3 首次', async () => click.byText('越秀地产悦秀会'));
-  if (ok) {
-    logger.info('越秀:3', '找到越秀地产悦秀会 (attempt=1)');
-    await ZBBAutomation.delay(3000 + Math.random() * 1000);
-    return true;
-  }
 
   // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
   //   老板原话: '学习V4保利端的操作,在工作台是上滑!!'
   //   老板 nova 16:50:19 log 反证: swipe.up() 走 swipeShell (V32.36.9 已知 bug) 实际没滑动
   //   V4 baoli.ts:349 步骤3 用 scrollUpPPlus() + pPlusDelay(2000, 500) 老板装机实测生效
-  //   V2.x BaoliService.ts:628-636 反证金标准: humanSwipeWithBounceDp(中心X, appHeightDp*0.84, 中心X, appHeightDp*0.28, 500ms)
   //   V32.36.18 反证: judge.isScreenText 单次 dump 不重试 (避免企微 WebView 卡死)
   //   修法: 跟 baoli 步骤 3 完全一致 (5 次循环: 先 judge + 再 scrollUpPPlus + 再 pPlusDelay)
   for (let attempt = 0; attempt < 5; attempt++) {
-    // V32.36.18: judge 单次 dump 不重试
     const found = await judge.isScreenText('越秀地产悦秀会');
     if (found) {
       logger.info('越秀:3', `✓ 第 ${attempt + 1} 次找到越秀地产悦秀会 (judge.isScreenText)`);
@@ -159,30 +170,21 @@ async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
         return true;
       }
     }
-    // V4 baoli 步骤 3 同款 scrollUpPPlus + pPlusDelay
     const swipeOk = await scrollUpPPlus();
     logger.info('越秀:3', `scrollUpPPlus 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
-    // V2.x BaoliService.ts:636 反证金标准: delay 2-2.5s (随机, 拟人化操作间隔)
     await pPlusDelay(2000, 500);
   }
 
-  // 兜底: dp(180, 400) → click.byCoords 接 dp
+  // 兜底: dp(180, 400)
   logger.warn('越秀:3', `5 次循环都未找到, 兜底用 dp(${centerXDp()}, ${YUEXIU_MINIAPP_FALLBACK_Y_DP})`);
   await click.byCoords(centerXDp(), YUEXIU_MINIAPP_FALLBACK_Y_DP);
-  await ZBBAutomation.delay(3000 + Math.random() * 1000);
-  return true;  // 兜底当成功, 让后续步骤验证
-}
-
-// 越秀:4 等小程序首页渲染 (V2 步骤5 verifyAndRecover 老板 09-13 拍板禁跑, V4 跳过)
-async function yuexiuStep4WaitMiniAppLoad(): Promise<boolean> {
-  logger.info('越秀:4', '等小程序首页渲染 (V2 步骤5 verifyAndRecover 老板 09-13 拍板禁跑)');
   await ZBBAutomation.delay(3000 + Math.random() * 1000);
   return true;
 }
 
-// 越秀:5 检索"推荐购房"+"查看更多" (A/B 方案分支) V2 步骤 5.5
-async function yuexiuStep5CheckViewMore(): Promise<'A' | 'B'> {
-  logger.info('越秀:5', '检索"推荐购房"+"查看更多" (V32.36.112 A/B 方案)');
+// 越秀:4 (原越秀:5) 检索"推荐购房"+"查看更多" + 失败时 dump 节点 (V32.36.114 老板拍板)
+async function yuexiuStep4CheckViewMore(): Promise<'A' | 'B'> {
+  logger.info('越秀:4', '检索"推荐购房"+"查看更多" (V32.36.112 A/B 方案) + 失败时打印节点');
   await ZBBAutomation.delay(2000);
 
   const nodes = await ZBBAutomation.getAllTextNodes();
@@ -190,91 +192,101 @@ async function yuexiuStep5CheckViewMore(): Promise<'A' | 'B'> {
   const hasRecommendPurchase = allText.includes('推荐购房');
   const hasViewMoreBtn = allText.includes('查看更多');
 
-  logger.info('越秀:5', `has推荐购房=${hasRecommendPurchase}, has查看更多=${hasViewMoreBtn}`);
+  logger.info('越秀:4', `has推荐购房=${hasRecommendPurchase}, has查看更多=${hasViewMoreBtn}`);
+
+  // 🆕 V32.36.114 老板 09-24 拍板反馈 4: 检索失败时打印当前界面的节点
+  //   老板原话: '"LOG  📋 [16:57:46] [越秀:5] 检索"推荐购房"+"查看更多" (V32.36.112 A/B 方案) LOG  📋 [16:57:49] [越秀:5] has推荐购房=false, has查看更多=false" 打印当前界面的节点'
+  //   老板 nova 16:57:49 反证: 检索全 false 但不知道界面有什么, 需要打印 dump
+  //   修法: 不管 A/B 都打印节点数 + 节点详情 (便于诊断)
+  logger.info('越秀:4', `当前界面 dump 节点数=${nodes.length}`);
+  nodes.slice(0, 50).forEach((n, idx) => {
+    logger.info('越秀:4', `  [${idx + 1}] text="${n.text}" desc="${n.contentDesc || ''}" @ (${n.centerX}, ${n.centerY})`);
+  });
+  if (nodes.length > 50) {
+    logger.info('越秀:4', `  ... 还有 ${nodes.length - 50} 个节点省略`);
+  }
 
   if (hasRecommendPurchase && hasViewMoreBtn) {
-    logger.info('越秀:5', '情况A → 6A');
+    logger.info('越秀:4', '情况A → 5A');
     return 'A';
   }
-  logger.info('越秀:5', '情况B → 6B');
+  logger.info('越秀:4', '情况B → 5B');
   return 'B';
 }
 
-// 越秀:6A 情况A: 点"查看更多"
-async function yuexiuStep6AClickViewMore(): Promise<boolean> {
-  logger.info('越秀:6A', '点"查看更多" (情况A)');
+// 越秀:5A (原越秀:6A) 情况A: 点"查看更多"
+async function yuexiuStep5AClickViewMore(): Promise<boolean> {
+  logger.info('越秀:5A', '点"查看更多" (情况A)');
   await ZBBAutomation.delay(2000);
-  return await findWithRecovery('越秀:6A', async () => click.byText('查看更多'));
+  return await findWithRecovery('越秀:5A', async () => click.byText('查看更多'));
 }
 
-// 越秀:6B 情况B: 兜底流程 "推荐赚佣"→ 弹窗"前往查看"
-async function yuexiuStep6BFallback(): Promise<boolean> {
-  logger.info('越秀:6B', '兜底流程: 点"推荐赚佣"→ 弹窗"前往查看" (V2 步骤5.6-5.9)');
+// 越秀:5B (原越秀:6B) 情况B: 兜底流程
+async function yuexiuStep5BFallback(): Promise<boolean> {
+  logger.info('越秀:5B', '兜底流程: 点"推荐赚佣"→ 弹窗"前往查看" (V2 步骤5.6-5.9)');
 
-  logger.info('越秀:6B-1', `点"推荐赚佣" dp(${FALLBACK_RECOMMEND_TAB_X_DP}, ${FALLBACK_RECOMMEND_TAB_Y_DP})`);
+  logger.info('越秀:5B-1', `点"推荐赚佣" dp(${FALLBACK_RECOMMEND_TAB_X_DP}, ${FALLBACK_RECOMMEND_TAB_Y_DP})`);
   await click.byCoords(FALLBACK_RECOMMEND_TAB_X_DP, FALLBACK_RECOMMEND_TAB_Y_DP);
 
   const delay1 = 1000 + Math.floor(Math.random() * 1000);
-  logger.info('越秀:6B-2', `等弹窗 ${delay1}ms`);
+  logger.info('越秀:5B-2', `等弹窗 ${delay1}ms`);
   await ZBBAutomation.delay(delay1);
 
-  logger.info('越秀:6B-3', `点弹窗"前往查看" dp(${FALLBACK_VIEW_BTN_X_DP}, ${FALLBACK_VIEW_BTN_Y_DP})`);
+  logger.info('越秀:5B-3', `点弹窗"前往查看" dp(${FALLBACK_VIEW_BTN_X_DP}, ${FALLBACK_VIEW_BTN_Y_DP})`);
   await click.byCoords(FALLBACK_VIEW_BTN_X_DP, FALLBACK_VIEW_BTN_Y_DP);
 
   const delay2 = 1000 + Math.floor(Math.random() * 1000);
   await ZBBAutomation.delay(delay2);
   const nodes = await ZBBAutomation.getAllTextNodes();
-  logger.info('越秀:6B-4', `点击后 dump 节点数=${nodes.length}`);
+  logger.info('越秀:5B-4', `点击后 dump 节点数=${nodes.length}`);
   return true;
 }
 
-// 越秀:7 点"去推荐" (Y值最大)
-async function yuexiuStep7ClickRecommend(): Promise<boolean> {
-  logger.info('越秀:7', '点"去推荐" (Y值最大)');
+// 越秀:6 (原越秀:7) 点"去推荐" (Y值最大)
+async function yuexiuStep6ClickRecommend(): Promise<boolean> {
+  logger.info('越秀:6', '点"去推荐" (Y值最大)');
   const nodes = await ZBBAutomation.getAllTextNodes();
   const recommendNodes = nodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
   if (recommendNodes.length === 0) {
-    logger.warn('越秀:7', '未找到"去推荐"');
+    logger.warn('越秀:6', '未找到"去推荐"');
     return false;
   }
   const target = recommendNodes.reduce((max: any, n: any) =>
     (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
   );
-  logger.info('越秀:7', `找到"去推荐" @ (${target.centerX}, ${target.centerY}), 点击`);
+  logger.info('越秀:6', `找到"去推荐" @ (${target.centerX}, ${target.centerY}), 点击`);
   await click.byNode(target);
   await ZBBAutomation.delay(2000);
   return true;
 }
 
-// 越秀:8 验证推荐页 (V2 步骤 8.5 verifyAndRecover)
-async function yuexiuStep8VerifyRecommendPage(): Promise<boolean> {
-  logger.info('越秀:8', '验证推荐页 fingerprint (V2 步骤 8.5 verifyAndRecover)');
+// 越秀:7 (原越秀:8) 验证推荐页 (V2 步骤 8.5 verifyAndRecover)
+async function yuexiuStep7VerifyRecommendPage(): Promise<boolean> {
+  logger.info('越秀:7', '验证推荐页 fingerprint (V2 步骤 8.5 verifyAndRecover)');
   try {
-    const nodes = await ZBBAutomation.getAllTextNodes();
     const result = await verifyAndRecover('推荐赚佣', { maxRetries: 1, timeoutMs: 5000 });
     if (result.ok) {
-      logger.info('越秀:8', '验证推荐页 ✓');
+      logger.info('越秀:7', '验证推荐页 ✓');
       return true;
     }
-    logger.warn('越秀:8', `验证推荐页失败: ${result.reason || 'unknown'}`);
+    logger.warn('越秀:7', `验证推荐页失败: ${result.reason || 'unknown'}`);
     return false;
   } catch (e: any) {
-    logger.warn('越秀:8', `verifyAndRecover 异常: ${e}`);
+    logger.warn('越秀:7', `verifyAndRecover 异常: ${e}`);
     return false;
   }
 }
 
-// 越秀:10 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机)
-async function yuexiuStep10InputPhone(customer: CustomerInfo): Promise<boolean> {
-  logger.info('越秀:10', `输入手机号 (longPress 粘贴): ${customer.phoneLast4}`);
+// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机)
+async function yuexiuStep9InputPhone(customer: CustomerInfo): Promise<boolean> {
+  logger.info('越秀:9', `输入手机号 (longPress 粘贴): ${customer.phoneLast4}`);
 
-  // 找手机号输入框 (优先 "请输入手机号" → fallback "手机号")
-  let ok = await findWithRecovery('越秀:10', async () => click.byText('请输入手机号'));
+  let ok = await findWithRecovery('越秀:9', async () => click.byText('请输入手机号'));
   if (!ok) {
-    logger.warn('越秀:10', '未找到"请输入手机号", 尝试"手机号"');
-    ok = await findWithRecovery('越秀:10 alt', async () => click.byText('手机号'));
+    logger.warn('越秀:9', '未找到"请输入手机号", 尝试"手机号"');
+    ok = await findWithRecovery('越秀:9 alt', async () => click.byText('手机号'));
     if (!ok) {
-      logger.error('越秀:10', '未找到手机号输入框');
+      logger.error('越秀:9', '未找到手机号输入框');
       return false;
     }
     await longPress.byText('手机号', 1500);
@@ -283,58 +295,58 @@ async function yuexiuStep10InputPhone(customer: CustomerInfo): Promise<boolean> 
   }
 
   const pasteMenuDelay = 2000 + Math.floor(Math.random() * 500);
-  logger.info('越秀:10', `等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
+  logger.info('越秀:9', `等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
   await ZBBAutomation.delay(pasteMenuDelay);
 
   return await click.byText('粘贴');
 }
 
-// 越秀:11 输入姓名
-async function yuexiuStep11InputName(customer: CustomerInfo): Promise<boolean> {
-  logger.info('越秀:11', `输入姓名: ${customer.customerName}`);
-  let ok = await findWithRecovery('越秀:11', async () => click.byText('请输入姓名'));
+// 越秀:10 (原越秀:11) 输入姓名
+async function yuexiuStep10InputName(customer: CustomerInfo): Promise<boolean> {
+  logger.info('越秀:10', `输入姓名: ${customer.customerName}`);
+  let ok = await findWithRecovery('越秀:10', async () => click.byText('请输入姓名'));
   if (!ok) {
-    logger.warn('越秀:11', '未找到"请输入姓名", 尝试"姓名"');
-    ok = await findWithRecovery('越秀:11 alt', async () => click.byText('姓名'));
+    logger.warn('越秀:10', '未找到"请输入姓名", 尝试"姓名"');
+    ok = await findWithRecovery('越秀:10 alt', async () => click.byText('姓名'));
     if (!ok) {
-      logger.error('越秀:11', '未找到姓名输入框');
+      logger.error('越秀:10', '未找到姓名输入框');
       return false;
     }
   }
   await ZBBAutomation.delay(500);
-  logger.info('越秀:11', `已点击姓名输入框, 等 native input 输入 ${customer.customerName}`);
+  logger.info('越秀:10', `已点击姓名输入框, 等 native input 输入 ${customer.customerName}`);
   await ZBBAutomation.delay(1000);
   return true;
 }
 
-// 越秀:12 选性别 (3 层判断 - 末字字典 + 兜底男)
-async function yuexiuStep12SelectGender(customer: CustomerInfo): Promise<boolean> {
-  logger.info('越秀:12', `选性别: ${customer.customerName}`);
+// 越秀:11 (原越秀:12) 选性别 (3 层判断 - 末字字典 + 兜底男)
+async function yuexiuStep11SelectGender(customer: CustomerInfo): Promise<boolean> {
+  logger.info('越秀:11', `选性别: ${customer.customerName}`);
   const gender = guessGenderFromName(customer.customerName);
-  const genderText = gender === 'female' ? '女' : '男';  // unknown → 兜底男
-  logger.info('越秀:12', `推断 ${gender} → 选"${genderText}"`);
+  const genderText = gender === 'female' ? '女' : '男';
+  logger.info('越秀:11', `推断 ${gender} → 选"${genderText}"`);
   return await click.byText(genderText);
 }
 
-// 越秀:13 验证输入内容
-async function yuexiuStep13VerifyInput(customer: CustomerInfo): Promise<boolean> {
-  logger.info('越秀:13', '验证输入内容 (姓名 + 手机号末4)');
+// 越秀:12 (原越秀:13) 验证输入内容
+async function yuexiuStep12VerifyInput(customer: CustomerInfo): Promise<boolean> {
+  logger.info('越秀:12', '验证输入内容 (姓名 + 手机号末4)');
   const nodes = await ZBBAutomation.getAllTextNodes();
   const nameFound = nodes.some((n: any) => n.text === customer.customerName);
   const phoneFound = nodes.some((n: any) => n.text?.endsWith(customer.phoneLast4 || ''));
-  logger.info('越秀:13', `姓名"${customer.customerName}" ${nameFound ? '✓' : '✗'}, 手机号末4"${customer.phoneLast4}" ${phoneFound ? '✓' : '✗'}`);
+  logger.info('越秀:12', `姓名"${customer.customerName}" ${nameFound ? '✓' : '✗'}, 手机号末4"${customer.phoneLast4}" ${phoneFound ? '✓' : '✗'}`);
   return nameFound && phoneFound;
 }
 
-// 越秀:14 点"立即推荐"
-async function yuexiuStep14ClickSubmit(): Promise<boolean> {
-  logger.info('越秀:14', '点"立即推荐"');
-  return await findWithRecovery('越秀:14', async () => click.byText('立即推荐'));
+// 越秀:13 (原越秀:14) 点"立即推荐"
+async function yuexiuStep13ClickSubmit(): Promise<boolean> {
+  logger.info('越秀:13', '点"立即推荐"');
+  return await findWithRecovery('越秀:13', async () => click.byText('立即推荐'));
 }
 
-// 越秀:15 检测报备结果 + 更新 DB (V32.36.52 markReportDone)
-async function yuexiuStep15DetectResult(customer: CustomerInfo): Promise<'valid' | 'invalid' | 'timeout'> {
-  logger.info('越秀:15', '检测报备结果 (3 路分支)');
+// 越秀:14 (原越秀:15) 检测报备结果 + 更新 DB
+async function yuexiuStep14DetectResult(customer: CustomerInfo): Promise<'valid' | 'invalid' | 'timeout'> {
+  logger.info('越秀:14', '检测报备结果 (3 路分支)');
   await ZBBAutomation.delay(3000);
 
   let baobeiMode: 'valid' | 'invalid' | 'timeout' = 'timeout';
@@ -342,63 +354,59 @@ async function yuexiuStep15DetectResult(customer: CustomerInfo): Promise<'valid'
     const nodes = await ZBBAutomation.getAllTextNodes();
     if (nodes.some((n: any) => n.text?.includes('报备有效'))) {
       baobeiMode = 'valid';
-      logger.info('越秀:15', `第 ${attempt}/3 次检测到"报备有效"`);
+      logger.info('越秀:14', `第 ${attempt}/3 次检测到"报备有效"`);
       break;
     }
     if (nodes.some((n: any) => n.text?.includes('报备无效') || n.text?.includes('重号'))) {
       baobeiMode = 'invalid';
-      logger.info('越秀:15', `第 ${attempt}/3 次检测到"报备无效"`);
+      logger.info('越秀:14', `第 ${attempt}/3 次检测到"报备无效"`);
       break;
     }
-    logger.info('越秀:15', `第 ${attempt}/3 次未检测到, 等 1.5s`);
+    logger.info('越秀:14', `第 ${attempt}/3 次未检测到, 等 1.5s`);
     await ZBBAutomation.delay(1500);
   }
 
-  // V32.36.112 反馈 6: 越秀 + 保利共用 expo-sqlite, markReportDone 复用 V32.36.52
-  // 注意: CustomerInfo 没有 reportId 字段, 用 reportIds[0] (跟 baoli 同款)
   try {
     const reportId = customer.reportIds?.[0];
     if (reportId !== undefined) {
       if (baobeiMode === 'valid') {
         await markReportDone(reportId, 'done');
-        logger.info('越秀:15', `markReportDone(${reportId}) ✓ done`);
+        logger.info('越秀:14', `markReportDone(${reportId}) ✓ done`);
       } else if (baobeiMode === 'invalid') {
         await markReportDone(reportId, '重号');
-        logger.info('越秀:15', `markReportDone(${reportId}) ✓ 重号`);
+        logger.info('越秀:14', `markReportDone(${reportId}) ✓ 重号`);
       } else {
-        logger.warn('越秀:15', 'timeout, 不写 DB');
+        logger.warn('越秀:14', 'timeout, 不写 DB');
       }
     } else {
-      logger.warn('越秀:15', 'CustomerInfo.reportIds 为空, 跳过 markReportDone');
+      logger.warn('越秀:14', 'CustomerInfo.reportIds 为空, 跳过 markReportDone');
     }
   } catch (e: any) {
-    logger.warn('越秀:15', `markReportDone 异常 (best-effort): ${e}`);
+    logger.warn('越秀:14', `markReportDone 异常 (best-effort): ${e}`);
   }
 
   return baobeiMode;
 }
 
-// 越秀:16 反馈 (拉千机 + 一致性校验 + 点"报备有效/无效" + 自动 Dialog)
-async function yuexiuStep16Feedback(customer: CustomerInfo, baobeiMode: 'valid' | 'invalid'): Promise<boolean> {
-  logger.info('越秀:16', `反馈 (baobeiMode=${baobeiMode})`);
+// 越秀:15 (原越秀:16) 反馈 (拉千机 + 一致性校验 + 自动 Dialog)
+async function yuexiuStep15Feedback(customer: CustomerInfo, baobeiMode: 'valid' | 'invalid'): Promise<boolean> {
+  logger.info('越秀:15', `反馈 (baobeiMode=${baobeiMode})`);
 
-  // 越秀:16-A: 返回 + Home
-  logger.info('越秀:16-A', 'tap 返回 + Home (V2 v22.02.12 实战反证)');
+  logger.info('越秀:15-A', 'tap 返回 + Home');
   try {
     await pressKey.back();
     await ZBBAutomation.delay(1000);
   } catch (e: any) {
-    logger.warn('越秀:16-A', `pressKey.back 异常 (best-effort): ${e}`);
+    logger.warn('越秀:15-A', `pressKey.back 异常: ${e}`);
   }
   try {
     await pressKey.home();
     await ZBBAutomation.delay(1500);
   } catch (e: any) {
-    logger.warn('越秀:16-A', `pressKey.home 异常 (best-effort): ${e}`);
+    logger.warn('越秀:15-A', `pressKey.home 异常: ${e}`);
   }
 
-  // 越秀:16-B: 拉起千机
-  logger.info('越秀:16-B', '打开千机 (launchAppWithAmStart)');
+  logger.info('越秀:15-B', '打开千机');
   try {
     const pkg = qianjiPackage();
     const act = qianjiMainActivity();
@@ -406,81 +414,75 @@ async function yuexiuStep16Feedback(customer: CustomerInfo, baobeiMode: 'valid' 
     await launchWithAm(pkg, act);
     await ZBBAutomation.delay(5000);
   } catch (e: any) {
-    logger.error('越秀:16-B', `launchAppWithAmStart 失败: ${e}`);
+    logger.error('越秀:15-B', `launchAppWithAmStart 失败: ${e}`);
     return false;
   }
 
-  // 越秀:16-前置: 一致性校验
-  logger.info('越秀:16-前置', '一致性校验: 姓名 + 手机号末4');
+  logger.info('越秀:15-前置', '一致性校验: 姓名 + 手机号末4');
   const nodes = await ZBBAutomation.getAllTextNodes();
   const nameFound = nodes.some((n: any) => n.text === customer.customerName);
   const phoneFound = nodes.some((n: any) => n.text?.endsWith(customer.phoneLast4 || ''));
-  logger.info('越秀:16-前置', `姓名"${customer.customerName}" ${nameFound ? '✓' : '✗'}, 手机号末4"${customer.phoneLast4}" ${phoneFound ? '✓' : '✗'}`);
+  logger.info('越秀:15-前置', `姓名"${customer.customerName}" ${nameFound ? '✓' : '✗'}, 手机号末4"${customer.phoneLast4}" ${phoneFound ? '✓' : '✗'}`);
 
   if (!nameFound || !phoneFound) {
-    logger.error('越秀:16-前置', '✗ 一致性校验失败, 弹 Dialog');
+    logger.error('越秀:15-前置', '✗ 一致性校验失败, 弹 Dialog');
     await raiseAlert('小主，这个客户和已经报备的不一致，请核对！', 30000, true);
-    return false;  // 让 catch 走 raiseAlert + YUEXIU_INTERVENE
+    return false;
   }
-  logger.info('越秀:16-前置', '✓ 一致性校验通过');
+  logger.info('越秀:15-前置', '✓ 一致性校验通过');
 
-  // 越秀:16-B: 找"报备有效" / "报备无效"
   const buttonText = baobeiMode === 'invalid' ? '报备无效' : '报备有效';
-  logger.info('越秀:16-B', `找"${buttonText}"`);
-  const ok = await findWithRecovery('越秀:16-B', async () => click.byText(buttonText));
+  logger.info('越秀:15-B', `找"${buttonText}"`);
+  const ok = await findWithRecovery('越秀:15-B', async () => click.byText(buttonText));
   if (ok) {
-    logger.info('越秀:16-B', `已点"${buttonText}"`);
+    logger.info('越秀:15-B', `已点"${buttonText}"`);
   } else {
-    logger.warn('越秀:16-B', `未找到"${buttonText}", 跳过`);
+    logger.warn('越秀:15-B', `未找到"${buttonText}", 跳过`);
   }
 
-  // 越秀:16-B2: 自动处理 Dialog
   await ZBBAutomation.delay(2000);
   if (baobeiMode === 'valid') {
-    logger.info('越秀:16-B2', '找"确定" (报备有效 Dialog)');
+    logger.info('越秀:15-B2', '找"确定"');
     const confirmOk = await click.byText('确定');
     if (confirmOk) {
       await ZBBAutomation.delay(2000);
     } else {
-      logger.warn('越秀:16-B2', '未找到"确定"');
+      logger.warn('越秀:15-B2', '未找到"确定"');
     }
   } else {
-    logger.info('越秀:16-B2', '找"客户在开发商系统已存在" (报备无效 Dialog)');
+    logger.info('越秀:15-B2', '找"客户在开发商系统已存在"');
     const reasonOk = await click.byText('客户在开发商系统已存在');
     if (reasonOk) {
       await ZBBAutomation.delay(1000);
-      logger.info('越秀:16-B3', '找"提交"');
+      logger.info('越秀:15-B3', '找"提交"');
       const submitOk = await click.byText('提交');
       if (submitOk) {
         await ZBBAutomation.delay(2000);
       } else {
-        logger.warn('越秀:16-B3', '未找到"提交"');
+        logger.warn('越秀:15-B3', '未找到"提交"');
       }
     } else {
-      logger.warn('越秀:16-B2', '未找到"客户在开发商系统已存在"');
+      logger.warn('越秀:15-B2', '未找到"客户在开发商系统已存在"');
     }
   }
 
   return true;
 }
 
-// 越秀:17 清理 (V4 下滑刷新替代 V2 exitMiniProgram) + YUEXIU_COMPLETE + inline hook
-async function yuexiuStep17CleanupAndComplete(): Promise<void> {
-  logger.info('越秀:17', '清理 (V4 下滑刷新替代 V2 exitMiniProgram, V32.36.65+69 老板拍板)');
+// 越秀:16 (原越秀:17) 清理 (V4 下滑刷新替代 V2 exitMiniProgram) + YUEXIU_COMPLETE + inline hook
+async function yuexiuStep16CleanupAndComplete(): Promise<void> {
+  logger.info('越秀:16', '清理 (V4 下滑刷新替代 V2 exitMiniProgram, V32.36.65+69)');
 
-  // 越秀:17-A: 下滑刷新当前界面
-  logger.info('越秀:17-A', '下滑屏幕刷新当前界面 (V32.36.65+69 + V32.36.96 老板拍板)');
+  logger.info('越秀:16-A', '下滑屏幕刷新当前界面');
   await ZBBAutomation.swipe(px(180), px(267), px(180), px(600), 500);
   await ZBBAutomation.delay(1000 + Math.floor(Math.random() * 1000));
   const nodes = await ZBBAutomation.getAllTextNodes();
-  logger.info('越秀:17-A', `刷新后 dump 节点数=${nodes.length}`);
+  logger.info('越秀:16-A', `刷新后 dump 节点数=${nodes.length}`);
 
-  // 越秀:17-B: YUEXIU_COMPLETE
   orchestrator.send('YUEXIU_COMPLETE');
   logger.info('app', '========== 越秀流程完成 ==========');
 
-  // 越秀:17-C: inline hook 调下一组 (V32.36.111 移植)
-  logger.info('越秀', '越秀完成 → 调 runZbbWorkflowAuto 检测下一组 (V32.36.112 老板拍板)');
+  logger.info('越秀', '越秀完成 → 调 runZbbWorkflowAuto 检测下一组 (V32.36.114 老板拍板)');
   try {
     const autoResult = await runZbbWorkflowAuto();
     logger.info('越秀', `runZbbWorkflowAuto 完成: totalRuns=${autoResult.totalRuns}`);
