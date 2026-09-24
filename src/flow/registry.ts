@@ -15,6 +15,7 @@
 
 import type { FlowConfig, ProjectType } from './types';
 import { runBaoliFlow } from './baoli';
+import { runYuexiuFlow } from './yuexiu'; // 🆕 V32.36.112 老板 09-24 拍板: 越秀端实装 (应用 6 点反馈)
 
 /**
  * 端流程注册表 (08-30 老板拍板 Flow Router)
@@ -40,11 +41,15 @@ export const FLOW_REGISTRY: Record<ProjectType, FlowRegistryEntry> = {
     onFailed: 'BAOLI_FAILED',
   },
 
-  // 越秀端 — V4.x 暂未实装 (08-30 老板拍板预留)
+  // 越秀端 — V4.x 实装 (V32.36.112 老板 09-24 拍板 - 应用 6 点反馈)
+  //   1. 千机端复用现有流程, 只在关键步骤 (千机步骤 5 项目类型判断) 做调整
+  //   2. 越秀步骤编号从 1 开始 (独立编号, 不延续千机步骤 8)
+  //   3. 补充 V2 步骤 5.5 B 方案 (查找"推荐购房"+"查看更多" A/B 分支)
+  //   4. dump + 取客户: 由 Orchestrator 端路由传 customer (不再从 DB 读)
+  //   5. 清理用 V4 滑动刷新替代 V2 exitMiniProgram
+  //   6. 越秀 + 保利共用 V4 expo-sqlite, 客户只写一次 (千机步骤 6 写库)
   yuexiu: {
-    run: async () => {
-      throw new Error('越秀端待实装 (V4.x S2.4)');
-    },
+    run: runYuexiuFlow,
     statePrefix: 'YUEXIU',
     logTag: '越秀',
     onComplete: 'YUEXIU_COMPLETE',
