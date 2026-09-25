@@ -256,22 +256,37 @@ async function yuexiuStep5BFallback(): Promise<boolean> {
   return true;
 }
 
-// 越秀:6 (原越秀:7) 点"去推荐" (Y值最大)
+// 越秀:6 (原越秀:7) 点"去推荐" (Y值最大) - 🆕 V32.36.119 老板 09-25 拍板: 重试 2-3 次
 async function yuexiuStep6ClickRecommend(): Promise<boolean> {
-  logger.info('越秀:6', '点"去推荐" (Y值最大)');
-  const nodes = await ZBBAutomation.getAllTextNodes();
-  const recommendNodes = nodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
-  if (recommendNodes.length === 0) {
-    logger.warn('越秀:6', '未找到"去推荐"');
-    return false;
+  logger.info('越秀:6', '点"去推荐" (Y值最大) - V32.36.119 老板拍板 重试 2-3 次');
+
+  // 🆕 V32.36.119 老板 09-25 拍板:
+  //   老板原话: '步骤5结束后,等待1-2S间的随机时间,执行步骤6;没有找到,则再次等待1-2S的随机时间,再次查找;未找到再报错!'
+  //   老板 nova 07:56:29 log 反证: 越秀:6 找不到"去推荐"直接报错, 没有重试
+  //   真因: WebView 渲染慢, 第 1 次 dump 可能读到不完整界面
+  //   修法: 3 次重试, 每次间隔 1-2s 随机等待
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // 步骤 5 结束后等待 1-2s 随机时间
+    const waitMs = 1000 + Math.floor(Math.random() * 1000);
+    logger.info('越秀:6', `第 ${attempt}/3 次查找"去推荐", 先等 ${waitMs}ms`);
+    await ZBBAutomation.delay(waitMs);
+
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    const recommendNodes = nodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
+    if (recommendNodes.length > 0) {
+      const target = recommendNodes.reduce((max: any, n: any) =>
+        (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
+      );
+      logger.info('越秀:6', `✓ 第 ${attempt}/3 次找到"去推荐" @ (${target.centerX}, ${target.centerY}), 点击`);
+      await click.byNode(target);
+      await ZBBAutomation.delay(2000);
+      return true;
+    }
+    logger.warn('越秀:6', `第 ${attempt}/3 次未找到"去推荐"`);
   }
-  const target = recommendNodes.reduce((max: any, n: any) =>
-    (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
-  );
-  logger.info('越秀:6', `找到"去推荐" @ (${target.centerX}, ${target.centerY}), 点击`);
-  await click.byNode(target);
-  await ZBBAutomation.delay(2000);
-  return true;
+
+  logger.error('越秀:6', '3 次都未找到"去推荐", 报错');
+  return false;
 }
 
 // 越秀:7 (原越秀:8) 验证推荐页 (V2 步骤 8.5 verifyAndRecover)
