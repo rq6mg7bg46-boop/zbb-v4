@@ -44,7 +44,7 @@ import { runZbbWorkflowAuto } from './index';
 import type { CustomerInfo } from './qianji';
 import { px, centerXDp } from '@/utils/DpUtil';
 import { qianjiPackage, qianjiMainActivity } from '@/config/env';
-import { scrollUpPPlus, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
+import { scrollUpPPlus, scrollUpPPlusLite, pPlusDelay } from '@/utils/PPlusSwipe'; // 🆕 V32.36.113 + V32.36.121 老板 09-25 拍板: 学习 V4 保利 P+ 拟人化上滑
 
 const APP_PACKAGES = {
   WECHAT_WORK: 'com.tencent.wework',
@@ -152,14 +152,11 @@ async function yuexiuStep2ClickWorkbench(): Promise<boolean> {
 // 越秀:3 查找"越秀地产悦秀会" (V32.36.113 + baoli 步骤 3 同款: scrollUpPPlus + judge.isScreenText)
 async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
   logger.info('越秀:3', '查找越秀地产悦秀会...');
-  await ZBBAutomation.delay(4000 + Math.random() * 2000);
+  // 🆕 V32.36.121 老板 09-25 拍板: 4-6s 太久, 改 1-2s 随机 (跟 baoli 步骤 3 同款 pPlusDelay)
+  await ZBBAutomation.delay(1000 + Math.random() * 1000);
 
   // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
-  //   老板原话: '学习V4保利端的操作,在工作台是上滑!!'
-  //   老板 nova 16:50:19 log 反证: swipe.up() 走 swipeShell (V32.36.9 已知 bug) 实际没滑动
-  //   V4 baoli.ts:349 步骤3 用 scrollUpPPlus() + pPlusDelay(2000, 500) 老板装机实测生效
-  //   V32.36.18 反证: judge.isScreenText 单次 dump 不重试 (避免企微 WebView 卡死)
-  //   修法: 跟 baoli 步骤 3 完全一致 (5 次循环: 先 judge + 再 scrollUpPPlus + 再 pPlusDelay)
+  // 🆕 V32.36.121 老板 09-25 拍板: scrollUpPPlus 默认 (180,672)→(180,224) 上滑太多, 改用 scrollUpPPlusLite (180,672)→(180,424) 滑 248dp
   for (let attempt = 0; attempt < 5; attempt++) {
     const found = await judge.isScreenText('越秀地产悦秀会');
     if (found) {
@@ -170,9 +167,11 @@ async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
         return true;
       }
     }
-    const swipeOk = await scrollUpPPlus();
-    logger.info('越秀:3', `scrollUpPPlus 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
-    await pPlusDelay(2000, 500);
+    // V32.36.121 改用 scrollUpPPlusLite (上滑 31% 屏, 不再 56% 屏)
+    const swipeOk = await scrollUpPPlusLite();
+    logger.info('越秀:3', `scrollUpPPlusLite 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
+    // V32.36.121 老板拍板: pPlusDelay(1000, 1000) = 1-2s 随机
+    await pPlusDelay(1000, 1000);
   }
 
   // 兜底: dp(180, 400)
@@ -265,6 +264,10 @@ async function yuexiuStep6ClickRecommend(): Promise<boolean> {
   //   老板 nova 07:56:29 log 反证: 越秀:6 找不到"去推荐"直接报错, 没有重试
   //   真因: WebView 渲染慢, 第 1 次 dump 可能读到不完整界面
   //   修法: 3 次重试, 每次间隔 1-2s 随机等待
+  // 🆕 V32.36.121 老板 09-25 反证: click.byNode 显示点击但实际没点击
+  //   老板 nova 08:19:25 log: '[越秀:6] ✓ 第 2/3 次找到"去推荐" @ (937, 2280), 点击'
+  //   真因: click.byNode 命中 stale 节点 (WebView 重新渲染后旧坐标失效) + Y=2280 接近屏幕底部 (2400-2280=120px) 点击区被导航栏遮挡
+  //   修法: 用 byCoords 兜底 + Y < 2200 屏幕内坐标检查 + 上滑让"去推荐"进中部
   for (let attempt = 1; attempt <= 3; attempt++) {
     // 步骤 5 结束后等待 1-2s 随机时间
     const waitMs = 1000 + Math.floor(Math.random() * 1000);
@@ -277,8 +280,32 @@ async function yuexiuStep6ClickRecommend(): Promise<boolean> {
       const target = recommendNodes.reduce((max: any, n: any) =>
         (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
       );
-      logger.info('越秀:6', `✓ 第 ${attempt}/3 次找到"去推荐" @ (${target.centerX}, ${target.centerY}), 点击`);
-      await click.byNode(target);
+      const targetY_dp = Math.round((target.centerY as number) / 3);  // px → dp (density=3)
+      const targetX_dp = Math.round((target.centerX as number) / 3);
+      logger.info('越秀:6', `✓ 第 ${attempt}/3 次找到"去推荐" @ px(${target.centerX}, ${target.centerY}) → dp(${targetX_dp}, ${targetY_dp})`);
+
+      // V32.36.121 屏幕内坐标检查 (Y dp < 700 在屏幕中部, 否则上滑)
+      if (targetY_dp > 700) {
+        logger.warn('越秀:6', `去推荐 Y=${targetY_dp}dp 接近屏幕底部 (>700), 触发 scrollUpPPlusLite 让它进中部 (V32.36.121)`);
+        await scrollUpPPlusLite();
+        await ZBBAutomation.delay(1500);
+        // 重新 dump 找"去推荐"
+        const newNodes = await ZBBAutomation.getAllTextNodes();
+        const newRecommend = newNodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
+        if (newRecommend.length > 0) {
+          const newTarget = newRecommend.reduce((max: any, n: any) =>
+            (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
+          );
+          const newY_dp = Math.round((newTarget.centerY as number) / 3);
+          const newX_dp = Math.round((newTarget.centerX as number) / 3);
+          logger.info('越秀:6', `  重 dump: 去推荐 @ dp(${newX_dp}, ${newY_dp})`);
+          await click.byCoords(newX_dp, newY_dp);
+        } else {
+          await click.byCoords(targetX_dp, targetY_dp);
+        }
+      } else {
+        await click.byCoords(targetX_dp, targetY_dp);
+      }
       await ZBBAutomation.delay(2000);
       return true;
     }

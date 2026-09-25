@@ -102,6 +102,22 @@ export async function scrollUpPPlus(): Promise<boolean> {
 }
 
 /**
+ * V32.36.121 老板 09-25 拍板: scrollUpPPlus 默认 (180,672)→(180,224) 上滑太多 (448dp)
+ *   老板 nova log: 'humanSwipeWithBounceDp: (180,672)dp → (180,224)dp 上滑太多'
+ *   修法: 改用 (180,672)dp → (180,424)dp = 滑 248dp (31% 屏), 更温和
+ *   适用场景: 越秀小程序"推荐购房"+"查看更多"查找 (老板 nova 装机实测滑多了内容过头)
+ */
+export async function scrollUpPPlusLite(): Promise<boolean> {
+  return humanSwipeWithBounceDp(
+    centerXDp(),
+    Math.round(screenHeightDp() * 0.84),
+    centerXDp(),
+    Math.round(screenHeightDp() * 0.53),  // 800 * 0.53 = 424dp, 滑 248dp
+    500
+  );
+}
+
+/**
  * 屏幕中心下滑 (V2.x BaoliService 步骤 16 截图前下滑 金标准)
  * - 起点: 屏幕中心 X, 屏上 28% Y
  * - 终点: 屏幕中心 X, 屏下 84% Y
