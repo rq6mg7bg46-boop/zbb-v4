@@ -306,22 +306,28 @@ async function yuexiuStep7VerifyRecommendPage(): Promise<boolean> {
   }
 }
 
-// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机)
+// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机) - 🆕 V32.36.120 老板 09-25 拍板
 async function yuexiuStep9InputPhone(customer: CustomerInfo): Promise<boolean> {
   logger.info('越秀:9', `输入手机号 (longPress 粘贴): ${customer.phoneLast4}`);
 
-  let ok = await findWithRecovery('越秀:9', async () => click.byText('请输入手机号'));
+  // 🆕 V32.36.120 老板 09-25 反证: 老板 nova dump.xml 截图显示越秀小程序手机号输入框 placeholder 是"请输入手机号码" (带"码"字)
+  //   老板 nova 08:01:59 log: '[click.byText] getAllTextNodes 没找到有效节点: "请输入手机号" (可能所有匹配节点坐标无效)'
+  //   老板 nova dump.xml 实际节点: EditText text="" NAF=true (placeholder 不在 dump text 里)
+  //   真因: 越秀小程序用 placeholder hint 不是真实 text, 程序找的字符串少 1 个字
+  //   修法: 改 placeholder 字符串为"请输入手机号码" (带"码"字) + byCoords 兜底 (EditText bounds [303,1708]-[732,1783])
+  let ok = await findWithRecovery('越秀:9', async () => click.byText('请输入手机号码'));
   if (!ok) {
-    logger.warn('越秀:9', '未找到"请输入手机号", 尝试"手机号"');
-    ok = await findWithRecovery('越秀:9 alt', async () => click.byText('手机号'));
-    if (!ok) {
-      logger.error('越秀:9', '未找到手机号输入框');
-      return false;
-    }
-    await longPress.byText('手机号', 1500);
-  } else {
-    await longPress.byText('请输入手机号', 1500);
+    logger.warn('越秀:9', '未找到"请输入手机号码", 尝试"手机号码"');
+    ok = await findWithRecovery('越秀:9 alt', async () => click.byText('手机号码'));
   }
+  if (!ok) {
+    // 兜底: 直接用 dump.xml 看到的 EditText 坐标 [303,1708]-[732,1783] (dp 中心 ~172,581)
+    logger.warn('越秀:9', 'placeholder 找不到, 兜底 byCoords dp(172, 581) [V32.36.120 老板反证 dump]');
+    await ZBBAutomation.swipe(px(172), px(560), px(172), px(580), 200);
+    await ZBBAutomation.delay(500);
+    return await longPress.byCoords(172, 580, 1500);
+  }
+  await longPress.byText('请输入手机号码', 1500);
 
   const pasteMenuDelay = 2000 + Math.floor(Math.random() * 500);
   logger.info('越秀:9', `等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
@@ -330,17 +336,22 @@ async function yuexiuStep9InputPhone(customer: CustomerInfo): Promise<boolean> {
   return await click.byText('粘贴');
 }
 
-// 越秀:10 (原越秀:11) 输入姓名
+// 越秀:10 (原越秀:11) 输入姓名 - 🆕 V32.36.120 老板 09-25 拍板: placeholder 修正
 async function yuexiuStep10InputName(customer: CustomerInfo): Promise<boolean> {
   logger.info('越秀:10', `输入姓名: ${customer.customerName}`);
-  let ok = await findWithRecovery('越秀:10', async () => click.byText('请输入姓名'));
+
+  // 🆕 V32.36.120 老板 09-25 反证: 越秀小程序姓名输入框 placeholder 是"请输入客户姓名" (带"客户"字)
+  //   老板 nova dump.xml 实际节点: EditText text="" NAF=true
+  //   修法: 改 placeholder 字符串为"请输入客户姓名" (带"客户"字) + byCoords 兜底
+  let ok = await findWithRecovery('越秀:10', async () => click.byText('请输入客户姓名'));
   if (!ok) {
-    logger.warn('越秀:10', '未找到"请输入姓名", 尝试"姓名"');
-    ok = await findWithRecovery('越秀:10 alt', async () => click.byText('姓名'));
-    if (!ok) {
-      logger.error('越秀:10', '未找到姓名输入框');
-      return false;
-    }
+    logger.warn('越秀:10', '未找到"请输入客户姓名", 尝试"客户姓名"');
+    ok = await findWithRecovery('越秀:10 alt', async () => click.byText('客户姓名'));
+  }
+  if (!ok) {
+    // 兜底: 姓名 EditText bounds [303,1570]-[996,1645] (dp 中心 ~217,540)
+    logger.warn('越秀:10', 'placeholder 找不到, 兜底 byCoords dp(217, 540) [V32.36.120 老板反证 dump]');
+    return await click.byCoords(217, 540);
   }
   await ZBBAutomation.delay(500);
   logger.info('越秀:10', `已点击姓名输入框, 等 native input 输入 ${customer.customerName}`);
