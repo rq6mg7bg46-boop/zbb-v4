@@ -26,18 +26,36 @@ async function longPressAt(
 
 /**
  * 按文字长按 (默认 600ms, PRECISE 档 ±2/±2)
+ *
+ * V32.36.123 老板 09-25 反证:
+ *   老板 nova 08:52:34 log: 'WARN [longPress.byText] 没找到: "请输入手机号码"'
+ *   真因: 老板 nova 8:52:34 之前 click.byText('手机号码') 命中 (includes 模糊匹配)
+ *         但 longPress.byText('请输入手机号码') 没找到 (调 ZBBAutomation.findElementByText)
+ *         V32.36.22 click.byText 已改用 getAllTextNodes + includes 模糊匹配, longPress 没改
+ *   修法: 跟 click.byText 对齐, 用 getAllTextNodes + includes + centerX>0+centerY>0 过滤
  */
 export async function byText(
   text: string,
   durationMs: number = DEFAULT_DURATION_MS,
   level: HumanLevel = HumanLevel.PRECISE,
 ): Promise<boolean> {
-  const node = await ZBBAutomation.findElementByText(text);
-  if (!node || node.centerX === undefined || node.centerY === undefined) {
-    logger.warn('longPress.byText', `没找到: "${text}"`);
+  try {
+    const nodes = await ZBBAutomation.getAllTextNodes();
+    const node = nodes.find((n: any) => {
+      const t = (n.text ?? '').toString();
+      const x = n.centerX ?? -1;
+      const y = n.centerY ?? -1;
+      return t.includes(text) && x > 0 && y > 0;
+    });
+    if (!node) {
+      logger.warn('longPress.byText', `没找到: "${text}"`);
+      return false;
+    }
+    return longPressAt(node.centerX, node.centerY, durationMs, level);
+  } catch (e: any) {
+    logger.warn('longPress.byText', `异常: "${text}" ${e}`);
     return false;
   }
-  return longPressAt(node.centerX, node.centerY, durationMs, level);
 }
 
 /**

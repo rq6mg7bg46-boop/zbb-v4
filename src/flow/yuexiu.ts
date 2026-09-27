@@ -76,7 +76,7 @@ export async function runYuexiuFlow(customer: CustomerInfo): Promise<boolean> {
       if (!await yuexiuStep5BFallback()) throw new Error('越秀:5B 兜底流程失败');
     }
 
-    if (!await yuexiuStep6ClickRecommend()) throw new Error('越秀:6 找不到去推荐');
+    if (!await yuexiuStep6ClickRecommend(customer)) throw new Error('越秀:6 找不到去推荐');
 
     const verifyOk = await yuexiuStep7VerifyRecommendPage();
     if (!verifyOk) logger.warn('越秀:7', '验证推荐页失败 (best-effort, 继续)');
@@ -255,64 +255,146 @@ async function yuexiuStep5BFallback(): Promise<boolean> {
   return true;
 }
 
-// 越秀:6 (原越秀:7) 点"去推荐" (Y值最大) - 🆕 V32.36.119 老板 09-25 拍板: 重试 2-3 次
-async function yuexiuStep6ClickRecommend(): Promise<boolean> {
-  logger.info('越秀:6', '点"去推荐" (Y值最大) - V32.36.119 老板拍板 重试 2-3 次');
+// 越秀:6 (原越秀:7) 点"去推荐" - 🆕 V32.36.122 老板 09-25 拍板: 找项目右下方的去推荐
+async function yuexiuStep6ClickRecommend(customer: CustomerInfo): Promise<boolean> {
+  logger.info('越秀:6', `点"去推荐" (项目=${customer.projectName} 右下方第一个) - V32.36.122 老板拍板`);
 
-  // 🆕 V32.36.119 老板 09-25 拍板:
-  //   老板原话: '步骤5结束后,等待1-2S间的随机时间,执行步骤6;没有找到,则再次等待1-2S的随机时间,再次查找;未找到再报错!'
-  //   老板 nova 07:56:29 log 反证: 越秀:6 找不到"去推荐"直接报错, 没有重试
-  //   真因: WebView 渲染慢, 第 1 次 dump 可能读到不完整界面
-  //   修法: 3 次重试, 每次间隔 1-2s 随机等待
-  // 🆕 V32.36.121 老板 09-25 反证: click.byNode 显示点击但实际没点击
-  //   老板 nova 08:19:25 log: '[越秀:6] ✓ 第 2/3 次找到"去推荐" @ (937, 2280), 点击'
-  //   真因: click.byNode 命中 stale 节点 (WebView 重新渲染后旧坐标失效) + Y=2280 接近屏幕底部 (2400-2280=120px) 点击区被导航栏遮挡
-  //   修法: 用 byCoords 兜底 + Y < 2200 屏幕内坐标检查 + 上滑让"去推荐"进中部
+  // 🆕 V32.36.122 老板 09-25 拍板:
+  //   老板原话: '这里要点击的是位于"越秀金水云启"（px值为（x,y））右下方的第一个"去推荐"（px值为（x1,y1)), 即 x1>x 且 y 值最大'
+  //   老板 nova 09:03 dump 反证: 越秀"推荐购房"页面有多个项目（越秀郑轨金水观萃 / 越秀·金水云启 / 越秀·天悦江湾 等）
+  //     每个项目都有自己"去推荐"按钮, V4 旧逻辑"Y 最大"选到了屏外/别的项目按钮
+  //   真因: 多个项目 + 多个"去推荐"按钮, 必须按"项目名 X,Y"匹配, 不能简单按 Y 最大
+  //   修法: 找项目名节点 → 拿到 X,Y → 在所有"去推荐"里找"X>项目X 且 Y>项目Y 且 Y-项目Y 最小"的那个
+  //         兜底: 找不到 → 按 V32.36.119 重试 3 次 + 屏幕内坐标检查
+
+  const projectName = customer.projectName || '越秀·金水云启';
+
+  // 🆕 V32.36.119 老板 09-25 拍板: 3 次重试, 每次间隔 1-2s 随机等待
   for (let attempt = 1; attempt <= 3; attempt++) {
-    // 步骤 5 结束后等待 1-2s 随机时间
     const waitMs = 1000 + Math.floor(Math.random() * 1000);
-    logger.info('越秀:6', `第 ${attempt}/3 次查找"去推荐", 先等 ${waitMs}ms`);
+    logger.info('越秀:6', `第 ${attempt}/3 次查找, 先等 ${waitMs}ms`);
     await ZBBAutomation.delay(waitMs);
 
     const nodes = await ZBBAutomation.getAllTextNodes();
-    const recommendNodes = nodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
-    if (recommendNodes.length > 0) {
-      const target = recommendNodes.reduce((max: any, n: any) =>
-        (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
-      );
-      const targetY_dp = Math.round((target.centerY as number) / 3);  // px → dp (density=3)
-      const targetX_dp = Math.round((target.centerX as number) / 3);
-      logger.info('越秀:6', `✓ 第 ${attempt}/3 次找到"去推荐" @ px(${target.centerX}, ${target.centerY}) → dp(${targetX_dp}, ${targetY_dp})`);
 
-      // V32.36.121 屏幕内坐标检查 (Y dp < 700 在屏幕中部, 否则上滑)
-      if (targetY_dp > 700) {
-        logger.warn('越秀:6', `去推荐 Y=${targetY_dp}dp 接近屏幕底部 (>700), 触发 scrollUpPPlusLite 让它进中部 (V32.36.121)`);
+    // 1. 找项目名节点 (V32.36.122 老板反证: 项目名 text="越秀·金水云启" 等)
+    const projectNodes = nodes.filter((n: any) => n.text === projectName && n.centerX && n.centerY);
+    if (projectNodes.length === 0) {
+      logger.warn('越秀:6', `第 ${attempt}/3 次未找到项目名"${projectName}", 试 dump 模糊匹配`);
+      // 兜底: 模糊匹配 (text.includes(projectName 核心字))
+      const fuzzyNodes = nodes.filter((n: any) => {
+        const t = n.text || '';
+        return (projectName.includes('金水云启') ? t.includes('金水云启') : t.includes(projectName)) && n.centerX && n.centerY;
+      });
+      if (fuzzyNodes.length === 0) {
+        logger.warn('越秀:6', `第 ${attempt}/3 次模糊匹配也没找到"${projectName}"`);
+        continue;
+      }
+      projectNodes.push(...fuzzyNodes);
+    }
+    // 2. 选 Y 最大的项目名节点 (可能有重复, 如顶部 banner + 列表项)
+    const project = projectNodes.reduce((max: any, n: any) =>
+      (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
+    );
+    const projectX = project.centerX as number;
+    const projectY = project.centerY as number;
+    logger.info('越秀:6', `项目"${projectName}" @ px(${projectX}, ${projectY})`);
+
+    // 3. 找所有"去推荐"按钮
+    const recommendNodes = nodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
+    if (recommendNodes.length === 0) {
+      logger.warn('越秀:6', `第 ${attempt}/3 次未找到"去推荐"`);
+      continue;
+    }
+
+    // 4. V32.36.122 老板拍板逻辑: X > 项目X 且 Y > 项目Y 且 (Y - 项目Y) 最小
+    const target = recommendNodes
+      .filter((n: any) => n.centerX > projectX && n.centerY > projectY)
+      .reduce((min: any, n: any) => {
+        if (!min) return n;
+        const dCurr = (n.centerY ?? 0) - projectY;
+        const dMin = (min.centerY ?? 0) - projectY;
+        return dCurr < dMin ? n : min;
+      }, null as any);
+
+    if (!target) {
+      // 兜底: 选 X 最大的"去推荐" (项目右侧)
+      const fallbackTarget = recommendNodes.reduce((max: any, n: any) =>
+        (n.centerX ?? 0) > (max.centerX ?? 0) ? n : max
+      );
+      const fbY_dp = Math.round((fallbackTarget.centerY as number) / 3);
+      const fbX_dp = Math.round((fallbackTarget.centerX as number) / 3);
+      logger.warn('越秀:6', `第 ${attempt}/3 次 X>项目X 且 Y>项目Y 没匹配, 兜底选 X 最大的"去推荐" @ px(${fallbackTarget.centerX}, ${fallbackTarget.centerY}) → dp(${fbX_dp}, ${fbY_dp})`);
+      if (fbY_dp > 700) {
+        logger.warn('越秀:6', `去推荐 Y=${fbY_dp}dp 接近屏幕底部 (>700), 触发 scrollUpPPlusLite`);
         await scrollUpPPlusLite();
         await ZBBAutomation.delay(1500);
-        // 重新 dump 找"去推荐"
         const newNodes = await ZBBAutomation.getAllTextNodes();
         const newRecommend = newNodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
         if (newRecommend.length > 0) {
-          const newTarget = newRecommend.reduce((max: any, n: any) =>
-            (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
-          );
+          const newTarget = newRecommend
+            .filter((n: any) => n.centerX > projectX && n.centerY > projectY)
+            .reduce((min: any, n: any) => {
+              if (!min) return n;
+              const dCurr = (n.centerY ?? 0) - projectY;
+              const dMin = (min.centerY ?? 0) - projectY;
+              return dCurr < dMin ? n : min;
+            }, null as any);
+          if (newTarget) {
+            const newY_dp = Math.round((newTarget.centerY as number) / 3);
+            const newX_dp = Math.round((newTarget.centerX as number) / 3);
+            logger.info('越秀:6', `✓ 重 dump 后找到目标 @ dp(${newX_dp}, ${newY_dp}), byCoords`);
+            await click.byCoords(newX_dp, newY_dp);
+            await ZBBAutomation.delay(2000);
+            return true;
+          }
+        }
+      }
+      await click.byCoords(fbX_dp, fbY_dp);
+      await ZBBAutomation.delay(2000);
+      return true;
+    }
+
+    const targetY_dp = Math.round((target.centerY as number) / 3);
+    const targetX_dp = Math.round((target.centerX as number) / 3);
+    logger.info('越秀:6', `✓ 第 ${attempt}/3 次找到项目"${projectName}"右下方第一个"去推荐" @ px(${target.centerX}, ${target.centerY}) → dp(${targetX_dp}, ${targetY_dp})`);
+
+    if (targetY_dp > 700) {
+      logger.warn('越秀:6', `去推荐 Y=${targetY_dp}dp 接近屏幕底部 (>700), 触发 scrollUpPPlusLite`);
+      await scrollUpPPlusLite();
+      await ZBBAutomation.delay(1500);
+      const newNodes = await ZBBAutomation.getAllTextNodes();
+      const newProjectNodes = newNodes.filter((n: any) => n.text === projectName && n.centerX && n.centerY);
+      if (newProjectNodes.length > 0) {
+        const newProject = newProjectNodes.reduce((max: any, n: any) =>
+          (n.centerY ?? 0) > (max.centerY ?? 0) ? n : max
+        );
+        const newRecommend = newNodes.filter((n: any) => n.text === '去推荐' && n.centerX && n.centerY);
+        const newTarget = newRecommend
+          .filter((n: any) => n.centerX > (newProject.centerX as number) && n.centerY > (newProject.centerY as number))
+          .reduce((min: any, n: any) => {
+            if (!min) return n;
+            const dCurr = (n.centerY ?? 0) - (newProject.centerY as number);
+            const dMin = (min.centerY ?? 0) - (newProject.centerY as number);
+            return dCurr < dMin ? n : min;
+          }, null as any);
+        if (newTarget) {
           const newY_dp = Math.round((newTarget.centerY as number) / 3);
           const newX_dp = Math.round((newTarget.centerX as number) / 3);
           logger.info('越秀:6', `  重 dump: 去推荐 @ dp(${newX_dp}, ${newY_dp})`);
           await click.byCoords(newX_dp, newY_dp);
-        } else {
-          await click.byCoords(targetX_dp, targetY_dp);
+          await ZBBAutomation.delay(2000);
+          return true;
         }
-      } else {
-        await click.byCoords(targetX_dp, targetY_dp);
       }
+    } else {
+      await click.byCoords(targetX_dp, targetY_dp);
       await ZBBAutomation.delay(2000);
       return true;
     }
-    logger.warn('越秀:6', `第 ${attempt}/3 次未找到"去推荐"`);
   }
 
-  logger.error('越秀:6', '3 次都未找到"去推荐", 报错');
+  logger.error('越秀:6', '3 次都未找到, 报错');
   return false;
 }
 
