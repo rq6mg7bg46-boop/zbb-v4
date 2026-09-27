@@ -51,7 +51,7 @@ export async function byText(
       logger.warn('longPress.byText', `没找到: "${text}"`);
       return false;
     }
-    return longPressAt(node.centerX, node.centerY, durationMs, level);
+    return longPressAt(node.centerX ?? 0, node.centerY ?? 0, durationMs, level);
   } catch (e: any) {
     logger.warn('longPress.byText', `异常: "${text}" ${e}`);
     return false;

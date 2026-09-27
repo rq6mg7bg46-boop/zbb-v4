@@ -415,53 +415,56 @@ async function yuexiuStep7VerifyRecommendPage(): Promise<boolean> {
   }
 }
 
-// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机) - 🆕 V32.36.120 老板 09-25 拍板
+// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机) - 🆕 V32.36.124 老板 09-25 拍板: 学习 V2
 async function yuexiuStep9InputPhone(customer: CustomerInfo): Promise<boolean> {
   logger.info('越秀:9', `输入手机号 (longPress 粘贴): ${customer.phoneLast4}`);
 
-  // 🆕 V32.36.120 老板 09-25 反证: 老板 nova dump.xml 截图显示越秀小程序手机号输入框 placeholder 是"请输入手机号码" (带"码"字)
-  //   老板 nova 08:01:59 log: '[click.byText] getAllTextNodes 没找到有效节点: "请输入手机号" (可能所有匹配节点坐标无效)'
-  //   老板 nova dump.xml 实际节点: EditText text="" NAF=true (placeholder 不在 dump text 里)
-  //   真因: 越秀小程序用 placeholder hint 不是真实 text, 程序找的字符串少 1 个字
-  //   修法: 改 placeholder 字符串为"请输入手机号码" (带"码"字) + byCoords 兜底 (EditText bounds [303,1708]-[732,1783])
-  let ok = await findWithRecovery('越秀:9', async () => click.byText('请输入手机号码'));
-  if (!ok) {
-    logger.warn('越秀:9', '未找到"请输入手机号码", 尝试"手机号码"');
-    ok = await findWithRecovery('越秀:9 alt', async () => click.byText('手机号码'));
-  }
-  if (!ok) {
-    // 兜底: 直接用 dump.xml 看到的 EditText 坐标 [303,1708]-[732,1783] (dp 中心 ~172,581)
-    logger.warn('越秀:9', 'placeholder 找不到, 兜底 byCoords dp(172, 581) [V32.36.120 老板反证 dump]');
-    await ZBBAutomation.swipe(px(172), px(560), px(172), px(580), 200);
-    await ZBBAutomation.delay(500);
-    return await longPress.byCoords(172, 580, 1500);
-  }
-  await longPress.byText('请输入手机号码', 1500);
+  // 🆕 V32.36.124 老板 09-25 反证 V32.36.120 仍失败:
+  //   老板 nova 09:20:32 log:
+  //     LOG [click.byText] 找到 "手机号码" @ (513, 809) → tap (515, 808)   ← click 命中子串 OK
+  //     WARN [longPress.byText] 没找到: "请输入手机号码"                    ← longPress 找不到完整字符串!
+  //     LOG [越秀:9] 等粘贴菜单 2180ms                                       ← 没检查返回值, 直接接着走, 粘贴菜单没弹出
+  //   真因 1: longPress.byText('请输入手机号码') 还是用完整字符串找, V32.36.123 includes 模糊匹配没生效? 不, 老板 nova dump 里没有完整字符串 placeholder
+  //          click.byText('手机号码') 命中是 includes 子串, 但 longPress V32.36.123 已改 includes 也会命中, 实际是 longPress 之前
+  //   真因 2: V32.36.120 代码逻辑漏洞: await longPress.byText('请输入手机号码', 1500) 失败后没检查返回值
+  //          老板 nova 9:20:33 log 显示 '等粘贴菜单 2180ms' 紧跟 longPress 失败 → longPress 返 false 但代码接着 await delay + click.byText('粘贴')
+  //          粘贴菜单根本没弹出来, click.byText('粘贴') 也找不到
+  //   V2 反证金标准 (YuexiuService.ts L892-946 步骤 5.5): 用 dump 拿 phone InputRect bounds + byCoords longPress 兜底, 不用 byText
+  //   修法: 学习 V2, 改用 byCoords dp(172, 581) 直接长按手机号 EditText, 不用 byText 模糊匹配
+  //         + 删 click.byText 试错路径, 简化代码
 
+  // 🆕 V32.36.124 直接用 byCoords 兜底 (学习 V2 YuexiuService.ts L892-946 步骤 5.5 反证金标准)
+  //   dump.xml 实测: 手机号 EditText bounds [303,1708]-[732,1783] → dp 中心 (172, 581)
+  //   优势: 不依赖 placeholder 字符串 (WebView placeholder 在 dump 里不一定有)
+  logger.info('越秀:9', '直接 byCoords dp(172, 581) longPress 手机号 EditText (V32.36.124 学习 V2, 不用 byText)');
+  const longPressOk = await longPress.byCoords(172, 581, 1500);
+  if (!longPressOk) {
+    logger.warn('越秀:9', 'longPress.byCoords dp(172, 581) 失败, 尝试 longPress.byText "手机号码" (V32.36.123 includes 模糊匹配)');
+    const longPressTextOk = await longPress.byText('手机号码', 1500);
+    if (!longPressTextOk) {
+      logger.error('越秀:9', 'longPress 全部失败, 报错');
+      return false;
+    }
+  }
+
+  // 🆕 V32.36.124 检查返回值后再走粘贴菜单 (V32.36.120 漏了)
   const pasteMenuDelay = 2000 + Math.floor(Math.random() * 500);
-  logger.info('越秀:9', `等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
+  logger.info('越秀:9', `longPress ✓, 等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
   await ZBBAutomation.delay(pasteMenuDelay);
 
   return await click.byText('粘贴');
 }
 
-// 越秀:10 (原越秀:11) 输入姓名 - 🆕 V32.36.120 老板 09-25 拍板: placeholder 修正
+// 越秀:10 (原越秀:11) 输入姓名 - 🆕 V32.36.124 老板 09-25 拍板: 学习 V2 byCoords
 async function yuexiuStep10InputName(customer: CustomerInfo): Promise<boolean> {
   logger.info('越秀:10', `输入姓名: ${customer.customerName}`);
 
-  // 🆕 V32.36.120 老板 09-25 反证: 越秀小程序姓名输入框 placeholder 是"请输入客户姓名" (带"客户"字)
-  //   老板 nova dump.xml 实际节点: EditText text="" NAF=true
-  //   修法: 改 placeholder 字符串为"请输入客户姓名" (带"客户"字) + byCoords 兜底
-  let ok = await findWithRecovery('越秀:10', async () => click.byText('请输入客户姓名'));
-  if (!ok) {
-    logger.warn('越秀:10', '未找到"请输入客户姓名", 尝试"客户姓名"');
-    ok = await findWithRecovery('越秀:10 alt', async () => click.byText('客户姓名'));
-  }
-  if (!ok) {
-    // 兜底: 姓名 EditText bounds [303,1570]-[996,1645] (dp 中心 ~217,540)
-    logger.warn('越秀:10', 'placeholder 找不到, 兜底 byCoords dp(217, 540) [V32.36.120 老板反证 dump]');
-    return await click.byCoords(217, 540);
-  }
+  // 🆕 V32.36.124 学习 V2: 改用 byCoords dp(217, 540) 直接点击姓名 EditText
+  //   老板 nova dump.xml 实测: 姓名 EditText bounds [303,1570]-[996,1645] → dp 中心 (217, 540)
+  //   V2 反证金标准 (YuexiuService.ts L892-946): 不依赖 placeholder 字符串
+  logger.info('越秀:10', 'byCoords dp(217, 540) click 姓名 EditText (V32.36.124 学习 V2)');
+  await click.byCoords(217, 540);
+
   await ZBBAutomation.delay(500);
   logger.info('越秀:10', `已点击姓名输入框, 等 native input 输入 ${customer.customerName}`);
   await ZBBAutomation.delay(1000);
