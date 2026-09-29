@@ -261,14 +261,28 @@ async function yuexiuStep5BFallback(): Promise<boolean> {
   logger.info('越秀:5B-2', `等弹窗 ${delay1}ms (V32.36.127 老板拍板: 2000-2500ms 随机)`);
   await ZBBAutomation.delay(delay1);
 
-  // ★ V32.36.126 老板 09-29 拍板: 5B-3 dump 找"前往查看" 节点, 替代 hardcode dp(130.9, 331.6)
-  //   跟 5B-1 同款修法, 弹窗"前往查看"按钮坐标也走 dump 节点
-  const nodes2 = await ZBBAutomation.getAllTextNodes();
-  const viewBtnNode = nodes2.find((n: any) =>
-    n?.text === '前往查看' && n.centerX > 0 && n.centerY > 0
-  );
+  // ★ V32.36.128 老板 09-29 拍板: dump 失败重试 3 次, 每次 dump 前等弹窗浮层渲染
+  //   老板 nova 14:57 实测: 2204ms 后 dump 拿不到"前往查看" 节点, 但屏幕已显示该弹窗
+  //   真因: 弹窗浮层 WebView 渲染慢, dump 时 A11y 树还没注入弹窗节点
+  //   修法: 3 次循环, 每次 dump 前等 1000-2000ms 随机 (给弹窗浮层渲染时间), 命中就 break
+  let viewBtnNode: any = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // ★ V32.36.128 dump 前等弹窗浮层渲染
+    const popupDelay = 1000 + Math.floor(Math.random() * 1000);
+    logger.info('越秀:5B-3', `第 ${attempt}/3 次 dump, 先等 ${popupDelay}ms (V32.36.128 等弹窗浮层渲染)`);
+    await ZBBAutomation.delay(popupDelay);
+    const nodes2 = await ZBBAutomation.getAllTextNodes();
+    viewBtnNode = nodes2.find((n: any) =>
+      n?.text === '前往查看' && n.centerX > 0 && n.centerY > 0
+    );
+    if (viewBtnNode) {
+      logger.info('越秀:5B-3', `✓ 第 ${attempt}/3 次找到"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY})`);
+      break;
+    }
+    logger.warn('越秀:5B-3', `第 ${attempt}/3 次未找到"前往查看" 节点, ${attempt < 3 ? '重试' : 'return false'}`);
+  }
   if (!viewBtnNode) {
-    logger.warn('越秀:5B-3', 'V32.36.126 未找到"前往查看"节点, return false');
+    logger.warn('越秀:5B-3', 'V32.36.128 3 次都未找到"前往查看" 节点, return false');
     return false;
   }
   logger.info('越秀:5B-3', `点弹窗"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(130.9, 331.6)]`);
