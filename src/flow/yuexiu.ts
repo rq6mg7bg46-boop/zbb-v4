@@ -279,14 +279,20 @@ async function yuexiuStep5BFallback(): Promise<boolean> {
       logger.info('越秀:5B-3', `✓ 第 ${attempt}/3 次找到"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY})`);
       break;
     }
-    logger.warn('越秀:5B-3', `第 ${attempt}/3 次未找到"前往查看" 节点, ${attempt < 3 ? '重试' : 'return false'}`);
+    logger.warn('越秀:5B-3', `第 ${attempt}/3 次未找到"前往查看" 节点, ${attempt < 3 ? '重试' : '走正中 ±10dp 兜底'}`);
   }
+  // 🆕 V32.36.129 老板 09-29 拍板: dump 失败 → 屏幕正中 ±10dp 拟人化兜底
+  //   老板 nova 实测: 弹窗任意位置点击都能触发"前往查看" handler (弹窗是全屏 mask, 按钮只是视觉层)
+  //   修法: 屏幕正中 dp(180, 400) + ±10dp 拟人化 (DpUtil centerXDp/centerYDp 兜底坐标, 跨机型兼容)
   if (!viewBtnNode) {
-    logger.warn('越秀:5B-3', 'V32.36.128 3 次都未找到"前往查看" 节点, return false');
-    return false;
+    const fallbackX = 180 + Math.floor((Math.random() - 0.5) * 20);  // 170-190 dp (±10)
+    const fallbackY = 400 + Math.floor((Math.random() - 0.5) * 20);  // 390-410 dp (±10)
+    logger.info('越秀:5B-3', `V32.36.129 dump 兜底: 屏幕正中 ±10dp dp(${fallbackX}, ${fallbackY}) (老板 nova 实测: 弹窗任意位置都能进入下一步)`);
+    await click.byCoords(fallbackX, fallbackY);
+  } else {
+    logger.info('越秀:5B-3', `点弹窗"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(130.9, 331.6)]`);
+    await click.byNode(viewBtnNode);
   }
-  logger.info('越秀:5B-3', `点弹窗"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(130.9, 331.6)]`);
-  await click.byNode(viewBtnNode);
 
   const delay2 = 1000 + Math.floor(Math.random() * 1000);
   await ZBBAutomation.delay(delay2);
