@@ -83,9 +83,14 @@ export async function runYuexiuFlow(customer: CustomerInfo): Promise<boolean> {
     const verifyOk = await yuexiuStep7VerifyRecommendPage();
     if (!verifyOk) logger.warn('越秀:7', '验证推荐页失败 (best-effort, 继续)');
 
-    logger.info('越秀:8', `dump + 取客户 (Orchestrator 传入): ${customer.customerName} ${customer.phoneLast4}`);
+    // 🆕 V32.36.130 老板 09-29 拍板: 步骤 8 加 dump 逻辑, 步骤 9 拉 +86 节点坐标做 longPress 粘贴
+    //   老板 dump 实测: +86 节点 bounds=[114,1705][234,1780], EditText bounds=[303, 1705][996,1783]
+    //   老板拍板: x+190 = +86 到 EditText 距离 (114+190=304 ≈ EditText left 303)
+    //   相对位置不变 → 跨两次界面 dump 坐标变化也能稳定触发 longPress
+    const phoneAnchor = await yuexiuStep8DumpPhoneAnchor();
+    if (!phoneAnchor) throw new Error('越秀:8 找不到 +86 节点,无法长按粘贴');
 
-    if (!await yuexiuStep9InputPhone(customer)) throw new Error('越秀:9 输入手机号失败');
+    if (!await yuexiuStep9InputPhone(customer, phoneAnchor)) throw new Error('越秀:9 输入手机号失败');
     if (!await yuexiuStep10InputName(customer)) throw new Error('越秀:10 输入姓名失败');
     if (!await yuexiuStep11SelectGender(customer)) logger.warn('越秀:11', '选性别失败 (best-effort, 继续)');
 
@@ -461,44 +466,85 @@ async function yuexiuStep7VerifyRecommendPage(): Promise<boolean> {
   }
 }
 
-// 越秀:9 (原越秀:10) 输入手机号 (longPress 粘贴, V32.36.104 2-2.5s 随机) - 🆕 V32.36.124 老板 09-25 拍板: 学习 V2
-async function yuexiuStep9InputPhone(customer: CustomerInfo): Promise<boolean> {
-  logger.info('越秀:9', `输入手机号 (longPress 粘贴): ${customer.phoneLast4}`);
+// 越秀:8 (V32.36.130 老板 09-29 拍板: dump +86 节点, 提取 (x_dp, y_dp) 给步骤 9 做 longPress 粘贴)
+// 老板 dump 实测: +86 节点 bounds=[114,1705][234,1780] (px), nova 7 5G pixelRatio=3.0 → 1dp=3px
+//   拍板逻辑: +86 + 190px ≈ EditText 起点 (114+190=303 ≈ 303),相对稳定, 跨界面 dump 坐标变化也能命中
+//   V2 参考 (YuexiuService.ts L892-946 步骤 5.5): dump 拿 phone InputRect bounds + byCoords longPress 兜底
+//   V32.36.124 longPress byCoords 老板 nova 实测已验证 OK, 这次沿用 byCoords 不用 byText
+async function yuexiuStep8DumpPhoneAnchor(): Promise<{ x_dp: number; y_dp: number } | null> {
+  logger.info('越秀:8', 'dump +86 节点, 提取锚点 (V32.36.130 老板拍板)');
+  await ZBBAutomation.delay(2000);
 
-  // 🆕 V32.36.124 老板 09-25 反证 V32.36.120 仍失败:
-  //   老板 nova 09:20:32 log:
-  //     LOG [click.byText] 找到 "手机号码" @ (513, 809) → tap (515, 808)   ← click 命中子串 OK
-  //     WARN [longPress.byText] 没找到: "请输入手机号码"                    ← longPress 找不到完整字符串!
-  //     LOG [越秀:9] 等粘贴菜单 2180ms                                       ← 没检查返回值, 直接接着走, 粘贴菜单没弹出
-  //   真因 1: longPress.byText('请输入手机号码') 还是用完整字符串找, V32.36.123 includes 模糊匹配没生效? 不, 老板 nova dump 里没有完整字符串 placeholder
-  //          click.byText('手机号码') 命中是 includes 子串, 但 longPress V32.36.123 已改 includes 也会命中, 实际是 longPress 之前
-  //   真因 2: V32.36.120 代码逻辑漏洞: await longPress.byText('请输入手机号码', 1500) 失败后没检查返回值
-  //          老板 nova 9:20:33 log 显示 '等粘贴菜单 2180ms' 紧跟 longPress 失败 → longPress 返 false 但代码接着 await delay + click.byText('粘贴')
-  //          粘贴菜单根本没弹出来, click.byText('粘贴') 也找不到
-  //   V2 反证金标准 (YuexiuService.ts L892-946 步骤 5.5): 用 dump 拿 phone InputRect bounds + byCoords longPress 兜底, 不用 byText
-  //   修法: 学习 V2, 改用 byCoords dp(172, 581) 直接长按手机号 EditText, 不用 byText 模糊匹配
-  //         + 删 click.byText 试错路径, 简化代码
+  const nodes = await ZBBAutomation.getAllTextNodes();
+  const plusNode = nodes.find(n => n.text === '+86');
 
-  // 🆕 V32.36.124 直接用 byCoords 兜底 (学习 V2 YuexiuService.ts L892-946 步骤 5.5 反证金标准)
-  //   dump.xml 实测: 手机号 EditText bounds [303,1708]-[732,1783] → dp 中心 (172, 581)
-  //   优势: 不依赖 placeholder 字符串 (WebView placeholder 在 dump 里不一定有)
-  logger.info('越秀:9', '直接 byCoords dp(172, 581) longPress 手机号 EditText (V32.36.124 学习 V2, 不用 byText)');
-  const longPressOk = await longPress.byCoords(172, 581, 1500);
-  if (!longPressOk) {
-    logger.warn('越秀:9', 'longPress.byCoords dp(172, 581) 失败, 尝试 longPress.byText "手机号码" (V32.36.123 includes 模糊匹配)');
-    const longPressTextOk = await longPress.byText('手机号码', 1500);
-    if (!longPressTextOk) {
-      logger.error('越秀:9', 'longPress 全部失败, 报错');
-      return false;
-    }
+  if (!plusNode || !plusNode.centerX || !plusNode.centerY) {
+    logger.error('越秀:8', `没找到 +86 节点 (dump 节点数=${nodes.length})`);
+    return null;
   }
 
-  // 🆕 V32.36.124 检查返回值后再走粘贴菜单 (V32.36.120 漏了)
-  const pasteMenuDelay = 2000 + Math.floor(Math.random() * 500);
-  logger.info('越秀:9', `longPress ✓, 等粘贴菜单 ${pasteMenuDelay}ms (V32.36.104 2-2.5s 随机)`);
-  await ZBBAutomation.delay(pasteMenuDelay);
+  // px → dp (nova 7 5G pixelRatio=3.0 → 1dp = 3px)
+  const x_dp = Math.round(plusNode.centerX / 3);
+  const y_dp = Math.round(plusNode.centerY / 3);
+  logger.info('越秀:8', `✓ +86 节点 @ px(${plusNode.centerX}, ${plusNode.centerY}) → dp(${x_dp}, ${y_dp})`);
 
-  return await click.byText('粘贴');
+  return { x_dp, y_dp };
+}
+
+// 越秀:9 (V32.36.130 老板 09-29 拍板: dump +86 → longPress (x+190, y) 2s → click (x+190, y-45) → verify 粘贴成功)
+//   老板原话: 1. 找到 +86 坐标 (x,y), 长按 (x+190, y) 2S; 2. 点击 (x+190, y-45), 等待 1-2s 随机
+//   V32.36.124 byCoords longPress 老板 nova 实测已验证 OK, 这次沿用 byCoords 不用 byText
+async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: number; y_dp: number }): Promise<boolean> {
+  logger.info('越秀:9', `输入手机号 (longPress 粘贴菜单 byCoords, V32.36.130 老板拍板): ${customer.phoneLast4}`);
+
+  // 老板原话: x+190 是 px, 转 dp = +63 (190/3 ≈ 63); y-45 px 转 dp = -15 (45/3 = 15)
+  const OFFSET_X_DP = Math.round(190 / 3);  // +63 dp
+  const OFFSET_Y_PASTE_DP = -Math.round(45 / 3);  // -15 dp (粘贴菜单第一项)
+  const longPressX_dp = anchor.x_dp + OFFSET_X_DP;
+  const longPressY_dp = anchor.y_dp;
+  const pasteX_dp = anchor.x_dp + OFFSET_X_DP;
+  const pasteY_dp = anchor.y_dp + OFFSET_Y_PASTE_DP;
+
+  // A: longPress 2s
+  logger.info('越秀:9', `A: longPress byCoords dp(${longPressX_dp}, ${longPressY_dp}) 2000ms (V32.36.130)`);
+  const longPressOk = await longPress.byCoords(longPressX_dp, longPressY_dp, 2000);
+  if (!longPressOk) {
+    logger.error('越秀:9', `longPress byCoords dp(${longPressX_dp}, ${longPressY_dp}) 失败`);
+    return false;
+  }
+
+  // B: 等 1-2s 随机 (老板原话"等待 1-2s 间的随机时间" — 粘贴菜单 WebView 浮层弹出需要时间)
+  const menuDelay = 1000 + Math.floor(Math.random() * 1000);
+  logger.info('越秀:9', `B: ✓ longPress OK, 等粘贴菜单 ${menuDelay}ms (老板拍板 1-2s 随机)`);
+  await ZBBAutomation.delay(menuDelay);
+
+  // C: click (x+190, y-45) 粘贴菜单第一项
+  logger.info('越秀:9', `C: click 粘贴菜单 byCoords dp(${pasteX_dp}, ${pasteY_dp}) (V32.36.130 y-45px = -15dp)`);
+  const pasteOk = await click.byCoords(pasteX_dp, pasteY_dp);
+  if (!pasteOk) {
+    logger.error('越秀:9', `click 粘贴菜单 dp(${pasteX_dp}, ${pasteY_dp}) 失败`);
+    return false;
+  }
+
+  // V32.36.130 老板拍板: verify 粘贴成功 — dump EditText 看 text 是不是 11 位手机号,末4位匹配
+  await ZBBAutomation.delay(1500);  // 给粘贴 1.5s 渲染
+  const verifyNodes = await ZBBAutomation.getAllTextNodes();
+  const editTextNode = verifyNodes.find(n => (n as any).className === 'android.widget.EditText');
+  if (!editTextNode) {
+    logger.error('越秀:9', `verify 失败: 找不到 EditText 节点 (dump 节点数=${verifyNodes.length})`);
+    return false;
+  }
+  const pastedText = editTextNode.text || '';
+  const phoneLast4 = customer.phoneLast4 || '';
+  // 老板传 customer.phoneLast4 是末4位, 完整手机号 11 位 (1[3-9]\d{9}), 末4位匹配
+  const phoneRegex = /1[3-9]\d{9}/;
+  const phoneMatch = pastedText.match(phoneRegex);
+  if (!phoneMatch || !phoneMatch[0].endsWith(phoneLast4)) {
+    logger.error('越秀:9', `verify 失败: EditText text="${pastedText}" 未匹配 11 位手机号末4位 "${phoneLast4}"`);
+    return false;
+  }
+  logger.info('越秀:9', `✓ verify 粘贴成功: "${phoneMatch[0]}" (末4位匹配 ${phoneLast4})`);
+  return true;
 }
 
 // 越秀:10 (原越秀:11) 输入姓名 - 🆕 V32.36.124 老板 09-25 拍板: 学习 V2 byCoords
