@@ -513,9 +513,9 @@ async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: num
     return false;
   }
 
-  // B: 等 1-2s 随机 (老板原话"等待 1-2s 间的随机时间" — 粘贴菜单 WebView 浮层弹出需要时间)
-  const menuDelay = 1000 + Math.floor(Math.random() * 1000);
-  logger.info('越秀:9', `B: ✓ longPress OK, 等粘贴菜单 ${menuDelay}ms (老板拍板 1-2s 随机)`);
+  // B: 等 1.5-2s 随机 (老板 09-29 拍板 V32.36.131: 1-2s 改 1.5-2s, 缩短等待上限)
+  const menuDelay = 1500 + Math.floor(Math.random() * 500);
+  logger.info('越秀:9', `B: ✓ longPress OK, 等粘贴菜单 ${menuDelay}ms (老板拍板 1.5-2s 随机, V32.36.131)`);
   await ZBBAutomation.delay(menuDelay);
 
   // C: click (x+190, y-45) 粘贴菜单第一项
