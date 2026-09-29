@@ -156,36 +156,38 @@ async function yuexiuStep2ClickWorkbench(): Promise<boolean> {
   return true;
 }
 
-// 越秀:3 查找"越秀地产悦秀会" (V32.36.113 + baoli 步骤 3 同款: scrollUpPPlus + judge.isScreenText)
+// 越秀:3 查找"越秀地产悦秀会" - 🆕 V32.36.134 老板 09-29 拍板: 整个复制 baoli step3 (448dp 上滑 + raiseAlert 兜底)
+//   V32.36.121 改用 scrollUpPPlusLite (248dp) 老板 nova 实测越秀滑动太短找不到底部, 改回 baoli 同款 scrollUpPPlus (448dp)
+//   越秀独有逻辑全删 (开局 1-2s 等待 + 兜底 byCoords dp(180, 400) + 命中后 0-1s 等待 + pPlusDelay(1000, 1000))
 async function yuexiuStep3FindYuexiuMiniApp(): Promise<boolean> {
-  logger.info('越秀:3', '查找越秀地产悦秀会...');
-  // 🆕 V32.36.121 老板 09-25 拍板: 4-6s 太久, 改 1-2s 随机 (跟 baoli 步骤 3 同款 pPlusDelay)
-  await ZBBAutomation.delay(1000 + Math.random() * 1000);
+  logger.info('越秀:3', '上滑查找越秀地产悦秀会... (V32.36.134 复制 baoli 步骤 3)');
 
-  // 🆕 V32.36.113 老板 09-24 拍板: 学习 V4 保利 P+ 拟人化上滑
-  // 🆕 V32.36.121 老板 09-25 拍板: scrollUpPPlus 默认 (180,672)→(180,224) 上滑太多, 改用 scrollUpPPlusLite (180,672)→(180,424) 滑 248dp
+  // 保利步骤 3 同款循环 (5 次 attempt):
+  //   1. judge.isScreenText 找一次 (V32.36.18 单次 dump 不重试)
+  //   2. 找到 click.byText + delay 3000 + return true
+  //   3. 没找到 scrollUpPPlus (448dp 84→28%) + pPlusDelay(2000, 500) = 2-2.5s 随机
+  //   4. 5 次都没找到 raiseAlert 等老板手动处理 + return false
   for (let attempt = 0; attempt < 5; attempt++) {
     const found = await judge.isScreenText('越秀地产悦秀会');
     if (found) {
       logger.info('越秀:3', `✓ 第 ${attempt + 1} 次找到越秀地产悦秀会 (judge.isScreenText)`);
       const ok = await click.byText('越秀地产悦秀会');
       if (ok) {
-        await ZBBAutomation.delay(3000 + Math.random() * 1000);
+        await ZBBAutomation.delay(3000);
         return true;
       }
     }
-    // V32.36.121 改用 scrollUpPPlusLite (上滑 31% 屏, 不再 56% 屏)
-    const swipeOk = await scrollUpPPlusLite();
-    logger.info('越秀:3', `scrollUpPPlusLite 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
-    // V32.36.121 老板拍板: pPlusDelay(1000, 1000) = 1-2s 随机
-    await pPlusDelay(1000, 1000);
+    // V32.36.134 老板 09-29 拍板: 改回 baoli 同款 scrollUpPPlus (448dp 56% 屏, V32.36.121 lite 248dp 越秀滑太短找不到底部)
+    const swipeOk = await scrollUpPPlus();
+    logger.info('越秀:3', `scrollUpPPlus 上滑结果: ${swipeOk} (attempt ${attempt + 1})`);
+    // baoli 同款 pPlusDelay(2000, 500) = 2-2.5s 随机 (V32.36.121 越秀 (1000, 1000) = 1-2s 太短)
+    await pPlusDelay(2000, 500);
   }
 
-  // 兜底: dp(180, 400)
-  logger.warn('越秀:3', `5 次循环都未找到, 兜底用 dp(${centerXDp()}, ${YUEXIU_MINIAPP_FALLBACK_Y_DP})`);
-  await click.byCoords(centerXDp(), YUEXIU_MINIAPP_FALLBACK_Y_DP);
-  await ZBBAutomation.delay(3000 + Math.random() * 1000);
-  return true;
+  // baoli 同款兜底: 5 次都没找到 → raiseAlert 等老板手动处理 + return false
+  logger.warn('越秀:3', '5 次上滑都没找到越秀地产悦秀会 → raiseAlert 等老板手动处理 (V32.36.134)');
+  await raiseAlert('小主,未找到越秀地产悦秀会,请手动处理!');
+  return false;
 }
 
 // 越秀:4 (原越秀:5) 检索"推荐购房"+"查看更多" + 失败时 dump 节点 (V32.36.114 老板拍板)
@@ -497,10 +499,10 @@ async function yuexiuStep8DumpPhoneAnchor(): Promise<{ x_dp: number; y_dp: numbe
 async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: number; y_dp: number }): Promise<boolean> {
   logger.info('越秀:9', `输入手机号 (longPress 粘贴菜单 byCoords, V32.36.130 老板拍板): ${customer.phoneLast4}`);
 
-  // 老板原话: x+190 是 longPress 偏移 (px) = +63 dp, 进 EditText 区域触发粘贴菜单; click 偏移 x+160,y-65 (px) = +53, -22 dp (老板 09-29 拍板 V32.36.133: 改粘贴菜单点击位置, X 更左 Y 更高)
+  // 老板原话: x+190 是 longPress 偏移 (px) = +63 dp, 进 EditText 区域触发粘贴菜单; click 偏移 x+80,y-75 (px) = +27, -25 dp (老板 09-29 拍板 V32.36.135: 改粘贴菜单点击位置, X 更靠左)
   const LONGPRESS_OFFSET_X_DP = Math.round(190 / 3);  // +63 dp (longPress 触发粘贴菜单)
-  const PASTE_OFFSET_X_DP = Math.round(160 / 3);  // +53 dp (click 粘贴菜单第一项, 老板 V32.36.133 拍板)
-  const PASTE_OFFSET_Y_DP = -Math.round(65 / 3);  // -22 dp (粘贴菜单第一项, 老板 V32.36.133 拍板)
+  const PASTE_OFFSET_X_DP = Math.round(80 / 3);  // +27 dp (click 粘贴菜单第一项, 老板 V32.36.135 拍板)
+  const PASTE_OFFSET_Y_DP = -Math.round(75 / 3);  // -25 dp (粘贴菜单第一项, 老板 V32.36.135 拍板)
   const longPressX_dp = anchor.x_dp + LONGPRESS_OFFSET_X_DP;
   const longPressY_dp = anchor.y_dp;
   const pasteX_dp = anchor.x_dp + PASTE_OFFSET_X_DP;
@@ -519,8 +521,8 @@ async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: num
   logger.info('越秀:9', `B: ✓ longPress OK, 等粘贴菜单 ${menuDelay}ms (老板拍板 1.5-2s 随机, V32.36.131)`);
   await ZBBAutomation.delay(menuDelay);
 
-  // C: click (x+160, y-65) 粘贴菜单第一项
-  logger.info('越秀:9', `C: click 粘贴菜单 byCoords dp(${pasteX_dp}, ${pasteY_dp}) (V32.36.133 y-65px = -22dp)`);
+  // C: click (x+80, y-75) 粘贴菜单第一项
+  logger.info('越秀:9', `C: click 粘贴菜单 byCoords dp(${pasteX_dp}, ${pasteY_dp}) (V32.36.135 y-75px = -25dp)`);
   const pasteOk = await click.byCoords(pasteX_dp, pasteY_dp);
   if (!pasteOk) {
     logger.error('越秀:9', `click 粘贴菜单 dp(${pasteX_dp}, ${pasteY_dp}) 失败`);
