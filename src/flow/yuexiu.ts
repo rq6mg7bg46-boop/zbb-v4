@@ -51,10 +51,12 @@ const APP_PACKAGES = {
 };
 
 const YUEXIU_MINIAPP_FALLBACK_Y_DP = 400;
-const FALLBACK_RECOMMEND_TAB_X_DP = 32.4;
-const FALLBACK_RECOMMEND_TAB_Y_DP = 249.5;
-const FALLBACK_VIEW_BTN_X_DP = 130.9;
-const FALLBACK_VIEW_BTN_Y_DP = 331.6;
+// ★ V32.36.126 老板 09-29 拍板: 删 hardcode 常量 (实测跟 dump 节点不一致)
+//   改用 dump 节点 click.byNode 替代 byCoords hardcode
+// const FALLBACK_RECOMMEND_TAB_X_DP = 32.4;   // V32.36.126 删
+// const FALLBACK_RECOMMEND_TAB_Y_DP = 249.5;  // V32.36.126 删
+// const FALLBACK_VIEW_BTN_X_DP = 130.9;       // V32.36.126 删
+// const FALLBACK_VIEW_BTN_Y_DP = 331.6;       // V32.36.126 删
 
 // ============================================================
 // 越秀流程主入口
@@ -238,15 +240,36 @@ async function yuexiuStep5AClickViewMore(): Promise<boolean> {
 async function yuexiuStep5BFallback(): Promise<boolean> {
   logger.info('越秀:5B', '兜底流程: 点"推荐赚佣"→ 弹窗"前往查看" (V2 步骤5.6-5.9)');
 
-  logger.info('越秀:5B-1', `点"推荐赚佣" dp(${FALLBACK_RECOMMEND_TAB_X_DP}, ${FALLBACK_RECOMMEND_TAB_Y_DP})`);
-  await click.byCoords(FALLBACK_RECOMMEND_TAB_X_DP, FALLBACK_RECOMMEND_TAB_Y_DP);
+  // ★ V32.36.126 老板 09-29 拍板: 5B-1 dump 找"推荐赚佣" 节点, 替代 hardcode dp(32.4, 249.5)
+  //   老板 nova 12:39 实测: dump 节点 @ (133, 421) 跟 hardcode (97, 749) 不一致
+  //   修法: dump 一次 + find 节点 + click.byNode (替代 byCoords hardcode)
+  const nodes1 = await ZBBAutomation.getAllTextNodes();
+  const recommendNode = nodes1.find((n: any) =>
+    n?.text === '推荐赚佣' && n.centerX > 0 && n.centerY > 0
+  );
+  if (!recommendNode) {
+    logger.warn('越秀:5B-1', 'V32.36.126 未找到"推荐赚佣"节点, return false');
+    return false;
+  }
+  logger.info('越秀:5B-1', `点"推荐赚佣" @ (${recommendNode.centerX}, ${recommendNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(32.4, 249.5)]`);
+  await click.byNode(recommendNode);
 
   const delay1 = 1000 + Math.floor(Math.random() * 1000);
   logger.info('越秀:5B-2', `等弹窗 ${delay1}ms`);
   await ZBBAutomation.delay(delay1);
 
-  logger.info('越秀:5B-3', `点弹窗"前往查看" dp(${FALLBACK_VIEW_BTN_X_DP}, ${FALLBACK_VIEW_BTN_Y_DP})`);
-  await click.byCoords(FALLBACK_VIEW_BTN_X_DP, FALLBACK_VIEW_BTN_Y_DP);
+  // ★ V32.36.126 老板 09-29 拍板: 5B-3 dump 找"前往查看" 节点, 替代 hardcode dp(130.9, 331.6)
+  //   跟 5B-1 同款修法, 弹窗"前往查看"按钮坐标也走 dump 节点
+  const nodes2 = await ZBBAutomation.getAllTextNodes();
+  const viewBtnNode = nodes2.find((n: any) =>
+    n?.text === '前往查看' && n.centerX > 0 && n.centerY > 0
+  );
+  if (!viewBtnNode) {
+    logger.warn('越秀:5B-3', 'V32.36.126 未找到"前往查看"节点, return false');
+    return false;
+  }
+  logger.info('越秀:5B-3', `点弹窗"前往查看" @ (${viewBtnNode.centerX}, ${viewBtnNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(130.9, 331.6)]`);
+  await click.byNode(viewBtnNode);
 
   const delay2 = 1000 + Math.floor(Math.random() * 1000);
   await ZBBAutomation.delay(delay2);
