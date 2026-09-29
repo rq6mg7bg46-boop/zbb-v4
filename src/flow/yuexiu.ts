@@ -254,8 +254,11 @@ async function yuexiuStep5BFallback(): Promise<boolean> {
   logger.info('越秀:5B-1', `点"推荐赚佣" @ (${recommendNode.centerX}, ${recommendNode.centerY}) [V32.36.126 dump 节点, 替代 hardcode dp(32.4, 249.5)]`);
   await click.byNode(recommendNode);
 
-  const delay1 = 1000 + Math.floor(Math.random() * 1000);
-  logger.info('越秀:5B-2', `等弹窗 ${delay1}ms`);
+  // ★ V32.36.127 老板 09-29 拍板: 等弹窗时间太短, 改 1000-2500ms 随机
+  //   原: 1000 + random*1000 = 1000-1999ms (老板 nova 12:50 实测 1277ms 太短)
+  //   改: 1000 + random*1500 = 1000-2499ms (老板原话: '增加1-1.5S间的随机时间')
+  const delay1 = 1000 + Math.floor(Math.random() * 1500);
+  logger.info('越秀:5B-2', `等弹窗 ${delay1}ms (V32.36.127 老板拍板: 1000-2500ms 随机)`);
   await ZBBAutomation.delay(delay1);
 
   // ★ V32.36.126 老板 09-29 拍板: 5B-3 dump 找"前往查看" 节点, 替代 hardcode dp(130.9, 331.6)
