@@ -436,8 +436,16 @@ async function step4FindProject(projectName: string): Promise<boolean> {
     }
 
     // ★ V32.36.73 老板拍板方案 B: 搜索框兜底 (老板 nova 13:13 实测 - '请输入项目名称' 搜索页)
+    // 🆕 V32.36.125 老板 09-29 拍板: 段 3 入口加 1500-2500ms 拟人化 + 命中搜索框后改 2000-3000ms 随机
+    //   老板 nova 10:02:33 实测反馈: '有点击搜索栏的操作,但紧接着就查询了后续的内容,时间间隔太短'
+    //   修法 B: 段 3 入口 (段 1+2 → 段 3) 加 1500-2500ms 随机 delay
+    //   修法 C: 命中搜索框后点 + delay 改 2000-3000ms 随机 (原固定 3000)
     if (!projectEntry || !projectEntry.centerX || projectEntry.centerX <= 0) {
       logger.warn('保利:步骤4', `第 ${attempt}/3 次未找到项目名 + 价格, 试搜索框兜底 (V32.36.73 老板拍板方案 B)`);
+      // ★ V32.36.125 B: 段 3 入口加 1500-2500ms 拟人化 (老板 nova 实测间隔太短)
+      const seg3EntryDelay = 1500 + Math.floor(Math.random() * 1000);
+      logger.info('保利:步骤4', `段 3 入口等 ${seg3EntryDelay}ms (V32.36.125 老板拍板: 1500-2500ms 拟人化)`);
+      await ZBBAutomation.delay(seg3EntryDelay);
       // 1. 找搜索框节点 (text='请输入项目名称')
       const searchBox = nodes.find((n: any) =>
         n?.text?.toString()?.includes('请输入项目名称') &&
@@ -452,7 +460,10 @@ async function step4FindProject(projectName: string): Promise<boolean> {
         //   老板铁子反证: mock 千机监听搜索框 onFocus / onClick 触发自动搜索 (不需要粘贴内容)
         // V32.36.96+97 老板铁律: ZBBAutomation.click 接 px, 业务代码用 dp, 但 searchBox.centerX 是 native dump 返的 px, 直接用
         await ZBBAutomation.click(searchBox.centerX ?? 0, searchBox.centerY ?? 0);
-        await ZBBAutomation.delay(3000);  // 等 IME 弹起 + mock 千机自动搜索 (V32.36.73 老板拍板方案 B 步骤 1)
+        // ★ V32.36.125 C: 命中搜索框后 delay 改 2000-3000ms 随机 (原固定 3000, V32.36.73 老板拍板方案 B 步骤 1)
+        const searchBoxDelay = 2000 + Math.floor(Math.random() * 1000);
+        logger.info('保利:步骤4', `点搜索框后等 ${searchBoxDelay}ms (V32.36.125 老板拍板: 2000-3000ms 随机, 替代 V32.36.73 固定 3000)`);
+        await ZBBAutomation.delay(searchBoxDelay);
         // 4. 查找并点击"郑州保利山水和颂" (老板拍板方案 B 步骤 3)
         const searchNodes = await ZBBAutomation.getAllTextNodes();
         projectEntry = searchNodes.find((n: any) => n.text === '郑州保利山水和颂');
