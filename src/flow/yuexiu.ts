@@ -497,10 +497,10 @@ async function yuexiuStep8DumpPhoneAnchor(): Promise<{ x_dp: number; y_dp: numbe
 async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: number; y_dp: number }): Promise<boolean> {
   logger.info('越秀:9', `输入手机号 (longPress 粘贴菜单 byCoords, V32.36.130 老板拍板): ${customer.phoneLast4}`);
 
-  // 老板原话: x+190 是 longPress 偏移 (px) = +63 dp, 进 EditText 区域触发粘贴菜单; click 偏移 x+180,y-55 (px) = +60, -18 dp (老板 09-29 拍板 V32.36.132: 改粘贴菜单点击位置)
+  // 老板原话: x+190 是 longPress 偏移 (px) = +63 dp, 进 EditText 区域触发粘贴菜单; click 偏移 x+160,y-65 (px) = +53, -22 dp (老板 09-29 拍板 V32.36.133: 改粘贴菜单点击位置, X 更左 Y 更高)
   const LONGPRESS_OFFSET_X_DP = Math.round(190 / 3);  // +63 dp (longPress 触发粘贴菜单)
-  const PASTE_OFFSET_X_DP = Math.round(180 / 3);  // +60 dp (click 粘贴菜单第一项, 老板 V32.36.132 拍板)
-  const PASTE_OFFSET_Y_DP = -Math.round(55 / 3);  // -18 dp (粘贴菜单第一项, 老板 V32.36.132 拍板, 偏左上)
+  const PASTE_OFFSET_X_DP = Math.round(160 / 3);  // +53 dp (click 粘贴菜单第一项, 老板 V32.36.133 拍板)
+  const PASTE_OFFSET_Y_DP = -Math.round(65 / 3);  // -22 dp (粘贴菜单第一项, 老板 V32.36.133 拍板)
   const longPressX_dp = anchor.x_dp + LONGPRESS_OFFSET_X_DP;
   const longPressY_dp = anchor.y_dp;
   const pasteX_dp = anchor.x_dp + PASTE_OFFSET_X_DP;
@@ -519,8 +519,8 @@ async function yuexiuStep9InputPhone(customer: CustomerInfo, anchor: { x_dp: num
   logger.info('越秀:9', `B: ✓ longPress OK, 等粘贴菜单 ${menuDelay}ms (老板拍板 1.5-2s 随机, V32.36.131)`);
   await ZBBAutomation.delay(menuDelay);
 
-  // C: click (x+180, y-55) 粘贴菜单第一项
-  logger.info('越秀:9', `C: click 粘贴菜单 byCoords dp(${pasteX_dp}, ${pasteY_dp}) (V32.36.132 y-55px = -18dp)`);
+  // C: click (x+160, y-65) 粘贴菜单第一项
+  logger.info('越秀:9', `C: click 粘贴菜单 byCoords dp(${pasteX_dp}, ${pasteY_dp}) (V32.36.133 y-65px = -22dp)`);
   const pasteOk = await click.byCoords(pasteX_dp, pasteY_dp);
   if (!pasteOk) {
     logger.error('越秀:9', `click 粘贴菜单 dp(${pasteX_dp}, ${pasteY_dp}) 失败`);
